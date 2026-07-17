@@ -1,9 +1,18 @@
+import { useEffect } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { Sidebar } from "./components/Sidebar";
+import { setupDesktopIntegration } from "./desktopIntegration";
 import { useStore } from "./store";
 
 export function App() {
-  const { ready } = useStore();
+  const { ready, createSession } = useStore();
+
+  useEffect(() => {
+    const teardown = setupDesktopIntegration({ onNewSession: () => createSession() });
+    return () => {
+      void teardown.then((unsubscribe) => unsubscribe());
+    };
+  }, [createSession]);
 
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;

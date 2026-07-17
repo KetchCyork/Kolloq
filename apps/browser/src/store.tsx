@@ -1,9 +1,35 @@
 import type { AgentEvent, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { runSessionTurn } from "./agentClient";
+import { deleteApiKey, isTauriRuntime, loadApiKey, saveApiKey } from "./credentials";
 import { loadAllSessions, putAllSessions, putSession, deleteSession as deleteSessionRecord } from "./db";
 import type { AgentSession, SessionExportFile, StoredMessage } from "./types";
 import { defaultProviderConfig, nowMs, randomId, randomIdentity } from "./utils";
+
+/**
+ * Persists a session, routing its API key to the OS keychain instead of
+ * IndexedDB when running inside the Tauri desktop shell so the key never
+ * touches disk in plaintext.
+ */
+async function persistSession(session: AgentSession): Promise<void> {
+  if (!isTauriRuntime()) {
+    await putSession(session);
+    return;
+  }
+  const { apiKey, ...restConfig } = session.providerConfig;
+  if (apiKey) {
+    await saveApiKey(session.id, apiKey);
+  } else {
+    await deleteApiKey(session.id);
+  }
+  await putSession({ ...session, providerConfig: restConfig });
+}
+
+async function hydrateSession(session: AgentSession): Promise<AgentSession> {
+  if (!isTauriRuntime()) return session;
+  const apiKey = await loadApiKey(session.id);
+  return apiKey ? { ...session, providerConfig: { ...session.providerConfig, apiKey } } : session;
+}
 
 export interface LiveToolCall {
   call: ToolCall;
@@ -45,11 +71,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   sessionsRef.current = sessions;
 
   useEffect(() => {
-    loadAllSessions().then((loaded) => {
-      setSessions(loaded);
-      setActiveSessionId((current) => current ?? loaded[0]?.id ?? null);
-      setReady(true);
-    });
+    loadAllSessions()
+      .then((loaded) => Promise.all(loaded.map(hydrateSession)))
+      .then((loaded) => {
+        setSessions(loaded);
+        setActiveSessionId((current) => current ?? loaded[0]?.id ?? null);
+        setReady(true);
+      });
   }, []);
 
   const createSession = useCallback((): AgentSession => {
@@ -64,7 +92,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     setSessions((prev) => [...prev, session]);
     setActiveSessionId(session.id);
-    void putSession(session);
+    void persistSession(session);
     return session;
   }, []);
 
@@ -74,7 +102,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         prev.map((session) => {
           if (session.id !== id) return session;
           const updated = { ...session, ...patch, updatedAt: nowMs() };
-          void putSession(updated);
+          void persistSession(updated);
           return updated;
         }),
       );
@@ -86,6 +114,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       setSessions((prev) => prev.filter((session) => session.id !== id));
       void deleteSessionRecord(id);
+      if (isTauriRuntime()) void deleteApiKey(id);
       setActiveSessionId((current) => {
         if (current !== id) return current;
         const remaining = sessionsRef.current.filter((session) => session.id !== id);
@@ -100,7 +129,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       prev.map((session) => {
         if (session.id !== sessionId) return session;
         const updated = { ...session, messages: [...session.messages, ...messages], updatedAt: nowMs() };
-        void putSession(updated);
+        void persistSession(updated);
         return updated;
       }),
     );
@@ -183,7 +212,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const nextSessions = mode === "replace" ? incoming : mergeSessions(sessionsRef.current, incoming);
     setSessions(nextSessions);
     setActiveSessionId((current) => current ?? nextSessions[0]?.id ?? null);
-    await putAllSessions(incoming);
+    if (isTauriRuntime()) {
+      await Promise.all(incoming.map(persistSession));
+    } else {
+      await putAllSessions(incoming);
+    }
   }, []);
 
   const value = useMemo<StoreApi>(
