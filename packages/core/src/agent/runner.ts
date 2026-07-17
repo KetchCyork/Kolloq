@@ -5,6 +5,8 @@ export interface AgentRunnerOptions {
   provider: ChatProvider;
   tools?: ToolRegistry;
   systemPrompt?: string;
+  /** Prior conversation turns to seed the runner with, e.g. when resuming a persisted session. */
+  initialMessages?: ChatMessage[];
   /** Caps the send -> respond -> execute-tools -> repeat loop so a misbehaving model can't run forever. */
   maxSteps?: number;
   onEvent?: (event: AgentEvent) => void;
@@ -12,6 +14,7 @@ export interface AgentRunnerOptions {
 
 export type AgentEvent =
   | { type: "assistant-message"; message: ChatMessage }
+  | { type: "text-delta"; delta: string }
   | { type: "tool-call"; toolCall: ToolCall }
   | { type: "tool-result"; toolCall: ToolCall; result: unknown }
   | { type: "error"; error: Error };
@@ -33,6 +36,9 @@ export class AgentRunner {
     if (options.systemPrompt) {
       this.messages.push({ role: "system", content: options.systemPrompt });
     }
+    if (options.initialMessages?.length) {
+      this.messages.push(...options.initialMessages);
+    }
   }
 
   async run(userInput: string): Promise<ChatMessage[]> {
@@ -46,40 +52,86 @@ export class AgentRunner {
         tools: this.tools.list(),
       });
 
-      this.messages.push(response.message);
-      turnMessages.push(response.message);
-      this.onEvent?.({ type: "assistant-message", message: response.message });
-
-      if (!response.message.toolCalls?.length) {
+      const toolCalls = this.recordAssistantMessage(response.message, turnMessages);
+      if (!toolCalls.length) {
         return turnMessages;
       }
 
-      for (const toolCall of response.message.toolCalls) {
-        this.onEvent?.({ type: "tool-call", toolCall });
-
-        let content: string;
-        try {
-          const result = await this.tools.execute(toolCall);
-          this.onEvent?.({ type: "tool-result", toolCall, result });
-          content = typeof result === "string" ? result : JSON.stringify(result);
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          this.onEvent?.({ type: "error", error: err });
-          content = JSON.stringify({ error: err.message });
-        }
-
-        const toolMessage: ChatMessage = {
-          role: "tool",
-          name: toolCall.name,
-          toolCallId: toolCall.id,
-          content,
-        };
-        this.messages.push(toolMessage);
-        turnMessages.push(toolMessage);
-      }
+      turnMessages.push(...(await this.runToolCalls(toolCalls)));
     }
 
     return turnMessages;
+  }
+
+  /** Same send -> respond -> execute-tools -> repeat loop as `run`, but emits `text-delta` events as tokens arrive. */
+  async runStream(userInput: string): Promise<ChatMessage[]> {
+    this.messages.push({ role: "user", content: userInput });
+
+    const turnMessages: ChatMessage[] = [];
+
+    for (let step = 0; step < this.maxSteps; step++) {
+      let content = "";
+      const toolCalls: ToolCall[] = [];
+
+      for await (const event of this.provider.stream({ messages: this.messages, tools: this.tools.list() })) {
+        switch (event.type) {
+          case "text-delta":
+            content += event.delta;
+            this.onEvent?.({ type: "text-delta", delta: event.delta });
+            break;
+          case "tool-call":
+            toolCalls.push(event.toolCall);
+            break;
+          case "error":
+            this.onEvent?.({ type: "error", error: event.error });
+            break;
+          default:
+            break;
+        }
+      }
+
+      const message: ChatMessage = { role: "assistant", content, ...(toolCalls.length ? { toolCalls } : {}) };
+      this.recordAssistantMessage(message, turnMessages);
+      if (!toolCalls.length) {
+        return turnMessages;
+      }
+
+      turnMessages.push(...(await this.runToolCalls(toolCalls)));
+    }
+
+    return turnMessages;
+  }
+
+  private recordAssistantMessage(message: ChatMessage, turnMessages: ChatMessage[]): ToolCall[] {
+    this.messages.push(message);
+    turnMessages.push(message);
+    this.onEvent?.({ type: "assistant-message", message });
+    return message.toolCalls ?? [];
+  }
+
+  private async runToolCalls(toolCalls: ToolCall[]): Promise<ChatMessage[]> {
+    const toolMessages: ChatMessage[] = [];
+
+    for (const toolCall of toolCalls) {
+      this.onEvent?.({ type: "tool-call", toolCall });
+
+      let content: string;
+      try {
+        const result = await this.tools.execute(toolCall);
+        this.onEvent?.({ type: "tool-result", toolCall, result });
+        content = typeof result === "string" ? result : JSON.stringify(result);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.onEvent?.({ type: "error", error: err });
+        content = JSON.stringify({ error: err.message });
+      }
+
+      const toolMessage: ChatMessage = { role: "tool", name: toolCall.name, toolCallId: toolCall.id, content };
+      this.messages.push(toolMessage);
+      toolMessages.push(toolMessage);
+    }
+
+    return toolMessages;
   }
 
   getHistory(): ChatMessage[] {

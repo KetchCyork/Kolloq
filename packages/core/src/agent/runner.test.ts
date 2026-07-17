@@ -20,7 +20,19 @@ class ScriptedProvider implements ChatProvider {
   }
 
   async *stream(_request: ChatRequest): AsyncIterable<StreamEvent> {
-    throw new Error("not used in this test");
+    const response = this.responses[this.step];
+    this.step += 1;
+    if (!response) throw new Error("no more scripted responses");
+
+    if (response.message.content) {
+      for (const char of response.message.content) {
+        yield { type: "text-delta", delta: char };
+      }
+    }
+    for (const toolCall of response.message.toolCalls ?? []) {
+      yield { type: "tool-call", toolCall };
+    }
+    yield { type: "finish", reason: response.finishReason };
   }
 }
 
@@ -121,5 +133,61 @@ describe("AgentRunner", () => {
     const turn = await runner.run("loop forever");
 
     expect(turn.filter((message) => message.role === "assistant")).toHaveLength(2);
+  });
+
+  it("runStream emits text-delta events and reassembles the same final message as run", async () => {
+    const provider = new ScriptedProvider([
+      {
+        finishReason: "stop",
+        message: { role: "assistant", content: "Hello there." },
+      },
+    ]);
+
+    const deltas: string[] = [];
+    const runner = new AgentRunner({
+      provider,
+      onEvent: (event) => {
+        if (event.type === "text-delta") deltas.push(event.delta);
+      },
+    });
+
+    const turn = await runner.runStream("Hi");
+
+    expect(deltas.join("")).toBe("Hello there.");
+    expect(turn.at(-1)?.content).toBe("Hello there.");
+  });
+
+  it("runStream executes tool calls surfaced mid-stream before continuing", async () => {
+    const tools = new ToolRegistry();
+    tools.register(
+      defineTool({
+        name: "add",
+        description: "add two numbers",
+        parameters: z.object({ a: z.number(), b: z.number() }),
+        execute: ({ a, b }) => a + b,
+      }),
+    );
+
+    const provider = new ScriptedProvider([
+      {
+        finishReason: "tool-calls",
+        message: {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "call_1", name: "add", arguments: { a: 2, b: 3 } }],
+        },
+      },
+      {
+        finishReason: "stop",
+        message: { role: "assistant", content: "The answer is 5." },
+      },
+    ]);
+
+    const runner = new AgentRunner({ provider, tools });
+    const turn = await runner.runStream("What is 2 + 3?");
+
+    expect(turn.at(-1)?.content).toBe("The answer is 5.");
+    const toolMessage = runner.getHistory().find((message) => message.role === "tool");
+    expect(toolMessage?.content).toBe("5");
   });
 });
