@@ -37,7 +37,8 @@ export function createCodeInterpreterTool(options: CodeInterpreterOptions = {}):
     }),
     execute: async ({ language, code }) => {
       const runner = RUNNERS[language];
-      const dir = options.cwd ?? (await fs.mkdtemp(path.join(os.tmpdir(), "agent-code-")));
+      const ownedDir = options.cwd == null ? await fs.mkdtemp(path.join(os.tmpdir(), "agent-code-")) : null;
+      const dir = ownedDir ?? options.cwd!;
       const file = path.join(dir, `snippet-${randomUUID()}${runner.ext}`);
       await fs.writeFile(file, code, "utf-8");
 
@@ -63,7 +64,11 @@ export function createCodeInterpreterTool(options: CodeInterpreterOptions = {}):
           );
         });
       } finally {
-        await fs.rm(file, { force: true });
+        if (ownedDir != null) {
+          await fs.rm(ownedDir, { recursive: true, force: true });
+        } else {
+          await fs.rm(file, { force: true });
+        }
       }
     },
   });

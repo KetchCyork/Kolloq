@@ -33,4 +33,19 @@ describe("createFileTools", () => {
     const [, writeFile] = createFileTools(rootDir);
     await expect(writeFile.execute({ path: "../outside.txt", content: "x" })).rejects.toThrow(/escapes/);
   });
+
+  it("rejects a read path via symlink that points outside the sandbox", async () => {
+    // Create a file outside the sandbox, then a symlink inside pointing to it.
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-fs-outside-"));
+    const outsideFile = path.join(outsideDir, "secret.txt");
+    await fs.writeFile(outsideFile, "secret", "utf-8");
+    await fs.symlink(outsideFile, path.join(rootDir, "link.txt"));
+
+    try {
+      const [readFile] = createFileTools(rootDir);
+      await expect(readFile.execute({ path: "link.txt" })).rejects.toThrow(/escapes.*symlink/);
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
 });

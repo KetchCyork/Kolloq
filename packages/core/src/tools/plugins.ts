@@ -36,7 +36,7 @@ export async function loadToolPlugins(dir: string): Promise<ToolDefinition[]> {
   }
 
   const tools: ToolDefinition[] = [];
-  for (const entry of entries.filter((name) => name.endsWith(".js")).sort()) {
+  for (const entry of entries.filter((name) => name.endsWith(".js") || name.endsWith(".mjs")).sort()) {
     const filePath = path.join(dir, entry);
     const mod = (await import(pathToFileURL(filePath).href)) as { default?: ToolPluginExport };
     if (mod.default === undefined) {
