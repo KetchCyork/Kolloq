@@ -13,6 +13,7 @@ import {
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
+import { setTelemetryEnabled } from "./telemetry";
 import type { Account, AgentSession, ProviderConfig, SessionExportFile, StoredMessage } from "./types";
 import { nowMs, randomId, randomIdentity } from "./utils";
 
@@ -132,6 +133,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const preferencesRef = useRef<Preferences>(preferences);
   preferencesRef.current = preferences;
   const initStarted = useRef(false);
+
+  useEffect(() => {
+    setTelemetryEnabled(preferences.telemetryEnabled);
+  }, [preferences.telemetryEnabled]);
 
   useEffect(() => {
     applyTheme(preferences.theme);

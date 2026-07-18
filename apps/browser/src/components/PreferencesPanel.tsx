@@ -89,6 +89,27 @@ export function PreferencesPanel() {
           </div>
         </div>
 
+        <div className="settings-section-label">Privacy</div>
+        <div className="settings-panel">
+          <div className="field span-full telemetry-row">
+            <div className="telemetry-text">
+              <span className="telemetry-label">Usage telemetry</span>
+              <span className="telemetry-hint">
+                Send anonymous usage events (session counts, provider usage, errors). No prompts, messages,
+                or API keys are ever included. Off by default.
+              </span>
+            </div>
+            <label className="toggle-switch" aria-label="Enable usage telemetry">
+              <input
+                type="checkbox"
+                checked={preferences.telemetryEnabled}
+                onChange={(e) => updatePreferences({ telemetryEnabled: e.target.checked })}
+              />
+              <span className="toggle-track" />
+            </label>
+          </div>
+        </div>
+
         <div className="settings-section-label">Keyboard shortcuts</div>
         <div className="settings-panel keybindings-list">
           {KEYBIND_ACTIONS.map((action) => (

@@ -17,6 +17,7 @@ export interface Preferences {
   defaultProvider: ProviderName;
   defaultModel: string;
   keybindings: Record<KeybindAction, KeyBinding>;
+  telemetryEnabled: boolean;
 }
 
 export const KEYBIND_ACTION_LABELS: Record<KeybindAction, string> = {
@@ -34,6 +35,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     togglePreferences: { key: ",", mod: true, shift: false },
     focusComposer: { key: "/", mod: true, shift: false },
   },
+  telemetryEnabled: false,
 };
 
 const STORAGE_KEY = "newvector-cowork-preferences";
@@ -52,6 +54,7 @@ export function loadPreferences(): Preferences {
       defaultProvider: parsed.defaultProvider ?? DEFAULT_PREFERENCES.defaultProvider,
       defaultModel: parsed.defaultModel ?? DEFAULT_PREFERENCES.defaultModel,
       keybindings: { ...DEFAULT_PREFERENCES.keybindings, ...parsed.keybindings },
+      telemetryEnabled: parsed.telemetryEnabled ?? DEFAULT_PREFERENCES.telemetryEnabled,
     };
   } catch {
     return DEFAULT_PREFERENCES;
