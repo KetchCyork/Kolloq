@@ -864,3 +864,96 @@ select {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Onboarding wizard */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.onboarding-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 48px 40px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.onboarding-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.onboarding-card h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.onboarding-sub, .onboarding-hint {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.onboarding-providers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.onboarding-provider-btn {
+  padding: 10px 14px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.onboarding-provider-btn:hover {
+  border-color: var(--accent);
+}
+
+.onboarding-provider-btn.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-alt));
+  color: var(--accent);
+}
+
+.onboarding-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.onboarding-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.onboarding-check {
+  font-size: 40px;
+  color: var(--accent);
+  font-weight: 700;
+}

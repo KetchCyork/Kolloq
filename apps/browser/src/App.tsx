@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AccountsManager } from "./components/AccountsManager";
 import { ChatPanel } from "./components/ChatPanel";
+import { OnboardingWizard } from "./components/OnboardingWizard";
 import { PreferencesPanel } from "./components/PreferencesPanel";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
@@ -8,7 +9,7 @@ import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
-  const { ready, createSession, accountsManagerOpen, preferences, preferencesOpen, openPreferences, closePreferences } =
+  const { ready, accounts, createSession, accountsManagerOpen, preferences, preferencesOpen, openPreferences, closePreferences } =
     useStore();
 
   useEffect(() => {
@@ -40,6 +41,10 @@ export function App() {
 
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
+  }
+
+  if (accounts.length === 0) {
+    return <OnboardingWizard />;
   }
 
   return (
