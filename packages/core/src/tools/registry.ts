@@ -5,7 +5,17 @@ export function defineTool<Args, Result>(tool: ToolDefinition<Args, Result>): To
   return tool;
 }
 
-export class ToolRegistry {
+/**
+ * Structural interface implemented by both `ToolRegistry` and `ScopedToolRegistry`, so the agent
+ * runner and orchestrator can accept either without depending on the concrete class.
+ */
+export interface ToolSource {
+  list(): ToolDefinition[];
+  get(name: string): ToolDefinition | undefined;
+  execute(toolCall: Pick<ToolCall, "name" | "arguments">): Promise<unknown>;
+}
+
+export class ToolRegistry implements ToolSource {
   private readonly tools = new Map<string, ToolDefinition>();
 
   register<Args, Result>(tool: ToolDefinition<Args, Result>): this {

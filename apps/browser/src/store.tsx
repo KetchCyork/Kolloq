@@ -73,6 +73,9 @@ export interface LiveToolCall {
   call: ToolCall;
   status: "running" | "done" | "error";
   result?: unknown;
+  /** Set when this call came from a delegated sub-agent, so the step tracker can indent/label it. */
+  agentName?: string;
+  depth?: number;
 }
 
 export interface LiveTurn {

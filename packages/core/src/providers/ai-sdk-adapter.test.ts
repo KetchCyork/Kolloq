@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toUserContent } from "./ai-sdk-adapter.js";
+import { repairStringifiedToolArgs, toUserContent } from "./ai-sdk-adapter.js";
 import type { ChatMessage } from "./types.js";
 
 const image: ChatMessage["attachments"] = [
@@ -40,5 +40,33 @@ describe("toUserContent", () => {
     const content = toUserContent("ollama", message);
 
     expect(content).toBe('[1 attachment(s) not sent — the "ollama" provider does not support image/file attachments: "pixel.png"]');
+  });
+});
+
+describe("repairStringifiedToolArgs", () => {
+  it("parses a JSON-array-shaped string field back into an array", () => {
+    const raw = { tasks: '[{"name":"x"}]' };
+    expect(repairStringifiedToolArgs(raw)).toEqual({ tasks: [{ name: "x" }] });
+  });
+
+  it("parses a JSON-object-shaped string field back into an object", () => {
+    const raw = { config: '{"retries":3}' };
+    expect(repairStringifiedToolArgs(raw)).toEqual({ config: { retries: 3 } });
+  });
+
+  it("leaves plain string fields untouched", () => {
+    const raw = { query: "what is the weather" };
+    expect(repairStringifiedToolArgs(raw)).toEqual({ query: "what is the weather" });
+  });
+
+  it("leaves a malformed JSON-looking string as-is instead of throwing", () => {
+    const raw = { tasks: "[not valid json" };
+    expect(repairStringifiedToolArgs(raw)).toEqual({ tasks: "[not valid json" });
+  });
+
+  it("passes through non-object input unchanged", () => {
+    expect(repairStringifiedToolArgs("just a string")).toBe("just a string");
+    expect(repairStringifiedToolArgs(null)).toBe(null);
+    expect(repairStringifiedToolArgs(undefined)).toBe(undefined);
   });
 });

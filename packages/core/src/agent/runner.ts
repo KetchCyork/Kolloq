@@ -1,9 +1,9 @@
 import type { ChatAttachment, ChatMessage, ChatProvider, ToolCall } from "../providers/types.js";
-import { ToolRegistry } from "../tools/registry.js";
+import { ToolRegistry, type ToolSource } from "../tools/registry.js";
 
 export interface AgentRunnerOptions {
   provider: ChatProvider;
-  tools?: ToolRegistry;
+  tools?: ToolSource;
   systemPrompt?: string;
   /** Prior conversation turns to seed the runner with, e.g. when resuming a persisted session. */
   initialMessages?: ChatMessage[];
@@ -22,7 +22,7 @@ export type AgentEvent =
 /** Provider-agnostic agent loop: send a user message, let the model respond, execute any tool calls, repeat. */
 export class AgentRunner {
   private readonly provider: ChatProvider;
-  private readonly tools: ToolRegistry;
+  private readonly tools: ToolSource;
   private readonly maxSteps: number;
   private readonly onEvent?: (event: AgentEvent) => void;
   private readonly messages: ChatMessage[] = [];

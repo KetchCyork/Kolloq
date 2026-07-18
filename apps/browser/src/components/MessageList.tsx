@@ -1,3 +1,4 @@
+import { StepTracker } from "@newvector/ui";
 import { useEffect, useRef } from "react";
 import type { LiveTurn } from "../store";
 import type { AgentSession } from "../types";
@@ -28,24 +29,19 @@ export function MessageList({ session, live }: { session: AgentSession; live?: L
 
       {live && (
         <div className="message role-assistant">
-          <div>
-            {live.text && <div className="bubble">{live.text}</div>}
-            {live.toolCalls.map((tc) => (
-              <div className="tool-card" key={tc.call.id}>
-                <div className="tool-card-head">
-                  <span>🔧</span>
-                  <span>{tc.call.name}</span>
-                  <span className={`status-badge ${tc.status}`}>{tc.status}</span>
-                </div>
-                <div className="tool-card-body">
-                  {JSON.stringify(tc.call.arguments)}
-                  {tc.result !== undefined ? `\n→ ${JSON.stringify(tc.result)}` : ""}
-                </div>
-              </div>
-            ))}
-            {live.error && <div className="tool-card">⚠️ {live.error}</div>}
-            {!live.text && live.toolCalls.length === 0 && !live.error && <div className="bubble">…</div>}
-          </div>
+          <StepTracker
+            text={live.text}
+            error={live.error}
+            toolCalls={live.toolCalls.map((tc) => ({
+              id: tc.call.id,
+              name: tc.call.name,
+              arguments: tc.call.arguments,
+              status: tc.status,
+              result: tc.result,
+              agentName: tc.agentName,
+              depth: tc.depth,
+            }))}
+          />
         </div>
       )}
 
