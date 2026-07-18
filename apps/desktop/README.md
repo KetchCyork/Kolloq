@@ -73,18 +73,18 @@ which the release workflow publishes automatically. `Help > Check for
 Updates…` (and `desktopIntegration.ts`) calls `check()` /
 `downloadAndInstall()` / `relaunch()` from the JS bindings.
 
-**Before this works in a real build**, generate the updater signing keypair
-and put the *public* key in `tauri.conf.json` (`plugins.updater.pubkey`,
-currently a `REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY` placeholder):
+The updater signing keypair has been generated (private key never
+committed, held only at `~/.tauri/newvector-cowork.key` on the machine that
+generated it) and wired in:
 
-```sh
-pnpm --filter @newvector/desktop exec tauri signer generate -w ~/.tauri/newvector-cowork.key
-```
+- Public key is in `tauri.conf.json` (`plugins.updater.pubkey`).
+- Private key + password are set as the `TAURI_SIGNING_PRIVATE_KEY` /
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` GitHub Actions secrets on
+  `KetchCyork/Open-Work`.
 
-The *private* key must never be committed — store it as the
-`TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (see below). This is a
-credential-generation step, flagged for the CEO rather than done
-unilaterally here.
+Updater-signed builds work today even without the paid code-signing certs
+below — the OS-level Gatekeeper/SmartScreen warnings are a separate concern
+from update-artifact integrity.
 
 ## Signed installers via GitHub Actions
 
@@ -93,21 +93,24 @@ push (`desktop-v*`) or manual dispatch, using `tauri-apps/tauri-action`, and
 publishes a draft GitHub Release with installers + `latest.json` for the
 updater.
 
-**Without secrets configured, the workflow still runs and produces
-*unsigned* installers** — useful for internal test builds, but unsigned
-macOS/Windows binaries trigger Gatekeeper/SmartScreen warnings and should
-not be distributed publicly. To produce genuinely signed installers, the
-following repository secrets are required — **all of these are paid
-services or credentials and need CEO sign-off before purchase/creation**:
+**Without the Apple/Windows secrets configured, the workflow still runs and
+produces installers that are updater-signed but not OS-code-signed** —
+unsigned macOS/Windows binaries trigger Gatekeeper/SmartScreen warnings and
+should not be distributed publicly. To produce fully signed installers, the
+remaining repository secrets are required:
 
-| Secret | Purpose | Source |
-| --- | --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` | Updater artifact signing | `tauri signer generate` (free, local) |
-| `APPLE_CERTIFICATE` / `_PASSWORD` | macOS code signing (.p12) | Apple Developer Program ($99/yr) |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: New Vector AI (TEAMID)` | Apple Developer Program |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program |
-| `WINDOWS_CERTIFICATE` / `_PASSWORD` | Windows code signing (.pfx) | Code-signing CA (e.g. DigiCert, ~$300+/yr) or Azure Trusted Signing |
+| Secret | Purpose | Source | Status |
+| --- | --- | --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` | Updater artifact signing | `tauri signer generate` (free, local) | ✅ set (2026-07-18) |
+| `APPLE_CERTIFICATE` / `_PASSWORD` | macOS code signing (.p12) | Apple Developer Program ($99/yr) | ⏳ pending — CEO signing up |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: New Vector AI (TEAMID)` | Apple Developer Program | ⏳ pending |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ⏳ pending |
+| `WINDOWS_CERTIFICATE` / `_PASSWORD` | Windows code signing (.pfx) | Code-signing CA (e.g. DigiCert, ~$300+/yr) or Azure Trusted Signing | ⏳ pending |
 
-The updater keypair is free and can be generated any time. The Apple and
-Windows certificates cost money and require the CEO's go-ahead — flagged in
-the NEW-30 issue thread rather than purchased here.
+CEO approved budget for the Apple Developer Program and a Windows
+code-signing cert and is doing the account sign-up personally (identity
+verification/payment can't be delegated to an agent). Once those accounts
+exist, hand the resulting certificate/credential values to this agent (or
+add the secrets directly via `gh secret set <NAME> --repo
+KetchCyork/Open-Work`) and the release workflow will start producing fully
+signed installers with no further code changes.
