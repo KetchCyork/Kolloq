@@ -1,6 +1,6 @@
 import type { AgentEvent, ChatAttachment, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { runSessionTurn } from "./agentClient";
+import { getToolCount, runSessionTurn } from "./agentClient";
 import { accountCredentialKey, deleteApiKey, isTauriRuntime, loadApiKey, saveApiKey } from "./credentials";
 import {
   deleteAccount as deleteAccountRecord,
@@ -13,7 +13,7 @@ import {
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
-import { setTelemetryEnabled } from "./telemetry";
+import { capture, setTelemetryEnabled } from "./telemetry";
 import type { Account, AgentSession, ProviderConfig, SessionExportFile, StoredMessage } from "./types";
 import { nowMs, randomId, randomIdentity } from "./utils";
 
@@ -190,6 +190,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSessions((prev) => [...prev, session]);
     setActiveSessionId(session.id);
     void persistSession(session);
+    capture({ type: "session_created", provider: providerConfig.provider });
     return session;
   }, []);
 
@@ -271,8 +272,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       appendMessages(sessionId, [userMessage]);
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
+      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
 
       const onEvent = (event: AgentEvent) => {
+        if (event.type === "tool-call") {
+          capture({ type: "tool_call", toolName: event.toolCall.name });
+        }
+        if (event.type === "error") {
+          // AgentRunner emits this both for stream/provider failures and for tool execution
+          // failures; there's no discriminator on the event, so this is a best-effort label.
+          capture({ type: "provider_error", provider: session.providerConfig.provider });
+        }
         setLive((prev) => {
           const turn = prev[sessionId] ?? { text: "", toolCalls: [] };
           if (event.type === "text-delta") {
@@ -312,6 +322,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         appendMessages(sessionId, storedTurn);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        capture({ type: "provider_error", provider: session.providerConfig.provider });
         appendMessages(sessionId, [
           { id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${message}` },
         ]);

@@ -20,6 +20,11 @@ function toChatMessage({ id: _id, createdAt: _createdAt, ...message }: StoredMes
   return message;
 }
 
+/** Number of tools available to a session's agent runner, for telemetry's `message_sent.toolCount`. */
+export function getToolCount(): number {
+  return buildTools().list().length;
+}
+
 /**
  * Runs one conversational turn for a session. A fresh `AgentRunner` is built per call and seeded
  * with `priorMessages` so the browser app (which persists history to IndexedDB, not in-memory

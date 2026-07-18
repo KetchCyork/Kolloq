@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
+import { capture } from "../telemetry";
 import type { ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
 
@@ -47,6 +48,7 @@ export function OnboardingWizard() {
       apiKey: provider === "ollama" ? undefined : apiKey.trim() || undefined,
       baseURL: provider === "ollama" ? baseURL.trim() || undefined : undefined,
     });
+    capture({ type: "onboarding_completed", provider });
     setSaving(false);
     setStep("done");
   }
