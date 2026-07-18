@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatProvider, ToolCall } from "../providers/types.js";
+import type { ChatAttachment, ChatMessage, ChatProvider, ToolCall } from "../providers/types.js";
 import { ToolRegistry } from "../tools/registry.js";
 
 export interface AgentRunnerOptions {
@@ -41,8 +41,8 @@ export class AgentRunner {
     }
   }
 
-  async run(userInput: string): Promise<ChatMessage[]> {
-    this.messages.push({ role: "user", content: userInput });
+  async run(userInput: string, attachments?: ChatAttachment[]): Promise<ChatMessage[]> {
+    this.messages.push({ role: "user", content: userInput, ...(attachments?.length ? { attachments } : {}) });
 
     const turnMessages: ChatMessage[] = [];
 
@@ -64,8 +64,8 @@ export class AgentRunner {
   }
 
   /** Same send -> respond -> execute-tools -> repeat loop as `run`, but emits `text-delta` events as tokens arrive. */
-  async runStream(userInput: string): Promise<ChatMessage[]> {
-    this.messages.push({ role: "user", content: userInput });
+  async runStream(userInput: string, attachments?: ChatAttachment[]): Promise<ChatMessage[]> {
+    this.messages.push({ role: "user", content: userInput, ...(attachments?.length ? { attachments } : {}) });
 
     const turnMessages: ChatMessage[] = [];
 

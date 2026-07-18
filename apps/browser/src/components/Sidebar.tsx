@@ -2,21 +2,29 @@ import { useStore } from "../store";
 import { ExportImportBar } from "./ExportImportBar";
 
 export function Sidebar() {
-  const { sessions, activeSessionId, setActiveSessionId, createSession, live } = useStore();
+  const { sessions, activeSessionId, setActiveSessionId, createSession, live, accounts, openAccountsManager } = useStore();
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <h1>Agent Sessions</h1>
-        <button className="icon-btn" title="New agent session" onClick={() => createSession()}>
-          +
+      <div className="sidebar-brand">New Vector Cowork</div>
+
+      <button className="sidebar-new-btn" onClick={() => createSession()}>
+        <span className="sidebar-new-btn-icon">+</span> New agent
+      </button>
+
+      <nav className="sidebar-nav">
+        <button className="sidebar-nav-item" onClick={openAccountsManager}>
+          <span className="sidebar-nav-icon">⚙</span> Accounts
+          <span className="sidebar-nav-count">{accounts.length}</span>
         </button>
-      </div>
+      </nav>
+
+      <div className="sidebar-section-label">Recents</div>
 
       <div className="session-list">
         {sessions.length === 0 && (
           <div className="empty-state" style={{ margin: "20px 8px", fontSize: 12 }}>
-            No agents yet. Click + to create one.
+            No agents yet. Click "New agent" to create one.
           </div>
         )}
         {sessions.map((session) => {

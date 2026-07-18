@@ -1,11 +1,12 @@
 import { useEffect } from "react";
+import { AccountsManager } from "./components/AccountsManager";
 import { ChatPanel } from "./components/ChatPanel";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
 import { useStore } from "./store";
 
 export function App() {
-  const { ready, createSession } = useStore();
+  const { ready, createSession, accountsManagerOpen } = useStore();
 
   useEffect(() => {
     const teardown = setupDesktopIntegration({ onNewSession: () => createSession() });
@@ -22,6 +23,7 @@ export function App() {
     <div className="app">
       <Sidebar />
       <ChatPanel />
+      {accountsManagerOpen && <AccountsManager />}
     </div>
   );
 }

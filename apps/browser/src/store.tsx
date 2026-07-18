@@ -1,9 +1,18 @@
-import type { AgentEvent, ToolCall } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { runSessionTurn } from "./agentClient";
-import { deleteApiKey, isTauriRuntime, loadApiKey, saveApiKey } from "./credentials";
-import { loadAllSessions, putAllSessions, putSession, deleteSession as deleteSessionRecord } from "./db";
-import type { AgentSession, SessionExportFile, StoredMessage } from "./types";
+import { accountCredentialKey, deleteApiKey, isTauriRuntime, loadApiKey, saveApiKey } from "./credentials";
+import {
+  deleteAccount as deleteAccountRecord,
+  loadAllAccounts,
+  loadAllSessions,
+  putAccount,
+  putAllSessions,
+  putSession,
+  deleteSession as deleteSessionRecord,
+} from "./db";
+import { migrateSessionsToAccounts } from "./accountMigration";
+import type { Account, AgentSession, ProviderConfig, SessionExportFile, StoredMessage } from "./types";
 import { defaultProviderConfig, nowMs, randomId, randomIdentity } from "./utils";
 
 /**
@@ -31,6 +40,35 @@ async function hydrateSession(session: AgentSession): Promise<AgentSession> {
   return apiKey ? { ...session, providerConfig: { ...session.providerConfig, apiKey } } : session;
 }
 
+/** Same keychain-routing pattern as `persistSession`/`hydrateSession`, keyed by account id instead of session id. */
+async function persistAccount(account: Account): Promise<void> {
+  if (!isTauriRuntime()) {
+    await putAccount(account);
+    return;
+  }
+  const { apiKey, ...rest } = account;
+  if (apiKey) {
+    await saveApiKey(accountCredentialKey(account.id), apiKey);
+  } else {
+    await deleteApiKey(accountCredentialKey(account.id));
+  }
+  await putAccount(rest);
+}
+
+async function hydrateAccount(account: Account): Promise<Account> {
+  if (!isTauriRuntime()) return account;
+  const apiKey = await loadApiKey(accountCredentialKey(account.id));
+  return apiKey ? { ...account, apiKey } : account;
+}
+
+/** Resolves a session's effective provider config, pulling credentials/baseURL from its saved account when it has one. */
+function resolveProviderConfig(config: ProviderConfig, accounts: Account[]): ProviderConfig {
+  if (!config.accountId) return config;
+  const account = accounts.find((candidate) => candidate.id === config.accountId);
+  if (!account) return config;
+  return { ...config, apiKey: account.apiKey, baseURL: account.baseURL };
+}
+
 export interface LiveToolCall {
   call: ToolCall;
   status: "running" | "done" | "error";
@@ -45,9 +83,11 @@ export interface LiveTurn {
 
 interface StoreState {
   sessions: AgentSession[];
+  accounts: Account[];
   activeSessionId: string | null;
   live: Record<string, LiveTurn>;
   ready: boolean;
+  accountsManagerOpen: boolean;
 }
 
 interface StoreApi extends StoreState {
@@ -55,36 +95,61 @@ interface StoreApi extends StoreState {
   createSession: () => AgentSession;
   updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
   deleteSession: (id: string) => void;
-  sendMessage: (sessionId: string, text: string) => Promise<void>;
+  sendMessage: (sessionId: string, text: string, attachments?: ChatAttachment[]) => Promise<void>;
   exportSessions: () => SessionExportFile;
   importSessions: (data: SessionExportFile, mode: "merge" | "replace") => Promise<void>;
+  createAccount: (input: Omit<Account, "id" | "createdAt">) => Account;
+  updateAccount: (id: string, patch: Partial<Omit<Account, "id" | "createdAt">>) => void;
+  deleteAccount: (id: string) => void;
+  openAccountsManager: () => void;
+  closeAccountsManager: () => void;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [ready, setReady] = useState(false);
+  const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
   const sessionsRef = useRef<AgentSession[]>([]);
   sessionsRef.current = sessions;
+  const accountsRef = useRef<Account[]>([]);
+  accountsRef.current = accounts;
 
   useEffect(() => {
-    loadAllSessions()
-      .then((loaded) => Promise.all(loaded.map(hydrateSession)))
-      .then((loaded) => {
-        setSessions(loaded);
-        setActiveSessionId((current) => current ?? loaded[0]?.id ?? null);
-        setReady(true);
-      });
+    async function init() {
+      const [loadedSessions, loadedAccounts] = await Promise.all([loadAllSessions(), loadAllAccounts()]);
+      const [hydratedSessions, hydratedAccounts] = await Promise.all([
+        Promise.all(loadedSessions.map(hydrateSession)),
+        Promise.all(loadedAccounts.map(hydrateAccount)),
+      ]);
+
+      const migration = migrateSessionsToAccounts(hydratedSessions, hydratedAccounts);
+      await Promise.all(migration.newAccounts.map(persistAccount));
+      await Promise.all(
+        migration.sessions.filter((session) => migration.changedSessionIds.has(session.id)).map(persistSession),
+      );
+
+      setSessions(migration.sessions);
+      setAccounts(migration.accounts);
+      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? null);
+      setReady(true);
+    }
+    void init();
   }, []);
 
   const createSession = useCallback((): AgentSession => {
+    const defaultAccount = accountsRef.current[0];
+    const providerConfig = defaultAccount
+      ? { provider: defaultAccount.provider, model: defaultAccount.model, accountId: defaultAccount.id }
+      : defaultProviderConfig();
     const session: AgentSession = {
       id: randomId(),
       identity: randomIdentity(sessionsRef.current.length),
-      providerConfig: defaultProviderConfig(),
+      providerConfig,
       systemPrompt: "You are a helpful assistant.",
       messages: [],
       createdAt: nowMs(),
@@ -94,6 +159,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setActiveSessionId(session.id);
     void persistSession(session);
     return session;
+  }, []);
+
+  const createAccount = useCallback((input: Omit<Account, "id" | "createdAt">): Account => {
+    const account: Account = { ...input, id: randomId(), createdAt: nowMs() };
+    setAccounts((prev) => [...prev, account]);
+    void persistAccount(account);
+    return account;
+  }, []);
+
+  const updateAccount = useCallback((id: string, patch: Partial<Omit<Account, "id" | "createdAt">>) => {
+    setAccounts((prev) =>
+      prev.map((account) => {
+        if (account.id !== id) return account;
+        const updated = { ...account, ...patch };
+        void persistAccount(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const deleteAccountById = useCallback((id: string) => {
+    setAccounts((prev) => prev.filter((account) => account.id !== id));
+    void deleteAccountRecord(id);
+    if (isTauriRuntime()) void deleteApiKey(accountCredentialKey(id));
   }, []);
 
   const updateSession = useCallback(
@@ -136,12 +225,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendMessage = useCallback(
-    async (sessionId: string, text: string) => {
+    async (sessionId: string, text: string, attachments?: ChatAttachment[]) => {
       const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
       if (!session) return;
 
       const priorMessages = session.messages;
-      const userMessage: StoredMessage = { id: randomId(), createdAt: nowMs(), role: "user", content: text };
+      const userMessage: StoredMessage = {
+        id: randomId(),
+        createdAt: nowMs(),
+        role: "user",
+        content: text,
+        ...(attachments?.length ? { attachments } : {}),
+      };
       appendMessages(sessionId, [userMessage]);
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
 
@@ -176,7 +271,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
 
       try {
-        const turn = await runSessionTurn(session, priorMessages, text, onEvent);
+        const effectiveSession = {
+          ...session,
+          providerConfig: resolveProviderConfig(session.providerConfig, accountsRef.current),
+        };
+        const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
         const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
         appendMessages(sessionId, storedTurn);
       } catch (error) {
@@ -222,9 +321,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreApi>(
     () => ({
       sessions,
+      accounts,
       activeSessionId,
       live,
       ready,
+      accountsManagerOpen,
       setActiveSessionId,
       createSession,
       updateSession,
@@ -232,8 +333,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sendMessage,
       exportSessions,
       importSessions,
+      createAccount,
+      updateAccount,
+      deleteAccount: deleteAccountById,
+      openAccountsManager: () => setAccountsManagerOpen(true),
+      closeAccountsManager: () => setAccountsManagerOpen(false),
     }),
-    [sessions, activeSessionId, live, ready, createSession, updateSession, deleteSessionById, sendMessage, exportSessions, importSessions],
+    [
+      sessions,
+      accounts,
+      activeSessionId,
+      live,
+      ready,
+      accountsManagerOpen,
+      createSession,
+      updateSession,
+      deleteSessionById,
+      sendMessage,
+      exportSessions,
+      importSessions,
+      createAccount,
+      updateAccount,
+      deleteAccountById,
+    ],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatMessage } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ChatMessage } from "@newvector/core";
 import { AgentRunner, createProvider, defineTool, ToolRegistry } from "@newvector/core";
 import { z } from "zod";
 import type { AgentSession, StoredMessage } from "./types";
@@ -29,6 +29,7 @@ export function runSessionTurn(
   session: AgentSession,
   priorMessages: StoredMessage[],
   userInput: string,
+  attachments: ChatAttachment[] | undefined,
   onEvent: (event: AgentEvent) => void,
 ): Promise<ChatMessage[]> {
   const provider = createProvider({
@@ -46,5 +47,5 @@ export function runSessionTurn(
     onEvent,
   });
 
-  return runner.runStream(userInput);
+  return runner.runStream(userInput, attachments);
 }

@@ -49,17 +49,84 @@ select {
   overflow-y: auto;
 }
 
-.sidebar-header {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.sidebar-brand {
+  padding: 16px 16px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
 }
 
-.sidebar-header h1 {
+.sidebar-new-btn {
+  margin: 8px 12px;
+  background: var(--accent);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-new-btn:hover {
+  opacity: 0.9;
+}
+
+.sidebar-new-btn-icon {
   font-size: 15px;
-  margin: 0;
+  line-height: 1;
+}
+
+.sidebar-nav {
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--panel-alt);
+}
+
+.sidebar-nav-icon {
+  color: var(--text-dim);
+}
+
+.sidebar-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--panel-alt);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.sidebar-section-label {
+  padding: 6px 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .icon-btn {
@@ -373,11 +440,17 @@ select {
   border-top: 1px solid var(--border);
   padding: 14px 20px;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-drag-over {
+  background: rgba(99, 102, 241, 0.08);
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
 }
 
 .composer textarea {
-  flex: 1;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -387,7 +460,13 @@ select {
   max-height: 160px;
 }
 
-.composer button {
+.composer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.composer-actions button {
   background: var(--accent);
   border: none;
   color: white;
@@ -397,13 +476,294 @@ select {
   font-weight: 500;
 }
 
-.composer button:disabled {
+.composer-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
+.attachment-chip button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.attachment-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.attachment-error {
+  font-size: 12.5px;
+  color: #f87171;
 }
 
 .no-session {
   margin: auto;
   color: var(--text-dim);
   text-align: center;
+}
+
+/* Empty-session hero: greeting + centered composer, Cowork-home-style. */
+.empty-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px;
+  text-align: center;
+}
+
+.empty-hero h1 {
+  font-size: 28px;
+  margin: 0;
+}
+
+.empty-hero p {
+  margin: 0;
+  color: var(--text-dim);
+  max-width: 420px;
+}
+
+.empty-hero-composer {
+  width: min(680px, 100%);
+}
+
+.empty-hero-composer .composer {
+  border-top: none;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Model/account picker, inline in the composer toolbar. */
+.model-picker {
+  position: relative;
+}
+
+.composer-actions .model-picker-btn {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.composer-actions .model-picker-btn:hover {
+  border-color: var(--accent);
+}
+
+.model-picker-caret {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.composer-toolbar-spacer {
+  flex: 1;
+}
+
+.model-picker-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  z-index: 20;
+}
+
+.model-picker-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.model-picker-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 8px 8px 4px;
+}
+
+.composer-actions .model-picker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.composer-actions .model-picker-item:hover {
+  background: var(--panel-alt);
+}
+
+.composer-actions .model-picker-item.active {
+  background: var(--panel-alt);
+  color: var(--accent);
+}
+
+.model-picker-item-model {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.composer-actions .model-picker-manage {
+  width: 100%;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.composer-actions .model-picker-manage:hover {
+  color: var(--text);
+}
+
+/* Modal shell, used by the accounts manager. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.accounts-list {
+  padding: 12px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.account-row-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-row-label {
+  font-weight: 500;
+}
+
+.account-row-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.account-form {
+  border-bottom: none;
+  margin: 12px 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.account-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.primary-btn {
+  background: var(--accent);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.primary-btn:hover {
+  opacity: 0.9;
+}
+
+.add-account-btn {
+  margin: 12px 20px 20px;
 }

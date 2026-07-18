@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
-import { ProviderConfigForm } from "./ProviderConfigForm";
+import { SessionSettingsForm } from "./SessionSettingsForm";
 
 export function ChatPanel() {
   const { sessions, activeSessionId, updateSession, deleteSession, sendMessage, live } = useStore();
@@ -19,6 +19,16 @@ export function ChatPanel() {
   }
 
   const isStreaming = Boolean(live[session.id]);
+  const isEmpty = session.messages.length === 0 && !live[session.id];
+
+  const composer = (
+    <Composer
+      disabled={isStreaming}
+      providerConfig={session.providerConfig}
+      onProviderConfigChange={(patch) => updateSession(session.id, { providerConfig: { ...session.providerConfig, ...patch } })}
+      onSend={(text, attachments) => void sendMessage(session.id, text, attachments)}
+    />
+  );
 
   return (
     <div className="main">
@@ -33,9 +43,6 @@ export function ChatPanel() {
               value={session.identity.name}
               onChange={(e) => updateSession(session.id, { identity: { ...session.identity, name: e.target.value } })}
             />
-          </div>
-          <div className="chat-header-sub">
-            {session.providerConfig.provider} · {session.providerConfig.model}
           </div>
         </div>
         <button className="settings-btn" onClick={() => setSettingsOpen((open) => !open)}>
@@ -53,13 +60,20 @@ export function ChatPanel() {
         </button>
       </div>
 
-      {settingsOpen && (
-        <ProviderConfigForm session={session} onChange={(patch) => updateSession(session.id, patch)} />
+      {settingsOpen && <SessionSettingsForm session={session} onChange={(patch) => updateSession(session.id, patch)} />}
+
+      {isEmpty ? (
+        <div className="empty-hero">
+          <h1>{session.identity.name}</h1>
+          <p>Start a conversation — messages stream live and tool calls show inline.</p>
+          <div className="empty-hero-composer">{composer}</div>
+        </div>
+      ) : (
+        <>
+          <MessageList session={session} live={live[session.id]} />
+          {composer}
+        </>
       )}
-
-      <MessageList session={session} live={live[session.id]} />
-
-      <Composer disabled={isStreaming} onSend={(text) => void sendMessage(session.id, text)} />
     </div>
   );
 }
