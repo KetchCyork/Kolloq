@@ -118,8 +118,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   sessionsRef.current = sessions;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
+  const initStarted = useRef(false);
 
   useEffect(() => {
+    if (initStarted.current) return;
+    initStarted.current = true;
+
     async function init() {
       const [loadedSessions, loadedAccounts] = await Promise.all([loadAllSessions(), loadAllAccounts()]);
       const [hydratedSessions, hydratedAccounts] = await Promise.all([
