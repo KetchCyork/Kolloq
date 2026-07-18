@@ -4,7 +4,7 @@ pnpm monorepo scaffold for a Claude-Code-like harness that works with any config
 
 ## Layout
 
-- `packages/core` — provider-agnostic `ChatProvider` interface, adapters (OpenAI, Anthropic, Google Gemini, Ollama) built on the Vercel AI SDK, a typed tool registry, and the agent runner loop. Ships a headless CLI (`agent-cli`).
+- `packages/core` — provider-agnostic `ChatProvider` interface, adapters (OpenAI, Anthropic, Google Gemini, Ollama, OpenRouter) built on the Vercel AI SDK, a typed tool registry, and the agent runner loop. Ships a headless CLI (`agent-cli`).
 - `packages/ui` — shared chat UI components (placeholder; lands in a later phase).
 - `apps/browser` — browser app/extension (placeholder; lands in a later phase).
 - `apps/desktop` — desktop app (placeholder; lands in a later phase).
@@ -19,7 +19,7 @@ pnpm --filter @newvector/core typecheck
 
 ## Running the headless CLI agent
 
-Set the API key env var for whichever provider you want (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`), or run Ollama locally for `--provider ollama` (no key needed). Then:
+Set the API key env var for whichever provider you want (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`), or run Ollama locally for `--provider ollama` (no key needed). OpenRouter model IDs are `vendor/model` (e.g. `anthropic/claude-3.5-sonnet`) — see [openrouter.ai/models](https://openrouter.ai/models). Then:
 
 ```bash
 pnpm --filter @newvector/core cli -- --provider openai "What's 2 + 2?"

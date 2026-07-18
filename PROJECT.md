@@ -8,8 +8,8 @@
 ## Mission
 
 Open Work is a Claude-Code-like agentic harness that works with any configured LLM
-provider (Anthropic, OpenAI, Google Gemini, Ollama), shipped as a pnpm monorepo with
-both a browser app and a native desktop app.
+provider (Anthropic, OpenAI, Google Gemini, Ollama, OpenRouter), shipped as a pnpm
+monorepo with both a browser app and a native desktop app.
 
 ## Repo layout (current, as of Phase 3)
 
@@ -25,7 +25,7 @@ Open-Work/
 │   │   ├── bin/cli.ts            headless CLI (`agent-cli`)
 │   │   └── src/
 │   │       ├── agent/            agent runner loop
-│   │       ├── providers/        Anthropic/OpenAI/Google/Ollama adapters (Vercel AI SDK)
+│   │       ├── providers/        Anthropic/OpenAI/Google/Ollama/OpenRouter adapters (Vercel AI SDK)
 │   │       └── tools/             typed tool registry
 │   └── ui/                      (@newvector/ui — shared chat UI components)
 ├── apps/

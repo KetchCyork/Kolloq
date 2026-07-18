@@ -1,12 +1,13 @@
 import type { AgentIdentity, ProviderConfig, ProviderName } from "./types";
 
-export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "google", "ollama"];
+export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "google", "ollama", "openrouter"];
 
 export const PROVIDER_DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: "claude-3-5-sonnet-20241022",
   openai: "gpt-4o-mini",
   google: "gemini-1.5-flash",
   ollama: "llama3.1",
+  openrouter: "openai/gpt-4o-mini",
 };
 
 export const PROVIDER_LABELS: Record<ProviderName, string> = {
@@ -14,6 +15,7 @@ export const PROVIDER_LABELS: Record<ProviderName, string> = {
   openai: "OpenAI",
   google: "Google Gemini",
   ollama: "Ollama (local)",
+  openrouter: "OpenRouter",
 };
 
 const IDENTITY_COLORS = ["#6366f1", "#0891b2", "#c026d3", "#d97706", "#059669", "#dc2626", "#4f46e5"];
