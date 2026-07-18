@@ -1,4 +1,5 @@
-:root {
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0f1115;
   --panel: #161922;
@@ -6,6 +7,17 @@
   --border: #262b38;
   --text: #e6e8ef;
   --text-dim: #8b8fa3;
+  --accent: #6366f1;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7fb;
+  --panel: #ffffff;
+  --panel-alt: #f0f1f6;
+  --border: #dcdfe8;
+  --text: #1b1d23;
+  --text-dim: #6b7080;
   --accent: #6366f1;
 }
 
@@ -815,4 +827,40 @@ select {
 
 .add-account-btn {
   margin: 12px 20px 20px;
+}
+
+.settings-section-label {
+  padding: 12px 20px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.keybindings-list {
+  grid-template-columns: 1fr;
+  padding-bottom: 20px;
+}
+
+.keybind-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.keybind-row label {
+  text-transform: none;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.keybind-btn {
+  min-width: 96px;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+}
+
+.keybind-btn.recording {
+  border-color: var(--accent);
+  color: var(--accent);
 }

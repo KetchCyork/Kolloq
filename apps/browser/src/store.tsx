@@ -12,8 +12,9 @@ import {
   deleteSession as deleteSessionRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
+import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
 import type { Account, AgentSession, ProviderConfig, SessionExportFile, StoredMessage } from "./types";
-import { defaultProviderConfig, nowMs, randomId, randomIdentity } from "./utils";
+import { nowMs, randomId, randomIdentity } from "./utils";
 
 /**
  * Persists a session, routing its API key to the OS keychain instead of
@@ -91,6 +92,8 @@ interface StoreState {
   live: Record<string, LiveTurn>;
   ready: boolean;
   accountsManagerOpen: boolean;
+  preferences: Preferences;
+  preferencesOpen: boolean;
 }
 
 interface StoreApi extends StoreState {
@@ -106,6 +109,9 @@ interface StoreApi extends StoreState {
   deleteAccount: (id: string) => void;
   openAccountsManager: () => void;
   closeAccountsManager: () => void;
+  updatePreferences: (patch: Partial<Preferences>) => void;
+  openPreferences: () => void;
+  closePreferences: () => void;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
@@ -117,11 +123,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [ready, setReady] = useState(false);
   const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
+  const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const sessionsRef = useRef<AgentSession[]>([]);
   sessionsRef.current = sessions;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
+  const preferencesRef = useRef<Preferences>(preferences);
+  preferencesRef.current = preferences;
   const initStarted = useRef(false);
+
+  useEffect(() => {
+    applyTheme(preferences.theme);
+    if (preferences.theme !== "system" || typeof window === "undefined") return;
+    const media = window.matchMedia("(prefers-color-scheme: light)");
+    const onChange = () => applyTheme(preferences.theme);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, [preferences.theme]);
 
   useEffect(() => {
     if (initStarted.current) return;
@@ -150,9 +169,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const createSession = useCallback((): AgentSession => {
     const defaultAccount = accountsRef.current[0];
+    const prefs = preferencesRef.current;
     const providerConfig = defaultAccount
       ? { provider: defaultAccount.provider, model: defaultAccount.model, accountId: defaultAccount.id }
-      : defaultProviderConfig();
+      : { provider: prefs.defaultProvider, model: prefs.defaultModel };
     const session: AgentSession = {
       id: randomId(),
       identity: randomIdentity(sessionsRef.current.length),
@@ -325,6 +345,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updatePreferences = useCallback((patch: Partial<Preferences>) => {
+    setPreferences((prev) => {
+      const updated = { ...prev, ...patch, keybindings: { ...prev.keybindings, ...patch.keybindings } };
+      savePreferences(updated);
+      return updated;
+    });
+  }, []);
+
   const value = useMemo<StoreApi>(
     () => ({
       sessions,
@@ -333,6 +361,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live,
       ready,
       accountsManagerOpen,
+      preferences,
+      preferencesOpen,
       setActiveSessionId,
       createSession,
       updateSession,
@@ -345,6 +375,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteAccount: deleteAccountById,
       openAccountsManager: () => setAccountsManagerOpen(true),
       closeAccountsManager: () => setAccountsManagerOpen(false),
+      updatePreferences,
+      openPreferences: () => setPreferencesOpen(true),
+      closePreferences: () => setPreferencesOpen(false),
     }),
     [
       sessions,
@@ -353,6 +386,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live,
       ready,
       accountsManagerOpen,
+      preferences,
+      preferencesOpen,
       createSession,
       updateSession,
       deleteSessionById,
@@ -362,6 +397,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       createAccount,
       updateAccount,
       deleteAccountById,
+      updatePreferences,
     ],
   );
 

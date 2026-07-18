@@ -1,4 +1,4 @@
-import type { AgentIdentity, ProviderConfig, ProviderName } from "./types";
+import type { AgentIdentity, ProviderName } from "./types";
 
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "google", "ollama", "openrouter"];
 
@@ -27,10 +27,6 @@ export function randomId(): string {
 
 export function nowMs(): number {
   return Date.now();
-}
-
-export function defaultProviderConfig(provider: ProviderName = "ollama"): ProviderConfig {
-  return { provider, model: PROVIDER_DEFAULT_MODELS[provider] };
 }
 
 export function randomIdentity(existingCount: number): AgentIdentity {

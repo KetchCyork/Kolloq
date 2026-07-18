@@ -2,7 +2,8 @@ import { useStore } from "../store";
 import { ExportImportBar } from "./ExportImportBar";
 
 export function Sidebar() {
-  const { sessions, activeSessionId, setActiveSessionId, createSession, live, accounts, openAccountsManager } = useStore();
+  const { sessions, activeSessionId, setActiveSessionId, createSession, live, accounts, openAccountsManager, openPreferences } =
+    useStore();
 
   return (
     <aside className="sidebar">
@@ -16,6 +17,9 @@ export function Sidebar() {
         <button className="sidebar-nav-item" onClick={openAccountsManager}>
           <span className="sidebar-nav-icon">⚙</span> Accounts
           <span className="sidebar-nav-count">{accounts.length}</span>
+        </button>
+        <button className="sidebar-nav-item" onClick={openPreferences}>
+          <span className="sidebar-nav-icon">⚙</span> Preferences
         </button>
       </nav>
 
