@@ -1,9 +1,13 @@
-import type { Account, AgentSession } from "./types";
+import type { Account, AgentSession, CouncilSession } from "./types";
 
 const DB_NAME = "newvector-cowork";
-const DB_VERSION = 2;
+// v2 -> v3 only adds the council-sessions store below; the existing `sessions`/`accounts`
+// stores and their contents are untouched, so upgrading databases keep every single-agent
+// session working exactly as before.
+const DB_VERSION = 3;
 const STORE = "sessions";
 const ACCOUNTS_STORE = "accounts";
+const COUNCIL_STORE = "councilSessions";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -15,6 +19,9 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(ACCOUNTS_STORE)) {
         db.createObjectStore(ACCOUNTS_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(COUNCIL_STORE)) {
+        db.createObjectStore(COUNCIL_STORE, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -79,4 +86,32 @@ export async function putAccount(account: Account): Promise<void> {
 
 export async function deleteAccount(id: string): Promise<void> {
   await withNamedStore(ACCOUNTS_STORE, "readwrite", (store) => store.delete(id));
+}
+
+export async function loadAllCouncilSessions(): Promise<CouncilSession[]> {
+  const sessions = await withNamedStore<CouncilSession[]>(COUNCIL_STORE, "readonly", (store) => store.getAll());
+  return sessions.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function putCouncilSession(session: CouncilSession): Promise<void> {
+  await withNamedStore(COUNCIL_STORE, "readwrite", (store) => store.put(session));
+}
+
+export async function deleteCouncilSession(id: string): Promise<void> {
+  await withNamedStore(COUNCIL_STORE, "readwrite", (store) => store.delete(id));
+}
+
+export async function putAllCouncilSessions(sessions: CouncilSession[]): Promise<void> {
+  const db = await openDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(COUNCIL_STORE, "readwrite");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      const store = tx.objectStore(COUNCIL_STORE);
+      for (const session of sessions) store.put(session);
+    });
+  } finally {
+    db.close();
+  }
 }

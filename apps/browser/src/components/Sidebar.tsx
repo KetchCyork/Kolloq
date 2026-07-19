@@ -1,9 +1,37 @@
 import { useStore } from "../store";
+import type { AgentSession, CouncilSession } from "../types";
 import { ExportImportBar } from "./ExportImportBar";
 
+type SidebarEntry = { kind: "agent"; session: AgentSession } | { kind: "council"; session: CouncilSession };
+
 export function Sidebar() {
-  const { sessions, activeSessionId, setActiveSessionId, createSession, live, accounts, openAccountsManager, openPreferences } =
-    useStore();
+  const {
+    sessions,
+    councilSessions,
+    activeSessionId,
+    setActiveSessionId,
+    createSession,
+    createCouncilSession,
+    live,
+    councilLive,
+    accounts,
+    openAccountsManager,
+    openPreferences,
+  } = useStore();
+
+  function handleNewCouncil() {
+    if (accounts.length < 2) {
+      window.alert("A council needs at least 2 accounts, each on its own provider/model. Add another account first.");
+      openAccountsManager();
+      return;
+    }
+    createCouncilSession(accounts.slice(0, 2).map((account) => ({ accountId: account.id })));
+  }
+
+  const entries: SidebarEntry[] = [
+    ...sessions.map((session): SidebarEntry => ({ kind: "agent", session })),
+    ...councilSessions.map((session): SidebarEntry => ({ kind: "council", session })),
+  ].sort((a, b) => a.session.createdAt - b.session.createdAt);
 
   return (
     <aside className="sidebar">
@@ -11,6 +39,9 @@ export function Sidebar() {
 
       <button className="sidebar-new-btn" onClick={() => createSession()}>
         <span className="sidebar-new-btn-icon">+</span> New agent
+      </button>
+      <button className="sidebar-new-btn sidebar-new-council-btn" onClick={handleNewCouncil}>
+        <span className="sidebar-new-btn-icon">+</span> New council
       </button>
 
       <nav className="sidebar-nav">
@@ -26,14 +57,24 @@ export function Sidebar() {
       <div className="sidebar-section-label">Recents</div>
 
       <div className="session-list">
-        {sessions.length === 0 && (
+        {entries.length === 0 && (
           <div className="empty-state" style={{ margin: "20px 8px", fontSize: 12 }}>
-            No agents yet. Click "New agent" to create one.
+            No agents yet. Click "New agent" or "New council" to create one.
           </div>
         )}
-        {sessions.map((session) => {
-          const isLive = Boolean(live[session.id]);
-          const lastMessage = session.messages.at(-1);
+        {entries.map((entry) => {
+          const session = entry.session;
+          let isLive: boolean;
+          let sub: string;
+          if (entry.kind === "agent") {
+            isLive = Boolean(live[entry.session.id]);
+            const lastMessage = entry.session.messages.at(-1);
+            sub = `${entry.session.providerConfig.provider} · ${entry.session.providerConfig.model}${lastMessage ? ` · ${lastMessage.content.slice(0, 24)}` : ""}`;
+          } else {
+            isLive = Boolean(councilLive[entry.session.id]);
+            const lastTurn = entry.session.turns.at(-1);
+            sub = `Council · ${entry.session.members.length} members${lastTurn ? ` · ${lastTurn.question.slice(0, 24)}` : ""}`;
+          }
           return (
             <div
               key={session.id}
@@ -45,10 +86,7 @@ export function Sidebar() {
               </div>
               <div className="session-item-meta">
                 <div className="session-item-name">{session.identity.name}</div>
-                <div className="session-item-sub">
-                  {session.providerConfig.provider} · {session.providerConfig.model}
-                  {lastMessage ? ` · ${lastMessage.content.slice(0, 24)}` : ""}
-                </div>
+                <div className="session-item-sub">{sub}</div>
               </div>
               {isLive && <div className="live-dot" title="Streaming…" />}
             </div>

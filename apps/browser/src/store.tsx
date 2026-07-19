@@ -1,20 +1,36 @@
-import type { AgentEvent, ChatAttachment, ToolCall } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, CouncilEvent, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runSessionTurn } from "./agentClient";
+import { runCouncilTurn } from "./councilClient";
+import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
 import { accountCredentialKey, deleteApiKey, isTauriRuntime, loadApiKey, saveApiKey } from "./credentials";
 import {
   deleteAccount as deleteAccountRecord,
+  deleteCouncilSession as deleteCouncilSessionRecord,
   loadAllAccounts,
+  loadAllCouncilSessions,
   loadAllSessions,
   putAccount,
+  putAllCouncilSessions,
   putAllSessions,
+  putCouncilSession,
   putSession,
   deleteSession as deleteSessionRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
 import { capture, setTelemetryEnabled } from "./telemetry";
-import type { Account, AgentSession, ProviderConfig, SessionExportFile, StoredMessage } from "./types";
+import type {
+  Account,
+  AgentSession,
+  CouncilMemberConfig,
+  CouncilSession,
+  CouncilTurn,
+  LiveCouncilTurn,
+  ProviderConfig,
+  SessionExportFile,
+  StoredMessage,
+} from "./types";
 import { nowMs, randomId, randomIdentity } from "./utils";
 
 /**
@@ -88,9 +104,11 @@ export interface LiveTurn {
 
 interface StoreState {
   sessions: AgentSession[];
+  councilSessions: CouncilSession[];
   accounts: Account[];
   activeSessionId: string | null;
   live: Record<string, LiveTurn>;
+  councilLive: Record<string, LiveCouncilTurn>;
   ready: boolean;
   accountsManagerOpen: boolean;
   preferences: Preferences;
@@ -103,6 +121,13 @@ interface StoreApi extends StoreState {
   updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
   deleteSession: (id: string) => void;
   sendMessage: (sessionId: string, text: string, attachments?: ChatAttachment[]) => Promise<void>;
+  createCouncilSession: (members: Array<Omit<CouncilMemberConfig, "id">>) => CouncilSession;
+  updateCouncilSession: (
+    id: string,
+    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>,
+  ) => void;
+  deleteCouncilSession: (id: string) => void;
+  askCouncil: (sessionId: string, question: string) => Promise<void>;
   exportSessions: () => SessionExportFile;
   importSessions: (data: SessionExportFile, mode: "merge" | "replace") => Promise<void>;
   createAccount: (input: Omit<Account, "id" | "createdAt">) => Account;
@@ -119,15 +144,19 @@ const StoreContext = createContext<StoreApi | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [councilSessions, setCouncilSessions] = useState<CouncilSession[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
+  const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
   const [ready, setReady] = useState(false);
   const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const sessionsRef = useRef<AgentSession[]>([]);
   sessionsRef.current = sessions;
+  const councilSessionsRef = useRef<CouncilSession[]>([]);
+  councilSessionsRef.current = councilSessions;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
   const preferencesRef = useRef<Preferences>(preferences);
@@ -152,7 +181,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     initStarted.current = true;
 
     async function init() {
-      const [loadedSessions, loadedAccounts] = await Promise.all([loadAllSessions(), loadAllAccounts()]);
+      const [loadedSessions, loadedAccounts, loadedCouncilSessions] = await Promise.all([
+        loadAllSessions(),
+        loadAllAccounts(),
+        loadAllCouncilSessions(),
+      ]);
       const [hydratedSessions, hydratedAccounts] = await Promise.all([
         Promise.all(loadedSessions.map(hydrateSession)),
         Promise.all(loadedAccounts.map(hydrateAccount)),
@@ -166,7 +199,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setSessions(migration.sessions);
       setAccounts(migration.accounts);
-      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? null);
+      // No migration needed for council sessions: this is a brand-new IndexedDB store (see db.ts),
+      // so there is no legacy shape to reconcile — just load and go.
+      setCouncilSessions(loadedCouncilSessions);
+      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? loadedCouncilSessions[0]?.id ?? null);
       setReady(true);
     }
     void init();
@@ -337,12 +373,107 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [appendMessages],
   );
 
+  const createCouncilSession = useCallback((members: Array<Omit<CouncilMemberConfig, "id">>): CouncilSession => {
+    const identity = randomIdentity(sessionsRef.current.length + councilSessionsRef.current.length);
+    const session: CouncilSession = {
+      id: randomId(),
+      // Council-only override so it reads as a debate, not a single-model chat, in the sidebar.
+      identity: { ...identity, emoji: "\u{1F3DB}\u{FE0F}" },
+      members: members.map((member) => ({ ...member, id: randomId() })),
+      turns: [],
+      createdAt: nowMs(),
+      updatedAt: nowMs(),
+    };
+    setCouncilSessions((prev) => [...prev, session]);
+    setActiveSessionId(session.id);
+    void putCouncilSession(session);
+    return session;
+  }, []);
+
+  const updateCouncilSession = useCallback(
+    (id: string, patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>) => {
+      setCouncilSessions((prev) =>
+        prev.map((session) => {
+          if (session.id !== id) return session;
+          const updated = { ...session, ...patch, updatedAt: nowMs() };
+          void putCouncilSession(updated);
+          return updated;
+        }),
+      );
+    },
+    [],
+  );
+
+  const deleteCouncilSessionById = useCallback((id: string) => {
+    setCouncilSessions((prev) => prev.filter((session) => session.id !== id));
+    void deleteCouncilSessionRecord(id);
+    setActiveSessionId((current) => {
+      if (current !== id) return current;
+      const remainingCouncil = councilSessionsRef.current.filter((session) => session.id !== id);
+      return sessionsRef.current[0]?.id ?? remainingCouncil[0]?.id ?? null;
+    });
+  }, []);
+
+  const askCouncil = useCallback(async (sessionId: string, question: string) => {
+    const session = councilSessionsRef.current.find((candidate) => candidate.id === sessionId);
+    if (!session) return;
+
+    const validationError = validateCouncilMembers(session.members, accountsRef.current);
+    if (validationError) throw new Error(validationError);
+
+    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
+    setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
+
+    const onEvent = (event: CouncilEvent) => {
+      liveTurn = applyCouncilEvent(liveTurn, event, session.members, accountsRef.current);
+      setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
+    };
+
+    try {
+      await runCouncilTurn(session.members, accountsRef.current, session.maxRounds, question, onEvent);
+    } catch (error) {
+      // Council.run() itself never rejects (member/moderator errors surface as events); this only
+      // fires for setup failures, e.g. a member's account was removed after validation passed.
+      const message = error instanceof Error ? error.message : String(error);
+      liveTurn = { ...liveTurn, moderatorError: liveTurn.moderatorError ?? message, finished: true };
+    } finally {
+      setCouncilLive((prev) => {
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      });
+      if (liveTurn.finished) {
+        const turnRecord: CouncilTurn = {
+          id: randomId(),
+          question: liveTurn.question,
+          createdAt: nowMs(),
+          rounds: liveTurn.rounds,
+          consensusReached: liveTurn.consensusReached,
+          finalRound: Math.max(0, liveTurn.rounds.length - 1),
+          dropped: liveTurn.dropped,
+          answer: liveTurn.answer ?? "",
+          moderatorError: liveTurn.moderatorError,
+          totalCostNote: computeTotalCostNote(liveTurn.rounds, liveTurn.answer, session.members, accountsRef.current),
+        };
+        setCouncilSessions((prev) =>
+          prev.map((candidate) => {
+            if (candidate.id !== sessionId) return candidate;
+            const updated = { ...candidate, turns: [...candidate.turns, turnRecord], updatedAt: nowMs() };
+            void putCouncilSession(updated);
+            return updated;
+          }),
+        );
+      }
+    }
+  }, []);
+
   const exportSessions = useCallback((): SessionExportFile => {
     return {
       format: "newvector-cowork-sessions",
       version: 1,
       exportedAt: nowMs(),
       sessions: sessionsRef.current,
+      councilSessions: councilSessionsRef.current,
     };
   }, []);
 
@@ -351,14 +482,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       throw new Error("Unrecognized export file format.");
     }
     const incoming = data.sessions;
+    const incomingCouncil = data.councilSessions ?? [];
     const nextSessions = mode === "replace" ? incoming : mergeSessions(sessionsRef.current, incoming);
+    const nextCouncilSessions =
+      mode === "replace" ? incomingCouncil : mergeCouncilSessions(councilSessionsRef.current, incomingCouncil);
     setSessions(nextSessions);
-    setActiveSessionId((current) => current ?? nextSessions[0]?.id ?? null);
+    setCouncilSessions(nextCouncilSessions);
+    setActiveSessionId((current) => current ?? nextSessions[0]?.id ?? nextCouncilSessions[0]?.id ?? null);
     if (isTauriRuntime()) {
       await Promise.all(incoming.map(persistSession));
     } else {
       await putAllSessions(incoming);
     }
+    await putAllCouncilSessions(incomingCouncil);
   }, []);
 
   const updatePreferences = useCallback((patch: Partial<Preferences>) => {
@@ -372,9 +508,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreApi>(
     () => ({
       sessions,
+      councilSessions,
       accounts,
       activeSessionId,
       live,
+      councilLive,
       ready,
       accountsManagerOpen,
       preferences,
@@ -384,6 +522,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateSession,
       deleteSession: deleteSessionById,
       sendMessage,
+      createCouncilSession,
+      updateCouncilSession,
+      deleteCouncilSession: deleteCouncilSessionById,
+      askCouncil,
       exportSessions,
       importSessions,
       createAccount,
@@ -397,9 +539,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       sessions,
+      councilSessions,
       accounts,
       activeSessionId,
       live,
+      councilLive,
       ready,
       accountsManagerOpen,
       preferences,
@@ -408,6 +552,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateSession,
       deleteSessionById,
       sendMessage,
+      createCouncilSession,
+      updateCouncilSession,
+      deleteCouncilSessionById,
+      askCouncil,
       exportSessions,
       importSessions,
       createAccount,
@@ -421,6 +569,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 }
 
 function mergeSessions(existing: AgentSession[], incoming: AgentSession[]): AgentSession[] {
+  const byId = new Map(existing.map((session) => [session.id, session]));
+  for (const session of incoming) byId.set(session.id, session);
+  return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+}
+
+function mergeCouncilSessions(existing: CouncilSession[], incoming: CouncilSession[]): CouncilSession[] {
   const byId = new Map(existing.map((session) => [session.id, session]));
   for (const session of incoming) byId.set(session.id, session);
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
