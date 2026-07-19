@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1024 1024">
+  <!-- Open Work mark — OW monogram on transparent, reads on light or dark. -->
+  <defs>
+    <linearGradient id="teal" x1="0.12" y1="0.05" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#41E8C6"/>
+      <stop offset="1" stop-color="#14B487"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="270" fill="none" stroke="url(#teal)" stroke-width="58"/>
+  <path d="M 384 432 L 456 604 L 512 500 L 568 604 L 640 432"
+        fill="none" stroke="url(#teal)" stroke-width="52"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

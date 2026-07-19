@@ -26,3 +26,8 @@ export async function loadApiKey(sessionId: string): Promise<string | undefined>
 export async function deleteApiKey(sessionId: string): Promise<void> {
   await invoke<void>("delete_credential", { key: sessionId });
 }
+
+/** Namespaces an account id before it's used as a keychain/credential key, so it can't collide with a session id. */
+export function accountCredentialKey(accountId: string): string {
+  return `account:${accountId}`;
+}

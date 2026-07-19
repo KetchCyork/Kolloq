@@ -8,9 +8,23 @@ export interface ToolCall {
   arguments: unknown;
 }
 
+export type ChatAttachmentKind = "image" | "file";
+
+export interface ChatAttachment {
+  /** Stable id so persistence/UI layers can key thumbnails and dedupe. */
+  id: string;
+  kind: ChatAttachmentKind;
+  name: string;
+  mimeType: string;
+  /** Base64-encoded bytes, no "data:" URL prefix. */
+  data: string;
+}
+
 export interface ChatMessage {
   role: ChatRole;
   content: string;
+  /** Set on user messages that include one or more image/file uploads. */
+  attachments?: ChatAttachment[];
   /** Set on assistant messages that invoke one or more tools. */
   toolCalls?: ToolCall[];
   /** Set on tool-result messages: which call this message answers. */

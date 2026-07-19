@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatMessage } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ChatMessage } from "@newvector/core";
 import { AgentRunner, createProvider, defineTool, ToolRegistry } from "@newvector/core";
 import { z } from "zod";
 import type { AgentSession, StoredMessage } from "./types";
@@ -20,6 +20,11 @@ function toChatMessage({ id: _id, createdAt: _createdAt, ...message }: StoredMes
   return message;
 }
 
+/** Number of tools available to a session's agent runner, for telemetry's `message_sent.toolCount`. */
+export function getToolCount(): number {
+  return buildTools().list().length;
+}
+
 /**
  * Runs one conversational turn for a session. A fresh `AgentRunner` is built per call and seeded
  * with `priorMessages` so the browser app (which persists history to IndexedDB, not in-memory
@@ -29,6 +34,7 @@ export function runSessionTurn(
   session: AgentSession,
   priorMessages: StoredMessage[],
   userInput: string,
+  attachments: ChatAttachment[] | undefined,
   onEvent: (event: AgentEvent) => void,
 ): Promise<ChatMessage[]> {
   const provider = createProvider({
@@ -46,5 +52,5 @@ export function runSessionTurn(
     onEvent,
   });
 
-  return runner.runStream(userInput);
+  return runner.runStream(userInput, attachments);
 }

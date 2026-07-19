@@ -1,9 +1,9 @@
-import type { ChatMessage, ChatProvider, ToolCall } from "../providers/types.js";
-import { ToolRegistry } from "../tools/registry.js";
+import type { ChatAttachment, ChatMessage, ChatProvider, ToolCall } from "../providers/types.js";
+import { ToolRegistry, type ToolSource } from "../tools/registry.js";
 
 export interface AgentRunnerOptions {
   provider: ChatProvider;
-  tools?: ToolRegistry;
+  tools?: ToolSource;
   systemPrompt?: string;
   /** Prior conversation turns to seed the runner with, e.g. when resuming a persisted session. */
   initialMessages?: ChatMessage[];
@@ -22,7 +22,7 @@ export type AgentEvent =
 /** Provider-agnostic agent loop: send a user message, let the model respond, execute any tool calls, repeat. */
 export class AgentRunner {
   private readonly provider: ChatProvider;
-  private readonly tools: ToolRegistry;
+  private readonly tools: ToolSource;
   private readonly maxSteps: number;
   private readonly onEvent?: (event: AgentEvent) => void;
   private readonly messages: ChatMessage[] = [];
@@ -41,8 +41,8 @@ export class AgentRunner {
     }
   }
 
-  async run(userInput: string): Promise<ChatMessage[]> {
-    this.messages.push({ role: "user", content: userInput });
+  async run(userInput: string, attachments?: ChatAttachment[]): Promise<ChatMessage[]> {
+    this.messages.push({ role: "user", content: userInput, ...(attachments?.length ? { attachments } : {}) });
 
     const turnMessages: ChatMessage[] = [];
 
@@ -64,8 +64,8 @@ export class AgentRunner {
   }
 
   /** Same send -> respond -> execute-tools -> repeat loop as `run`, but emits `text-delta` events as tokens arrive. */
-  async runStream(userInput: string): Promise<ChatMessage[]> {
-    this.messages.push({ role: "user", content: userInput });
+  async runStream(userInput: string, attachments?: ChatAttachment[]): Promise<ChatMessage[]> {
+    this.messages.push({ role: "user", content: userInput, ...(attachments?.length ? { attachments } : {}) });
 
     const turnMessages: ChatMessage[] = [];
 

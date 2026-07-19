@@ -1,4 +1,5 @@
-:root {
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0f1115;
   --panel: #161922;
@@ -6,6 +7,17 @@
   --border: #262b38;
   --text: #e6e8ef;
   --text-dim: #8b8fa3;
+  --accent: #6366f1;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7fb;
+  --panel: #ffffff;
+  --panel-alt: #f0f1f6;
+  --border: #dcdfe8;
+  --text: #1b1d23;
+  --text-dim: #6b7080;
   --accent: #6366f1;
 }
 
@@ -49,17 +61,96 @@ select {
   overflow-y: auto;
 }
 
-.sidebar-header {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+.sidebar-brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 16px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
 }
 
-.sidebar-header h1 {
+.sidebar-brand-mark {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.sidebar-brand-name {
+  color: var(--text);
+}
+
+.sidebar-new-btn {
+  margin: 8px 12px;
+  background: var(--accent);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-new-btn:hover {
+  opacity: 0.9;
+}
+
+.sidebar-new-btn-icon {
   font-size: 15px;
-  margin: 0;
+  line-height: 1;
+}
+
+.sidebar-nav {
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--panel-alt);
+}
+
+.sidebar-nav-icon {
+  color: var(--text-dim);
+}
+
+.sidebar-nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--panel-alt);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.sidebar-section-label {
+  padding: 6px 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .icon-btn {
@@ -369,15 +460,70 @@ select {
   background: #7f1d1d;
 }
 
+.step-tracker-text {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.step-tracker-step {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.step-tracker-step-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+
+.step-tracker-agent {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+}
+
+.step-tracker-step-body {
+  margin-top: 4px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.step-tracker-error {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 6px;
+}
+
 .composer {
   border-top: 1px solid var(--border);
   padding: 14px 20px;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-drag-over {
+  background: rgba(99, 102, 241, 0.08);
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
 }
 
 .composer textarea {
-  flex: 1;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -387,7 +533,13 @@ select {
   max-height: 160px;
 }
 
-.composer button {
+.composer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.composer-actions button {
   background: var(--accent);
   border: none;
   color: white;
@@ -397,13 +549,497 @@ select {
   font-weight: 500;
 }
 
-.composer button:disabled {
+.composer-actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
+.attachment-chip button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.attachment-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.attachment-error {
+  font-size: 12.5px;
+  color: #f87171;
 }
 
 .no-session {
   margin: auto;
   color: var(--text-dim);
   text-align: center;
+}
+
+/* Empty-session hero: greeting + centered composer, Cowork-home-style. */
+.empty-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px;
+  text-align: center;
+}
+
+.empty-hero h1 {
+  font-size: 28px;
+  margin: 0;
+}
+
+.empty-hero p {
+  margin: 0;
+  color: var(--text-dim);
+  max-width: 420px;
+}
+
+.empty-hero-composer {
+  width: min(680px, 100%);
+}
+
+.empty-hero-composer .composer {
+  border-top: none;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Model/account picker, inline in the composer toolbar. */
+.model-picker {
+  position: relative;
+}
+
+.composer-actions .model-picker-btn {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.composer-actions .model-picker-btn:hover {
+  border-color: var(--accent);
+}
+
+.model-picker-caret {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.composer-toolbar-spacer {
+  flex: 1;
+}
+
+.model-picker-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  z-index: 20;
+}
+
+.model-picker-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.model-picker-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 8px 8px 4px;
+}
+
+.composer-actions .model-picker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.composer-actions .model-picker-item:hover {
+  background: var(--panel-alt);
+}
+
+.composer-actions .model-picker-item.active {
+  background: var(--panel-alt);
+  color: var(--accent);
+}
+
+.model-picker-item-model {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.composer-actions .model-picker-manage {
+  width: 100%;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.composer-actions .model-picker-manage:hover {
+  color: var(--text);
+}
+
+/* Modal shell, used by the accounts manager. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.accounts-list {
+  padding: 12px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.account-row-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-row-label {
+  font-weight: 500;
+}
+
+.account-row-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.account-form {
+  border-bottom: none;
+  margin: 12px 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.account-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.primary-btn {
+  background: var(--accent);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.primary-btn:hover {
+  opacity: 0.9;
+}
+
+.add-account-btn {
+  margin: 12px 20px 20px;
+}
+
+.settings-section-label {
+  padding: 12px 20px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.keybindings-list {
+  grid-template-columns: 1fr;
+  padding-bottom: 20px;
+}
+
+.keybind-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.keybind-row label {
+  text-transform: none;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.keybind-btn {
+  min-width: 96px;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+}
+
+.keybind-btn.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Onboarding wizard */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.onboarding-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 48px 40px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.onboarding-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.onboarding-card h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.onboarding-sub, .onboarding-hint {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.onboarding-providers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.onboarding-provider-btn {
+  padding: 10px 14px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.onboarding-provider-btn:hover {
+  border-color: var(--accent);
+}
+
+.onboarding-provider-btn.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-alt));
+  color: var(--accent);
+}
+
+.onboarding-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.onboarding-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.onboarding-check {
+  font-size: 40px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Telemetry toggle row */
+.telemetry-row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.telemetry-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.telemetry-label {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.telemetry-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-track {
+  display: block;
+  width: 36px;
+  height: 20px;
+  background: var(--border);
+  border-radius: 10px;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--panel);
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-track::after {
+  transform: translateX(16px);
 }
