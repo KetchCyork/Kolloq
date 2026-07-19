@@ -10,12 +10,18 @@
  * The out-of-band ("paste the code") variant is used so this works in both the browser and desktop
  * builds without a loopback HTTP server.
  *
- * NOTE: the Anthropic OAuth parameters below are its published Claude subscription flow and still
- * need live end-to-end verification against a real account (see NEW-67). The token exchange is a
- * cross-origin POST — it succeeds from the Tauri desktop build; in the plain browser build it may be
- * blocked by CORS, which is why subscription capture is primarily a desktop capability.
+ * Anthropic's token endpoint (console.anthropic.com/v1/oauth/token) does not send
+ * `Access-Control-Allow-Origin` for third-party origins — it's designed to be called from a
+ * CLI/native context (that's how Claude Code itself does it), not fetched directly from a browser
+ * tab. Verified live: the consent screen completes but the token POST fails with a CORS error in
+ * both the plain browser build and a `fetch` issued from the Tauri webview. So the exchange/refresh
+ * request is routed through the desktop app's Rust layer (`oauth_token_request`, see
+ * apps/desktop/src-tauri/src/oauth.rs), which isn't subject to browser CORS. There is no backend
+ * server in this app to relay the request for the plain (non-Tauri) browser build, so subscription
+ * sign-in there is gated off with a clear message rather than left to fail silently — see
+ * `subscriptionSignInAvailable`.
  */
-import { openExternalUrl } from "./credentials";
+import { isTauriRuntime, openExternalUrl } from "./credentials";
 import type { OAuthCredential, ProviderName } from "./types";
 
 interface OAuthProviderConfig {
@@ -44,6 +50,15 @@ const OAUTH_PROVIDERS: Partial<Record<ProviderName, OAuthProviderConfig>> = {
 
 export function providerSupportsSubscription(provider: ProviderName): boolean {
   return provider in OAUTH_PROVIDERS;
+}
+
+/**
+ * True once a provider both has an OAuth flow (`providerSupportsSubscription`) *and* this runtime
+ * can actually complete the token exchange. Today that means the Tauri desktop shell: the exchange
+ * is CORS-blocked from a plain browser tab with no backend to relay it (see module docs).
+ */
+export function subscriptionSignInAvailable(provider: ProviderName): boolean {
+  return providerSupportsSubscription(provider) && isTauriRuntime();
 }
 
 export interface SubscriptionAuthSession {
@@ -76,6 +91,11 @@ async function challengeFromVerifier(verifier: string): Promise<string> {
 export async function beginSubscriptionAuth(provider: ProviderName): Promise<SubscriptionAuthSession> {
   const cfg = OAUTH_PROVIDERS[provider];
   if (!cfg) throw new Error(`${provider} does not support subscription sign-in.`);
+  if (!isTauriRuntime()) {
+    throw new Error(
+      "Subscription sign-in isn't available in the browser: the provider blocks the token exchange from a web page. Use the desktop app, or add this account with an API key instead.",
+    );
+  }
   const verifier = randomToken();
   const challenge = await challengeFromVerifier(verifier);
   const state = randomToken();
@@ -97,6 +117,42 @@ export function launchSubscriptionLogin(session: SubscriptionAuthSession): void 
   openExternalUrl(session.authorizeUrl);
 }
 
+interface TokenPayload {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  scope?: string;
+}
+
+/**
+ * POSTs a token request. Under Tauri this is relayed through the Rust `oauth_token_request`
+ * command so it isn't subject to the provider's CORS restrictions; there is no way to complete it
+ * from a plain browser tab (see module docs), so callers must check `subscriptionSignInAvailable`
+ * before starting a sign-in.
+ */
+async function postTokenRequest(tokenUrl: string, body: Record<string, unknown>): Promise<TokenPayload> {
+  if (!isTauriRuntime()) {
+    throw new Error(
+      "Subscription sign-in isn't available in the browser: the provider blocks the token exchange from a web page. Use the desktop app, or add this account with an API key instead.",
+    );
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  const res = await invoke<{ status: number; body: string }>("oauth_token_request", { tokenUrl, body });
+  let json: TokenPayload | { error?: string; error_description?: string };
+  try {
+    json = res.body ? JSON.parse(res.body) : {};
+  } catch {
+    throw new Error(`Token request failed (${res.status}). ${res.body}`.trim());
+  }
+  if (res.status < 200 || res.status >= 300) {
+    const detail = "error_description" in json && json.error_description ? json.error_description : res.body;
+    throw new Error(`Token request failed (${res.status}). ${detail}`.trim());
+  }
+  const payload = json as TokenPayload;
+  if (!payload.access_token) throw new Error("Provider response did not include an access token.");
+  return payload;
+}
+
 /** Exchanges the pasted authorization code for OAuth tokens. */
 export async function completeSubscriptionAuth(
   session: SubscriptionAuthSession,
@@ -108,29 +164,14 @@ export async function completeSubscriptionAuth(
   if (!trimmed) throw new Error("Paste the authorization code from the login page.");
   // Anthropic's out-of-band page returns "<code>#<state>"; accept either form.
   const [code, returnedState] = trimmed.split("#");
-  const res = await fetch(cfg.tokenUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      code,
-      state: returnedState ?? session.state,
-      client_id: cfg.clientId,
-      redirect_uri: cfg.redirectUri,
-      code_verifier: session.verifier,
-    }),
+  const json = await postTokenRequest(cfg.tokenUrl, {
+    grant_type: "authorization_code",
+    code,
+    state: returnedState ?? session.state,
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    code_verifier: session.verifier,
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Token exchange failed (${res.status}). ${detail}`.trim());
-  }
-  const json = (await res.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in?: number;
-    scope?: string;
-  };
-  if (!json.access_token) throw new Error("Provider response did not include an access token.");
   return {
     accessToken: json.access_token,
     refreshToken: json.refresh_token,
@@ -149,26 +190,11 @@ export function isOAuthCredentialExpiring(oauth: OAuthCredential, skewMs = 60_00
 export async function refreshSubscriptionAuth(provider: ProviderName, refreshToken: string): Promise<OAuthCredential> {
   const cfg = OAUTH_PROVIDERS[provider];
   if (!cfg) throw new Error(`${provider} does not support subscription sign-in.`);
-  const res = await fetch(cfg.tokenUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: cfg.clientId,
-    }),
+  const json = await postTokenRequest(cfg.tokenUrl, {
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: cfg.clientId,
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Token refresh failed (${res.status}). ${detail}`.trim());
-  }
-  const json = (await res.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in?: number;
-    scope?: string;
-  };
-  if (!json.access_token) throw new Error("Provider response did not include an access token.");
   return {
     accessToken: json.access_token,
     // Some providers omit `refresh_token` on renewal and expect the same one reused.

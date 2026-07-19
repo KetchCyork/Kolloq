@@ -5,6 +5,7 @@ import {
   completeSubscriptionAuth,
   launchSubscriptionLogin,
   providerSupportsSubscription,
+  subscriptionSignInAvailable,
   type SubscriptionAuthSession,
 } from "../subscriptionAuth";
 import type { Account, AccountAuthType, OAuthCredential, ProviderName } from "../types";
@@ -81,7 +82,7 @@ export function AccountsManager() {
   }
 
   function changeProvider(provider: ProviderName) {
-    const authType = providerSupportsSubscription(provider) ? draft.authType : "api_key";
+    const authType = subscriptionSignInAvailable(provider) ? draft.authType : "api_key";
     setDraft({ ...draft, provider, model: PROVIDER_DEFAULT_MODELS[provider], authType });
     resetAuthState();
   }
@@ -162,7 +163,9 @@ export function AccountsManager() {
     }
   }
 
-  const supportsSubscription = providerSupportsSubscription(draft.provider);
+  const providerHasOAuth = providerSupportsSubscription(draft.provider);
+  const supportsSubscription = subscriptionSignInAvailable(draft.provider);
+  const subscriptionNeedsDesktop = providerHasOAuth && !supportsSubscription;
   const connected = !!draft.oauth;
 
   return (
@@ -242,7 +245,13 @@ export function AccountsManager() {
                   className={`settings-btn${draft.authType === "subscription" ? " active" : ""}`}
                   aria-pressed={draft.authType === "subscription"}
                   disabled={!supportsSubscription}
-                  title={supportsSubscription ? undefined : "This provider has no subscription sign-in yet."}
+                  title={
+                    supportsSubscription
+                      ? undefined
+                      : subscriptionNeedsDesktop
+                        ? "Subscription sign-in requires the desktop app (the browser can't complete the provider's login)."
+                        : "This provider has no subscription sign-in yet."
+                  }
                   onClick={() => changeAuthType("subscription")}
                 >
                   Subscription
@@ -292,7 +301,9 @@ export function AccountsManager() {
                   </>
                 ) : (
                   <div className="subscription-hint">
-                    {PROVIDER_LABELS[draft.provider]} has no subscription sign-in yet — use an API key.
+                    {subscriptionNeedsDesktop
+                      ? `Subscription sign-in for ${PROVIDER_LABELS[draft.provider]} requires the New Vector Cowork desktop app — the browser can't complete the provider's login. Use an API key here, or add this account from the desktop app.`
+                      : `${PROVIDER_LABELS[draft.provider]} has no subscription sign-in yet — use an API key.`}
                   </div>
                 )}
               </div>
