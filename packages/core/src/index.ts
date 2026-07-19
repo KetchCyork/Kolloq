@@ -1,6 +1,7 @@
 export * from "./providers/index.js";
 export * from "./tools/registry.js";
 export * from "./tools/permissions.js";
+export * from "./tools/artifacts.js";
 export * from "./tools/builtin/webSearch.js";
 export * from "./agent/runner.js";
 export * from "./agent/orchestrator.js";

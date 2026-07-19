@@ -19,7 +19,8 @@ Node-only tools live under the `@newvector/core/node` subpath so they don't brea
 `createOfficeTools(rootDir)` returns three tools that let an agent produce real Microsoft Office
 files on request — e.g. "generate this report as a Word doc" or "create an Excel spreadsheet with
 this data". Each renders structured content the model supplies into a binary document and writes it
-into the same sandboxed `rootDir` used by the `fs` tools, returning `{ path, bytesWritten }`.
+into the same sandboxed `rootDir` used by the `fs` tools, returning a **file artifact**
+(`{ path, bytesWritten, mimeType, contentBase64 }`) — see [Downloading generated files](#downloading-generated-files).
 
 | Tool                               | Output   | Input shape                                              |
 |------------------------------------|----------|---------------------------------------------------------|
@@ -37,8 +38,24 @@ import { createOfficeTools } from "@newvector/core/node";
 for (const tool of createOfficeTools(sandboxDir)) registry.register(tool);
 ```
 
-The CLI registers these automatically (scoped to `--sandbox-dir`). Generated files land on disk; a
-browser/desktop download surface for tool-produced files is tracked as follow-up work.
+The CLI registers these automatically (scoped to `--sandbox-dir`). Generated files land on disk.
+
+## Downloading generated files
+
+Any tool whose result matches the **file-artifact** shape — an object with a string `path` and a
+numeric `bytesWritten` — is recognized by `extractFileArtifact()` (in `@newvector/core`) as a
+downloadable file. When a tool also ships the bytes inline as base64 (`contentBase64`), the browser
+and desktop apps render a **Download** button on that tool-result message (see
+`apps/browser/src/components/MessageItem.tsx` and `apps/browser/src/fileArtifact.ts`).
+
+The `AgentRunner` attaches the artifact to the tool message's `artifact` field and strips
+`contentBase64` from the message `content`, so the (potentially large) file bytes are available to
+the download surface without bloating what's re-sent to the model each turn. This is generic: any
+future file-producing tool gets a download button for free by returning the artifact shape.
+
+> The Office generators are Node-only, so they run in the CLI today. Wiring them (and other Node
+> tools) through the desktop (Tauri) Node execution context so downloads appear in the desktop app is
+> tracked as follow-up work.
 
 ## Tool permissions
 

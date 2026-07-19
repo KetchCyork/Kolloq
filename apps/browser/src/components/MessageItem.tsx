@@ -1,6 +1,31 @@
+import type { FileArtifact } from "@newvector/core";
 import { attachmentDataUrl } from "../attachments";
+import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatBytes } from "../fileArtifact";
 import type { StoredMessage } from "../types";
 import { formatTime } from "../utils";
+
+function ArtifactDownload({ artifact }: { artifact: FileArtifact }) {
+  const filename = artifactFilename(artifact);
+  async function handleDownload() {
+    try {
+      await downloadFileArtifact(artifact);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return (
+    <div className="artifact-download">
+      <span className="artifact-icon">📄</span>
+      <span className="artifact-name" title={artifact.path}>
+        {filename}
+      </span>
+      <span className="artifact-size">{formatBytes(artifact.bytesWritten)}</span>
+      <button onClick={handleDownload} disabled={!canDownloadArtifact(artifact)}>
+        Download
+      </button>
+    </div>
+  );
+}
 
 export function MessageItem({ message }: { message: StoredMessage }) {
   if (message.role === "tool") {
@@ -13,6 +38,7 @@ export function MessageItem({ message }: { message: StoredMessage }) {
             <span className="status-badge done">result</span>
           </div>
           <div className="tool-card-body">{message.content}</div>
+          {message.artifact ? <ArtifactDownload artifact={message.artifact} /> : null}
         </div>
       </div>
     );

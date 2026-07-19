@@ -71,6 +71,45 @@ describe("AgentRunner", () => {
     expect(toolMessage?.content).toBe("5");
   });
 
+  it("attaches a file artifact to the tool message and keeps inline bytes out of model content", async () => {
+    const tools = new ToolRegistry();
+    tools.register(
+      defineTool({
+        name: "write_report",
+        description: "writes a file",
+        parameters: z.object({}),
+        execute: () => ({ path: "report.docx", bytesWritten: 6, contentBase64: "UEsDBAo=" }),
+      }),
+    );
+
+    const provider = new ScriptedProvider([
+      {
+        finishReason: "tool-calls",
+        message: {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "call_1", name: "write_report", arguments: {} }],
+        },
+      },
+      { finishReason: "stop", message: { role: "assistant", content: "Done." } },
+    ]);
+
+    const runner = new AgentRunner({ provider, tools });
+    await runner.run("make a report");
+
+    const toolMessage = runner.getHistory().find((message) => message.role === "tool");
+    expect(toolMessage?.artifact).toEqual({
+      path: "report.docx",
+      bytesWritten: 6,
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      contentBase64: "UEsDBAo=",
+    });
+    // The model-facing content keeps the metadata but not the (potentially huge) inline bytes.
+    const modelFacing = JSON.parse(toolMessage?.content ?? "{}");
+    expect(modelFacing).toEqual({ path: "report.docx", bytesWritten: 6 });
+    expect(modelFacing.contentBase64).toBeUndefined();
+  });
+
   it("surfaces a failing tool execution as a tool-result error instead of throwing", async () => {
     const tools = new ToolRegistry();
     tools.register(

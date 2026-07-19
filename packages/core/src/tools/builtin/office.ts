@@ -4,19 +4,36 @@ import PptxGenJS from "pptxgenjs";
 import { z } from "zod";
 import { defineTool } from "../registry.js";
 import type { ToolDefinition } from "../../providers/types.js";
+import { mimeTypeForPath, type FileArtifact } from "../artifacts.js";
 import { writeSandboxedFile } from "./sandbox.js";
 
 /**
  * Office document generators — let an agent produce real Word (.docx), Excel (.xlsx), and
  * PowerPoint (.pptx) files on request ("generate this report as a Word doc", "create a spreadsheet
  * with this data"). Each tool renders structured JSON the model provides into a binary buffer and
- * writes it into the same sandboxed `rootDir` used by the file tools, returning `{ path, bytesWritten }`
- * so the file can be downloaded from the browser/desktop app. These libraries are Node-only, so this
- * module is exported from `@newvector/core/node`, not the browser-safe default entrypoint.
+ * writes it into the same sandboxed `rootDir` used by the file tools, returning a {@link FileArtifact}
+ * (`{ path, bytesWritten, mimeType, contentBase64 }`) so the file can be downloaded from the
+ * browser/desktop app. These libraries are Node-only, so this module is exported from
+ * `@newvector/core/node`, not the browser-safe default entrypoint.
  */
 
 function ensureExtension(requested: string, ext: string): string {
   return requested.toLowerCase().endsWith(ext) ? requested : `${requested}${ext}`;
+}
+
+/**
+ * Writes a generated document into the sandbox and returns the shared {@link FileArtifact} shape so the
+ * browser/desktop download surface can offer it. The bytes are carried inline as base64 (`contentBase64`)
+ * because the browser can't reach the sandbox disk; the AgentRunner strips them from what the model sees.
+ */
+async function writeArtifact(rootDir: string, target: string, buffer: Buffer): Promise<FileArtifact> {
+  const bytesWritten = await writeSandboxedFile(rootDir, target, buffer);
+  return {
+    path: target,
+    bytesWritten,
+    mimeType: mimeTypeForPath(target),
+    contentBase64: buffer.toString("base64"),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -166,8 +183,7 @@ export function createOfficeTools(rootDir: string): ToolDefinition[] {
       execute: async (args) => {
         const target = ensureExtension(args.path, ".docx");
         const buffer = await generateWord(args);
-        const bytesWritten = await writeSandboxedFile(rootDir, target, buffer);
-        return { path: target, bytesWritten };
+        return writeArtifact(rootDir, target, buffer);
       },
     }),
     defineTool({
@@ -177,8 +193,7 @@ export function createOfficeTools(rootDir: string): ToolDefinition[] {
       execute: async (args) => {
         const target = ensureExtension(args.path, ".xlsx");
         const buffer = await generateExcel(args);
-        const bytesWritten = await writeSandboxedFile(rootDir, target, buffer);
-        return { path: target, bytesWritten };
+        return writeArtifact(rootDir, target, buffer);
       },
     }),
     defineTool({
@@ -188,8 +203,7 @@ export function createOfficeTools(rootDir: string): ToolDefinition[] {
       execute: async (args) => {
         const target = ensureExtension(args.path, ".pptx");
         const buffer = await generatePowerPoint(args);
-        const bytesWritten = await writeSandboxedFile(rootDir, target, buffer);
-        return { path: target, bytesWritten };
+        return writeArtifact(rootDir, target, buffer);
       },
     }),
   ];
