@@ -138,3 +138,42 @@ export async function completeSubscriptionAuth(
     scope: json.scope,
   };
 }
+
+/** True once an OAuth credential is at (or close enough to) its expiry that it should be refreshed before use. */
+export function isOAuthCredentialExpiring(oauth: OAuthCredential, skewMs = 60_000): boolean {
+  if (!oauth.expiresAt) return false;
+  return Date.now() >= oauth.expiresAt - skewMs;
+}
+
+/** Exchanges a stored refresh token for a new access token, so a subscription account keeps working past its first token's expiry. */
+export async function refreshSubscriptionAuth(provider: ProviderName, refreshToken: string): Promise<OAuthCredential> {
+  const cfg = OAUTH_PROVIDERS[provider];
+  if (!cfg) throw new Error(`${provider} does not support subscription sign-in.`);
+  const res = await fetch(cfg.tokenUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: cfg.clientId,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Token refresh failed (${res.status}). ${detail}`.trim());
+  }
+  const json = (await res.json()) as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+  };
+  if (!json.access_token) throw new Error("Provider response did not include an access token.");
+  return {
+    accessToken: json.access_token,
+    // Some providers omit `refresh_token` on renewal and expect the same one reused.
+    refreshToken: json.refresh_token ?? refreshToken,
+    expiresAt: json.expires_in ? Date.now() + json.expires_in * 1000 : undefined,
+    scope: json.scope,
+  };
+}

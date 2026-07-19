@@ -26,6 +26,7 @@ import {
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
+import { isOAuthCredentialExpiring, refreshSubscriptionAuth } from "./subscriptionAuth";
 import { capture, setTelemetryEnabled } from "./telemetry";
 import type {
   Account,
@@ -276,6 +277,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * Refreshes a subscription account's OAuth token when it's expired (or about to), persisting the
+   * new token and returning the up-to-date account. Returns the account unchanged for API-key
+   * accounts, accounts with a still-valid token, or accounts with no refresh token to fall back on.
+   * Refresh failures (e.g. a revoked grant) are swallowed here — the stale token is used as-is and
+   * the resulting provider call surfaces its own auth error, same as any other request failure.
+   */
+  const refreshAccountIfNeeded = useCallback(async (account: Account): Promise<Account> => {
+    if (account.authType !== "subscription" || !account.oauth?.refreshToken) return account;
+    if (!isOAuthCredentialExpiring(account.oauth)) return account;
+    try {
+      const oauth = await refreshSubscriptionAuth(account.provider, account.oauth.refreshToken);
+      const updated: Account = { ...account, oauth };
+      setAccounts((prev) => prev.map((candidate) => (candidate.id === account.id ? updated : candidate)));
+      void persistAccount(updated);
+      return updated;
+    } catch {
+      return account;
+    }
+  }, []);
+
   const deleteAccountById = useCallback((id: string) => {
     setAccounts((prev) => prev.filter((account) => account.id !== id));
     void deleteAccountRecord(id);
@@ -377,9 +399,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
 
       try {
+        let accountsForTurn = accountsRef.current;
+        const accountId = session.providerConfig.accountId;
+        const account = accountId ? accountsForTurn.find((candidate) => candidate.id === accountId) : undefined;
+        if (account) {
+          const fresh = await refreshAccountIfNeeded(account);
+          if (fresh !== account) {
+            accountsForTurn = accountsForTurn.map((candidate) => (candidate.id === accountId ? fresh : candidate));
+          }
+        }
         const effectiveSession = {
           ...session,
-          providerConfig: resolveProviderConfig(session.providerConfig, accountsRef.current),
+          providerConfig: resolveProviderConfig(session.providerConfig, accountsForTurn),
         };
         const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
         const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
@@ -449,6 +480,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const validationError = validateCouncilMembers(session.members, accountsRef.current);
     if (validationError) throw new Error(validationError);
 
+    let accountsForTurn = accountsRef.current;
+    for (const memberAccountId of new Set(session.members.map((member) => member.accountId))) {
+      const account = accountsForTurn.find((candidate) => candidate.id === memberAccountId);
+      if (!account) continue;
+      const fresh = await refreshAccountIfNeeded(account);
+      if (fresh !== account) {
+        accountsForTurn = accountsForTurn.map((candidate) => (candidate.id === memberAccountId ? fresh : candidate));
+      }
+    }
+
     let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
     setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
 
@@ -458,7 +499,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await runCouncilTurn(session.members, accountsRef.current, session.maxRounds, question, onEvent);
+      await runCouncilTurn(session.members, accountsForTurn, session.maxRounds, question, onEvent);
     } catch (error) {
       // Council.run() itself never rejects (member/moderator errors surface as events); this only
       // fires for setup failures, e.g. a member's account was removed after validation passed.
