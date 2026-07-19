@@ -810,6 +810,42 @@ select {
   gap: 8px;
 }
 
+.auth-type-toggle {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.auth-type-toggle .settings-btn.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.auth-type-toggle .settings-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.subscription-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-alt);
+}
+
+.subscription-status {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.subscription-hint {
+  font-size: 12px;
+  color: var(--text-dim, #888);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
 .primary-btn {
   background: var(--accent);
   border: none;

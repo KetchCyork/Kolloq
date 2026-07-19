@@ -3,7 +3,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { getToolCount, runSessionTurn } from "./agentClient";
 import { runCouncilTurn } from "./councilClient";
 import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
-import { accountCredentialKey, deleteApiKey, isTauriRuntime, loadApiKey, saveApiKey } from "./credentials";
+import {
+  accountCredentialKey,
+  accountOAuthKey,
+  deleteApiKey,
+  isTauriRuntime,
+  loadApiKey,
+  saveApiKey,
+} from "./credentials";
 import {
   deleteAccount as deleteAccountRecord,
   deleteCouncilSession as deleteCouncilSessionRecord,
@@ -27,6 +34,7 @@ import type {
   CouncilSession,
   CouncilTurn,
   LiveCouncilTurn,
+  OAuthCredential,
   ProviderConfig,
   SessionExportFile,
   StoredMessage,
@@ -64,19 +72,36 @@ async function persistAccount(account: Account): Promise<void> {
     await putAccount(account);
     return;
   }
-  const { apiKey, ...rest } = account;
+  const { apiKey, oauth, ...rest } = account;
   if (apiKey) {
     await saveApiKey(accountCredentialKey(account.id), apiKey);
   } else {
     await deleteApiKey(accountCredentialKey(account.id));
+  }
+  if (oauth) {
+    await saveApiKey(accountOAuthKey(account.id), JSON.stringify(oauth));
+  } else {
+    await deleteApiKey(accountOAuthKey(account.id));
   }
   await putAccount(rest);
 }
 
 async function hydrateAccount(account: Account): Promise<Account> {
   if (!isTauriRuntime()) return account;
-  const apiKey = await loadApiKey(accountCredentialKey(account.id));
-  return apiKey ? { ...account, apiKey } : account;
+  const [apiKey, oauthRaw] = await Promise.all([
+    loadApiKey(accountCredentialKey(account.id)),
+    loadApiKey(accountOAuthKey(account.id)),
+  ]);
+  let hydrated = account;
+  if (apiKey) hydrated = { ...hydrated, apiKey };
+  if (oauthRaw) {
+    try {
+      hydrated = { ...hydrated, oauth: JSON.parse(oauthRaw) as OAuthCredential };
+    } catch {
+      // Corrupt keychain entry — treat as no stored subscription token.
+    }
+  }
+  return hydrated;
 }
 
 /** Resolves a session's effective provider config, pulling credentials/baseURL from its saved account when it has one. */
@@ -84,6 +109,9 @@ function resolveProviderConfig(config: ProviderConfig, accounts: Account[]): Pro
   if (!config.accountId) return config;
   const account = accounts.find((candidate) => candidate.id === config.accountId);
   if (!account) return config;
+  if (account.authType === "subscription") {
+    return { ...config, authType: "subscription", accessToken: account.oauth?.accessToken, baseURL: account.baseURL };
+  }
   return { ...config, apiKey: account.apiKey, baseURL: account.baseURL };
 }
 

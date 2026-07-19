@@ -24,6 +24,8 @@ export function runCouncilTurn(
       model: account.model,
       apiKey: account.apiKey,
       baseURL: account.baseURL,
+      authType: account.authType,
+      accessToken: account.oauth?.accessToken,
     });
     return { name: member.id, provider, role: member.role };
   });

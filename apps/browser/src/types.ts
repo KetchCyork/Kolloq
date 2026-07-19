@@ -5,6 +5,24 @@ export type { ChatAttachment };
 export type { ProviderName };
 
 /**
+ * How an account authenticates. `api_key` is the original mode (a raw provider
+ * key the user pastes). `subscription` uses an OAuth token captured from the
+ * provider's login page, letting the user drive a paid plan (e.g. Claude
+ * Pro/Max) instead of a metered API key.
+ */
+export type AccountAuthType = "api_key" | "subscription";
+
+/** OAuth tokens captured from a provider's subscription login. These are secrets and are
+ * routed to the OS keychain on desktop, same as `Account.apiKey`. */
+export interface OAuthCredential {
+  accessToken: string;
+  refreshToken?: string;
+  /** Epoch ms when `accessToken` expires, if the provider returned an expiry. */
+  expiresAt?: number;
+  scope?: string;
+}
+
+/**
  * A saved, named credential for a provider (e.g. "Work OpenAI key"). Sessions
  * reference an account by id instead of embedding a raw key, so one account
  * can back multiple sessions and shows up once in the model picker.
@@ -14,7 +32,11 @@ export interface Account {
   provider: ProviderName;
   label: string;
   model: string;
+  /** Defaults to `api_key` when absent (back-compat with accounts saved before subscriptions existed). */
+  authType?: AccountAuthType;
   apiKey?: string;
+  /** Present when `authType` is `subscription`. */
+  oauth?: OAuthCredential;
   baseURL?: string;
   createdAt: number;
 }
@@ -30,6 +52,9 @@ export interface ProviderConfig {
    */
   apiKey?: string;
   baseURL?: string;
+  /** Resolved from the referenced account at turn time; see `resolveProviderConfig`. */
+  authType?: AccountAuthType;
+  accessToken?: string;
 }
 
 export interface AgentIdentity {
