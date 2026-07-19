@@ -19,6 +19,8 @@ export interface MemberPosition {
   content: string;
   stance?: MemberStance;
   reason?: string;
+  /** Mirrors `CouncilMember.role`, if the member was configured with one. */
+  role?: string;
 }
 
 export interface DroppedMember {
@@ -40,7 +42,8 @@ export type CouncilEvent =
   | { type: "member-position"; round: number; position: MemberPosition }
   | { type: "member-dropped"; round: number; member: string; error: string }
   | { type: "consensus"; round: number }
-  | { type: "moderator-synthesis"; content: string };
+  | { type: "moderator-synthesis"; content: string }
+  | { type: "moderator-error"; error: string };
 
 export interface CouncilResult {
   question: string;
@@ -50,8 +53,11 @@ export interface CouncilResult {
   /** Index of the last round that actually ran (may be < maxRounds - 1 if consensus was reached early). */
   finalRound: number;
   dropped: DroppedMember[];
-  /** The moderator's synthesized final answer. */
+  /** The moderator's synthesized final answer, or a deterministic fallback summary if the moderator's
+   * provider errored (see `moderatorError`) — the completed debate is never discarded on a moderator failure. */
   answer: string;
+  /** Set if the moderator's provider errored while synthesizing; `answer` is then a fallback summary. */
+  moderatorError?: string;
 }
 
 const MIN_MEMBERS = 2;
@@ -123,15 +129,23 @@ export class Council {
       }
     }
 
-    const answer = await this.synthesize(question, rounds, dropped, consensusReached);
-    this.onEvent?.({ type: "moderator-synthesis", content: answer });
+    let answer: string;
+    let moderatorError: string | undefined;
+    try {
+      answer = await this.synthesize(question, rounds, dropped, consensusReached);
+      this.onEvent?.({ type: "moderator-synthesis", content: answer });
+    } catch (error) {
+      moderatorError = error instanceof Error ? error.message : String(error);
+      answer = this.fallbackSynthesis(rounds, dropped, consensusReached);
+      this.onEvent?.({ type: "moderator-error", error: moderatorError });
+    }
 
-    return { question, rounds, consensusReached, finalRound, dropped, answer };
+    return { question, rounds, consensusReached, finalRound, dropped, answer, moderatorError };
   }
 
   private async askInitial(member: CouncilMember, question: string): Promise<MemberPosition> {
     const response = await member.provider.chat({ messages: this.buildMessages(member, question) });
-    return { member: member.name, content: response.message.content };
+    return { member: member.name, role: member.role, content: response.message.content };
   }
 
   private async askRevision(
@@ -140,7 +154,7 @@ export class Council {
     previousPositions: MemberPosition[],
   ): Promise<MemberPosition> {
     const labeled = previousPositions
-      .map((position) => `${position.member}: ${position.content}`)
+      .map((position) => `${position.member}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
       .join("\n\n");
     const prompt = [
       `Question: ${question}`,
@@ -155,33 +169,48 @@ export class Council {
     ].join("\n");
 
     const response = await member.provider.chat({ messages: this.buildMessages(member, prompt) });
-    return this.parseStance(member.name, response.message.content);
+    return this.parseStance(member, response.message.content);
   }
 
   private buildMessages(member: CouncilMember, content: string): ChatMessage[] {
     const messages: ChatMessage[] = [];
-    if (member.systemPrompt) messages.push({ role: "system", content: member.systemPrompt });
+    const systemParts = [member.systemPrompt, member.role ? `Your role on this council: ${member.role}.` : undefined].filter(
+      (part): part is string => Boolean(part),
+    );
+    if (systemParts.length > 0) messages.push({ role: "system", content: systemParts.join("\n\n") });
     messages.push({ role: "user", content });
     return messages;
   }
 
-  private parseStance(member: string, content: string): MemberPosition {
+  private parseStance(member: CouncilMember, content: string): MemberPosition {
     const concurMatch = CONCUR_PATTERN.exec(content);
     if (concurMatch) {
       const rest = content.slice(concurMatch[0].length).trim();
-      return { member, content: rest || content.trim(), stance: "concur" };
+      return { member: member.name, role: member.role, content: rest || content.trim(), stance: "concur" };
     }
 
     const dissentMatch = DISSENT_PATTERN.exec(content);
     if (dissentMatch) {
       const reason = dissentMatch[1]?.trim();
       const rest = dissentMatch[2]?.trim();
-      return { member, content: rest || content.trim(), stance: "dissent", reason: reason || undefined };
+      return {
+        member: member.name,
+        role: member.role,
+        content: rest || content.trim(),
+        stance: "dissent",
+        reason: reason || undefined,
+      };
     }
 
     // No explicit CONCUR/DISSENT marker: treat as a (silent) dissent so an ambiguous reply can never
     // be mistaken for unanimous concurrence and end the debate early.
-    return { member, content: content.trim(), stance: "dissent", reason: "no explicit stance given" };
+    return {
+      member: member.name,
+      role: member.role,
+      content: content.trim(),
+      stance: "dissent",
+      reason: "no explicit stance given",
+    };
   }
 
   private async synthesize(
@@ -197,8 +226,9 @@ export class Council {
     const transcript = rounds
       .map((positions, round) => {
         const lines = positions.map((position) => {
-          const stance = position.stance ? ` (${position.stance}${position.reason ? `: ${position.reason}` : ""})` : "";
-          return `- ${position.member}${stance}: ${position.content}`;
+          const role = position.role ? ` (${position.role})` : "";
+          const stance = position.stance ? ` [${position.stance}${position.reason ? `: ${position.reason}` : ""}]` : "";
+          return `- ${position.member}${role}${stance}: ${position.content}`;
         });
         return `Round ${round}:\n${lines.join("\n")}`;
       })
@@ -237,5 +267,44 @@ export class Council {
 
     const response = await moderator.provider.chat({ messages: this.buildMessages(moderator, prompt) });
     return response.message.content;
+  }
+
+  /**
+   * Deterministic, non-LLM fallback used when the moderator's own provider call fails. The debate
+   * itself already completed by this point, so a moderator error must never discard it — this just
+   * can't add the moderator's prose synthesis on top.
+   */
+  private fallbackSynthesis(
+    rounds: MemberPosition[][],
+    dropped: DroppedMember[],
+    consensusReached: boolean,
+  ): string {
+    const finalPositions = rounds.at(-1) ?? [];
+    const dissenting = finalPositions.filter((position) => position.stance === "dissent");
+
+    const consensusNote = consensusReached
+      ? "The council reached unanimous consensus, but the moderator's provider errored while synthesizing a final answer."
+      : `The council did not reach unanimous consensus within ${rounds.length} round(s), and the moderator's ` +
+        "provider errored while synthesizing a final answer.";
+
+    const droppedNote = dropped.length
+      ? ` Members dropped from the debate after a provider error: ${dropped
+          .map((member) => `${member.member} (round ${member.round})`)
+          .join(", ")}.`
+      : "";
+
+    const dissentNote = dissenting.length
+      ? `\nUnresolved dissent:\n${dissenting
+          .map((position) => `- ${position.member}: ${position.reason ?? "no reason given"}`)
+          .join("\n")}`
+      : "";
+
+    const positionLines = finalPositions
+      .map((position) => `- ${position.member}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
+      .join("\n");
+
+    return [`${consensusNote}${droppedNote}`, dissentNote, "", "Final positions:", positionLines]
+      .filter((line) => line !== "")
+      .join("\n");
   }
 }

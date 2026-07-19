@@ -134,6 +134,56 @@ describe("Council", () => {
     );
   });
 
+  it("falls back to a deterministic summary (without discarding the completed debate) when the moderator's own provider errors", async () => {
+    const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B", "__throw__"]);
+    const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+
+    const events: CouncilEvent[] = [];
+    const council = new Council({
+      members: [
+        { name: "A", provider: providerA },
+        { name: "B", provider: providerB },
+      ],
+      onEvent: (event) => events.push(event),
+    });
+
+    const result = await council.run("Should we do X?");
+
+    // The debate itself completed and reached consensus — a moderator failure must not throw that away.
+    expect(result.consensusReached).toBe(true);
+    expect(result.rounds).toHaveLength(2);
+    expect(result.moderatorError).toBe("A provider error");
+    expect(result.answer).toContain("moderator's provider errored");
+    expect(result.answer).toContain("A: I agree with B");
+    expect(result.answer).toContain("B: sounds good");
+
+    expect(events.some((event) => event.type === "moderator-error" && event.error === "A provider error")).toBe(true);
+    expect(events.some((event) => event.type === "moderator-synthesis")).toBe(false);
+  });
+
+  it("surfaces each member's configured role in prompts and in the returned positions", async () => {
+    const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B", "Final synthesized answer"]);
+    const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+
+    const council = new Council({
+      members: [
+        { name: "A", provider: providerA, role: "skeptic" },
+        { name: "B", provider: providerB, role: "domain expert" },
+      ],
+    });
+
+    const result = await council.run("Should we do X?");
+
+    expect(result.rounds[0]).toEqual([
+      { member: "A", role: "skeptic", content: "Answer A0" },
+      { member: "B", role: "domain expert", content: "Answer B0" },
+    ]);
+    expect(result.rounds[1]).toEqual([
+      { member: "A", role: "skeptic", content: "I agree with B", stance: "concur" },
+      { member: "B", role: "domain expert", content: "sounds good", stance: "concur" },
+    ]);
+  });
+
   it("treats a reply with no explicit CONCUR/DISSENT marker as a (silent) dissent", async () => {
     const providerA = new StubProvider("A", ["A0", "I'm not sure, maybe both are fine", "moderator answer"]);
     const providerB = new StubProvider("B", ["B0", "CONCUR agreed"]);
