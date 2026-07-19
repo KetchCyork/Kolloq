@@ -25,17 +25,20 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "ai": "^4.0.0",
-    "@ai-sdk/openai": "^1.0.0",
     "@ai-sdk/anthropic": "^1.0.0",
     "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
     "@ai-sdk/openai-compatible": "^0.1.0",
+    "ai": "^4.0.0",
+    "docx": "^9.7.1",
+    "exceljs": "^4.4.0",
+    "pptxgenjs": "^4.0.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
-    "typescript": "^5.5.4",
     "tsx": "^4.16.2",
+    "typescript": "^5.5.4",
     "vitest": "^2.0.0"
   }
 }
