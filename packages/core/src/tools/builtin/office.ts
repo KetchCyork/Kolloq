@@ -5,6 +5,7 @@ import { z } from "zod";
 import { defineTool } from "../registry.js";
 import type { ToolDefinition } from "../../providers/types.js";
 import { mimeTypeForPath, type FileArtifact } from "../artifacts.js";
+import { OFFICE_TOOL_SPECS, wordParams, excelParams, pptParams } from "../officeSpec.js";
 import { writeSandboxedFile } from "./sandbox.js";
 
 /**
@@ -40,27 +41,6 @@ async function writeArtifact(rootDir: string, target: string, buffer: Buffer): P
 // Word (.docx)
 // ---------------------------------------------------------------------------
 
-const wordBlockSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("heading"),
-    text: z.string(),
-    level: z.number().int().min(1).max(6).default(1).describe("Heading level 1-6"),
-  }),
-  z.object({ type: z.literal("paragraph"), text: z.string() }),
-  z.object({
-    type: z.literal("bullets"),
-    items: z.array(z.string()).describe("List items, each rendered as its own bullet"),
-  }),
-]);
-
-const wordParams = z.object({
-  path: z.string().describe("Output path relative to the sandboxed root, e.g. 'report.docx'"),
-  title: z.string().optional().describe("Optional document title rendered as a top heading"),
-  blocks: z
-    .array(wordBlockSchema)
-    .describe("Ordered content blocks: headings, paragraphs, and bullet lists"),
-});
-
 async function generateWord(args: z.input<typeof wordParams>) {
   const headingFor = (level: number) =>
     [
@@ -94,19 +74,6 @@ async function generateWord(args: z.input<typeof wordParams>) {
 // Excel (.xlsx)
 // ---------------------------------------------------------------------------
 
-const cellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-
-const sheetSchema = z.object({
-  name: z.string().describe("Worksheet name"),
-  columns: z.array(z.string()).optional().describe("Optional header row rendered in bold"),
-  rows: z.array(z.array(cellSchema)).describe("Data rows; each row is an array of cell values"),
-});
-
-const excelParams = z.object({
-  path: z.string().describe("Output path relative to the sandboxed root, e.g. 'data.xlsx'"),
-  sheets: z.array(sheetSchema).min(1).describe("One or more worksheets"),
-});
-
 async function generateExcel(args: z.infer<typeof excelParams>) {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -125,18 +92,6 @@ async function generateExcel(args: z.infer<typeof excelParams>) {
 // ---------------------------------------------------------------------------
 // PowerPoint (.pptx)
 // ---------------------------------------------------------------------------
-
-const slideSchema = z.object({
-  title: z.string().optional().describe("Slide title"),
-  bullets: z.array(z.string()).optional().describe("Bullet points for the slide body"),
-  body: z.string().optional().describe("Free-form body text (used when bullets are not given)"),
-});
-
-const pptParams = z.object({
-  path: z.string().describe("Output path relative to the sandboxed root, e.g. 'deck.pptx'"),
-  title: z.string().optional().describe("Optional deck title used for the first slide"),
-  slides: z.array(slideSchema).min(1).describe("Ordered slides"),
-});
 
 // pptxgenjs ships a CJS default export that NodeNext resolves to the module namespace rather than the
 // class, and `PptxGenJS` is only usable as a namespace (not a type), so derive the instance type from
@@ -175,10 +130,11 @@ async function generatePowerPoint(args: z.infer<typeof pptParams>) {
  * the sandbox exactly like `write_file`, so the browser/desktop app can offer them for download.
  */
 export function createOfficeTools(rootDir: string): ToolDefinition[] {
+  const specByName = Object.fromEntries(OFFICE_TOOL_SPECS.map((s) => [s.name, s]));
   return [
     defineTool({
       name: "generate_word_document",
-      description: `Generate a Microsoft Word (.docx) document from structured content and save it relative to the sandboxed root (${rootDir}). Use for reports, letters, and formatted prose.`,
+      description: specByName.generate_word_document.describe(rootDir),
       parameters: wordParams,
       execute: async (args) => {
         const target = ensureExtension(args.path, ".docx");
@@ -188,7 +144,7 @@ export function createOfficeTools(rootDir: string): ToolDefinition[] {
     }),
     defineTool({
       name: "generate_excel_spreadsheet",
-      description: `Generate a Microsoft Excel (.xlsx) spreadsheet from one or more sheets of tabular data and save it relative to the sandboxed root (${rootDir}).`,
+      description: specByName.generate_excel_spreadsheet.describe(rootDir),
       parameters: excelParams,
       execute: async (args) => {
         const target = ensureExtension(args.path, ".xlsx");
@@ -198,7 +154,7 @@ export function createOfficeTools(rootDir: string): ToolDefinition[] {
     }),
     defineTool({
       name: "generate_powerpoint_presentation",
-      description: `Generate a Microsoft PowerPoint (.pptx) presentation from a list of slides and save it relative to the sandboxed root (${rootDir}).`,
+      description: specByName.generate_powerpoint_presentation.describe(rootDir),
       parameters: pptParams,
       execute: async (args) => {
         const target = ensureExtension(args.path, ".pptx");

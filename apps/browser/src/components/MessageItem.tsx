@@ -4,11 +4,11 @@ import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatByte
 import type { StoredMessage } from "../types";
 import { formatTime } from "../utils";
 
-function ArtifactDownload({ artifact }: { artifact: FileArtifact }) {
+function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; sessionId: string }) {
   const filename = artifactFilename(artifact);
   async function handleDownload() {
     try {
-      await downloadFileArtifact(artifact);
+      await downloadFileArtifact(artifact, sessionId);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
@@ -27,7 +27,7 @@ function ArtifactDownload({ artifact }: { artifact: FileArtifact }) {
   );
 }
 
-export function MessageItem({ message }: { message: StoredMessage }) {
+export function MessageItem({ message, sessionId }: { message: StoredMessage; sessionId: string }) {
   if (message.role === "tool") {
     return (
       <div className="message role-tool">
@@ -38,7 +38,7 @@ export function MessageItem({ message }: { message: StoredMessage }) {
             <span className="status-badge done">result</span>
           </div>
           <div className="tool-card-body">{message.content}</div>
-          {message.artifact ? <ArtifactDownload artifact={message.artifact} /> : null}
+          {message.artifact ? <ArtifactDownload artifact={message.artifact} sessionId={sessionId} /> : null}
         </div>
       </div>
     );

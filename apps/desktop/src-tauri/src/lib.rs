@@ -1,5 +1,6 @@
 mod keychain;
 mod menu;
+mod node;
 mod tray;
 
 use tauri::{Emitter, WindowEvent};
@@ -13,6 +14,8 @@ pub fn run() {
             keychain::set_credential,
             keychain::get_credential,
             keychain::delete_credential,
+            node::node_tool_exec,
+            node::node_read_file,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;

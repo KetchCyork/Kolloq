@@ -272,7 +272,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       appendMessages(sessionId, [userMessage]);
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
-      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
+      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount(sessionId) });
 
       const onEvent = (event: AgentEvent) => {
         if (event.type === "tool-call") {

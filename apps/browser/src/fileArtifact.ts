@@ -1,6 +1,7 @@
 import type { FileArtifact } from "@newvector/core";
 import { mimeTypeForPath } from "@newvector/core";
 import { isTauriRuntime } from "./credentials";
+import { nodeContextAvailable, readSandboxFileViaNode } from "./nodeContext";
 
 /**
  * Browser/desktop download surface for tool-produced files. Any tool that returns a
@@ -37,7 +38,9 @@ export function artifactFilename(artifact: FileArtifact): string {
 
 /** True when the artifact carries enough to be downloaded in the current runtime. */
 export function canDownloadArtifact(artifact: FileArtifact): boolean {
-  return typeof artifact.contentBase64 === "string" && artifact.contentBase64.length > 0;
+  // Inline bytes work everywhere; on the desktop we can also read them back off the sandbox disk.
+  if (typeof artifact.contentBase64 === "string" && artifact.contentBase64.length > 0) return true;
+  return nodeContextAvailable();
 }
 
 function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
@@ -60,8 +63,11 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 /**
  * Downloads the file an agent generated. Resolves once the browser's save dialog has been triggered.
  * Throws a user-facing Error when the bytes can't be retrieved in the current runtime.
+ *
+ * `sessionId` scopes the desktop read-back path to the session's sandbox; it's only needed when the
+ * artifact carries no inline bytes (the desktop-only case).
  */
-export async function downloadFileArtifact(artifact: FileArtifact): Promise<void> {
+export async function downloadFileArtifact(artifact: FileArtifact, sessionId?: string): Promise<void> {
   const filename = artifactFilename(artifact);
   const mimeType = artifact.mimeType || mimeTypeForPath(artifact.path);
 
@@ -71,12 +77,18 @@ export async function downloadFileArtifact(artifact: FileArtifact): Promise<void
     return;
   }
 
-  // No inline bytes. In the desktop shell this file lives on the sandbox disk and needs the Node
-  // execution context to read it back; that channel isn't wired yet, so fail loudly instead of
-  // handing the user a button that does nothing.
+  // No inline bytes. In the desktop shell this file lives on the sandbox disk; read it back through
+  // the Node execution context (the sidecar) rather than carrying base64 around.
+  if (nodeContextAvailable() && sessionId) {
+    const { contentBase64, mimeType: readMime } = await readSandboxFileViaNode(sessionId, artifact.path);
+    const blob = new Blob([base64ToBytes(contentBase64)], { type: artifact.mimeType || readMime });
+    triggerBlobDownload(blob, filename);
+    return;
+  }
+
   throw new Error(
     isTauriRuntime()
-      ? `Can't download "${filename}" yet: reading generated files from the desktop sandbox isn't wired up.`
+      ? `Can't download "${filename}": its session context is unavailable, so the desktop sandbox can't be read.`
       : `Can't download "${filename}": this file's contents aren't available in the browser.`,
   );
 }

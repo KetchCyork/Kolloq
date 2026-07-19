@@ -1,9 +1,16 @@
 import type { AgentEvent, ChatAttachment, ChatMessage } from "@newvector/core";
-import { AgentRunner, createProvider, defineTool, ToolRegistry } from "@newvector/core";
+import { AgentRunner, createOfficeProxyTools, createProvider, defineTool, ToolRegistry } from "@newvector/core";
 import { z } from "zod";
+import { createTauriNodeExec, nodeContextAvailable } from "./nodeContext";
 import type { AgentSession, StoredMessage } from "./types";
 
-function buildTools(): ToolRegistry {
+/**
+ * Builds the tools a session's agent can call. `get_time` is always available. Under the desktop
+ * (Tauri) shell there's a Node execution context (a sidecar), so the Node-only Office generators are
+ * registered too — as proxies that run out-of-process, scoped to this session's sandbox. In a plain
+ * browser build there's no Node runtime to reach, so those tools are simply absent.
+ */
+function buildTools(sessionId?: string): ToolRegistry {
   const tools = new ToolRegistry();
   tools.register(
     defineTool({
@@ -13,6 +20,11 @@ function buildTools(): ToolRegistry {
       execute: () => ({ now: new Date().toISOString() }),
     }),
   );
+  if (sessionId && nodeContextAvailable()) {
+    for (const tool of createOfficeProxyTools("the session sandbox", createTauriNodeExec(sessionId))) {
+      tools.register(tool);
+    }
+  }
   return tools;
 }
 
@@ -21,8 +33,8 @@ function toChatMessage({ id: _id, createdAt: _createdAt, ...message }: StoredMes
 }
 
 /** Number of tools available to a session's agent runner, for telemetry's `message_sent.toolCount`. */
-export function getToolCount(): number {
-  return buildTools().list().length;
+export function getToolCount(sessionId?: string): number {
+  return buildTools(sessionId).list().length;
 }
 
 /**
@@ -46,7 +58,7 @@ export function runSessionTurn(
 
   const runner = new AgentRunner({
     provider,
-    tools: buildTools(),
+    tools: buildTools(session.id),
     systemPrompt: session.systemPrompt || undefined,
     initialMessages: priorMessages.map(toChatMessage),
     onEvent,

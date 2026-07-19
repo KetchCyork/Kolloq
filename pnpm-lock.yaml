@@ -52,6 +52,10 @@ importers:
         version: 5.4.21(@types/node@25.9.5)
 
   apps/desktop:
+    dependencies:
+      '@newvector/core':
+        specifier: workspace:*
+        version: link:../../packages/core
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.11.4
