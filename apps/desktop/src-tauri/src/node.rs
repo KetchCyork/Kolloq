@@ -38,11 +38,16 @@ fn sandbox_root(app: &AppHandle, session_id: &str) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-/// Locates the sidecar entry script. In a packaged app it's bundled under the resource dir; in dev
-/// it lives next to the crate at `apps/desktop/sidecar/tool-host.mjs`.
+/// Locates the sidecar entry script. In a packaged app it's the esbuild bundle shipped under the
+/// resource dir (`sidecar/dist/tool-host.cjs`, self-contained — no `node_modules` needed); in dev it
+/// falls back to the un-bundled source at `apps/desktop/sidecar/tool-host.mjs`, which resolves
+/// `@newvector/core/node` from the workspace `node_modules`.
 fn sidecar_script(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(resource_dir) = app.path().resource_dir() {
-        let bundled = resource_dir.join("sidecar").join("tool-host.mjs");
+        let bundled = resource_dir
+            .join("sidecar")
+            .join("dist")
+            .join("tool-host.cjs");
         if bundled.exists() {
             return Ok(bundled);
         }
@@ -54,15 +59,37 @@ fn sidecar_script(app: &AppHandle) -> Result<PathBuf, String> {
     if dev.exists() {
         return Ok(dev);
     }
-    Err("Could not locate the Node sidecar (sidecar/tool-host.mjs).".into())
+    Err("Could not locate the Node sidecar (sidecar/dist/tool-host.cjs or sidecar/tool-host.mjs).".into())
+}
+
+/// Resolves the Node interpreter used to run the sidecar. Order of preference:
+///   1. `NEWVECTOR_NODE` env var — explicit override (dev/testing).
+///   2. The Node runtime bundled into the resource dir (`sidecar/runtime/node[.exe]`) — the only
+///      option that works in a shipped app, which can't assume Node is installed.
+///   3. `node` on PATH — the dev fallback (`tauri dev` runs from a machine that has Node).
+fn node_binary(app: &AppHandle) -> String {
+    if let Ok(explicit) = std::env::var("NEWVECTOR_NODE") {
+        if !explicit.is_empty() {
+            return explicit;
+        }
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let exe = if cfg!(windows) { "node.exe" } else { "node" };
+        let bundled = resource_dir.join("sidecar").join("runtime").join(exe);
+        if bundled.exists() {
+            return bundled.to_string_lossy().into_owned();
+        }
+    }
+    "node".into()
 }
 
 /// Runs the sidecar with `request` (a JSON string) on stdin and returns its stdout (a JSON
-/// `NodeToolResponse`). The Node runtime is resolved from the `NEWVECTOR_NODE` env var if set,
-/// otherwise `node` on PATH. Bundling a self-contained runtime is tracked as follow-up work.
+/// `NodeToolResponse`). The Node runtime and entry script are resolved from the bundled resources in
+/// a packaged app, falling back to `node` on PATH + the source script in dev (see `node_binary` /
+/// `sidecar_script`).
 fn run_sidecar(app: &AppHandle, request: String) -> Result<String, String> {
     let script = sidecar_script(app)?;
-    let node = std::env::var("NEWVECTOR_NODE").unwrap_or_else(|_| "node".into());
+    let node = node_binary(app);
 
     let mut child = Command::new(node)
         .arg(&script)

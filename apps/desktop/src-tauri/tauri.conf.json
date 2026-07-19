@@ -5,7 +5,7 @@
   "identifier": "ai.newvector.cowork",
   "build": {
     "beforeDevCommand": "pnpm --filter @newvector/browser dev",
-    "beforeBuildCommand": "pnpm --filter @newvector/browser build",
+    "beforeBuildCommand": "pnpm --filter @newvector/desktop sidecar:bundle && pnpm --filter @newvector/browser build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../../browser/dist"
   },
@@ -28,6 +28,10 @@
   "bundle": {
     "active": true,
     "targets": ["dmg", "app", "msi", "nsis", "appimage", "deb"],
+    "resources": {
+      "../sidecar/dist/tool-host.cjs": "sidecar/dist/tool-host.cjs",
+      "../sidecar/runtime/": "sidecar/runtime/"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
