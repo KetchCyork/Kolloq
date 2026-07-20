@@ -36,8 +36,8 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <img className="sidebar-brand-mark" src="/logo-mark.svg" alt="" width={22} height={22} />
-        <span className="sidebar-brand-name">New Vector Cowork</span>
+        <img className="sidebar-brand-mark" src="/logo-mark.svg" alt="" width={26} height={26} />
+        <span className="sidebar-brand-name">Open Work</span>
       </div>
 
       <button className="sidebar-new-btn" onClick={() => createSession()}>

@@ -302,7 +302,7 @@ export function AccountsManager() {
                 ) : (
                   <div className="subscription-hint">
                     {subscriptionNeedsDesktop
-                      ? `Subscription sign-in for ${PROVIDER_LABELS[draft.provider]} requires the New Vector Cowork desktop app — the browser can't complete the provider's login. Use an API key here, or add this account from the desktop app.`
+                      ? `Subscription sign-in for ${PROVIDER_LABELS[draft.provider]} requires the Open Work desktop app — the browser can't complete the provider's login. Use an API key here, or add this account from the desktop app.`
                       : `${PROVIDER_LABELS[draft.provider]} has no subscription sign-in yet — use an API key.`}
                   </div>
                 )}

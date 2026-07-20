@@ -1,24 +1,50 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f1115;
-  --panel: #161922;
-  --panel-alt: #1d212c;
-  --border: #262b38;
-  --text: #e6e8ef;
-  --text-dim: #8b8fa3;
-  --accent: #6366f1;
+  --bg: #12151d;
+  --panel: #1b2029;
+  --panel-alt: #232a37;
+  --sidebar: #0e1219;
+  --border: #2b3242;
+  --text: #e6e9f0;
+  --text-dim: #8a92a6;
+  --accent: #1fc29c;
+  --accent-soft: #14332b;
+  --on-accent: #06231b;
+  --green: #6fce8f;
+  --amber: #d9a94a;
+  --red: #e2705a;
+  --a1: #e08a63;
+  --a2: #5b9bd5;
+  --a3: #5cb87a;
+  --a4: #a97fd1;
+  --a5: #d9a94a;
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --serif: Georgia, "Times New Roman", serif;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f7f7fb;
+  --bg: #f5f6f8;
   --panel: #ffffff;
-  --panel-alt: #f0f1f6;
-  --border: #dcdfe8;
-  --text: #1b1d23;
-  --text-dim: #6b7080;
-  --accent: #6366f1;
+  --panel-alt: #eef0f4;
+  --sidebar: #eceef2;
+  --border: #dcdfe6;
+  --text: #1a2744;
+  --text-dim: #5f6b85;
+  --accent: #12a184;
+  --accent-soft: #d8f3ea;
+  --on-accent: #ffffff;
+  --green: #2e7d4b;
+  --amber: #9a6d1c;
+  --red: #b3402e;
+  --a1: #c96a43;
+  --a2: #3b6ea5;
+  --a3: #2e7d4b;
+  --a4: #7c53a5;
+  --a5: #9a6d1c;
+  --shadow: 0 1px 3px rgba(20, 30, 50, 0.08);
 }
 
 * {
@@ -39,6 +65,15 @@ body {
   font-size: 14px;
 }
 
+h1,
+h2,
+h3,
+.serif {
+  font-family: var(--serif);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
 button,
 input,
 textarea,
@@ -54,7 +89,7 @@ select {
 }
 
 .sidebar {
-  background: var(--panel);
+  background: var(--sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -64,12 +99,12 @@ select {
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 16px 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.02em;
+  gap: 10px;
+  padding: 18px 16px 6px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .sidebar-brand-mark {
@@ -85,7 +120,7 @@ select {
   margin: 8px 12px;
   background: var(--accent);
   border: none;
-  color: white;
+  color: var(--on-accent);
   border-radius: 8px;
   padding: 9px 12px;
   cursor: pointer;
