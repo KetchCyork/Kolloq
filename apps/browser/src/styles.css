@@ -1510,6 +1510,32 @@ select {
   margin-top: 0;
 }
 
+.council-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 20px;
+}
+
+.council-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.council-turn:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.council-question {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
 .council-round-divider {
   display: flex;
   align-items: center;
