@@ -3,7 +3,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{App, Manager};
 
 pub fn build(app: &App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "tray-show", "Show New Vector Cowork", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "tray-show", "Show OpenWork", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &PredefinedMenuItem::separator(app)?, &PredefinedMenuItem::quit(app, None)?])?;
 
     TrayIconBuilder::with_id("main-tray")

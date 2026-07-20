@@ -3,7 +3,9 @@ use keyring::Entry;
 /// Service namespace under which every credential is stored in the OS
 /// keychain (macOS Keychain, Windows Credential Manager, Linux Secret
 /// Service). Keeping one constant service name means an uninstall/reinstall
-/// can enumerate and clean up everything New Vector Cowork ever stored.
+/// can enumerate and clean up everything OpenWork ever stored. The service
+/// namespace stays `ai.newvector.cowork` for continuity so existing installs
+/// keep access to previously stored credentials after the OpenWork rebrand.
 const SERVICE: &str = "ai.newvector.cowork";
 
 fn entry(key: &str) -> Result<Entry, String> {
