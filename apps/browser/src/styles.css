@@ -1143,8 +1143,20 @@ select {
   cursor: pointer;
 }
 
-.sso-btn:hover {
+.sso-btn:hover:not(:disabled) {
   background: var(--panel-alt);
+}
+
+.sso-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.signin-note-inline {
+  margin-top: -2px;
+  margin-bottom: 9px;
+  padding: 6px 9px;
+  font-size: 11.5px;
 }
 
 .signin-or {

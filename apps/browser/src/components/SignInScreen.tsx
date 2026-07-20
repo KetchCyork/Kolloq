@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { signInWithOAuth, signInWithPassword, type OpenWorkSession } from "../openWorkAccount";
+import { signInWithPassword, type OpenWorkSession } from "../openWorkAccount";
+import { beginGoogleSignIn, googleSignInAvailable, googleUnavailableReason, runGoogleSignIn } from "../openWorkGoogleAuth";
 
 const TIERS = [
   { name: "Free", detail: "2 agents · 1 project", detail2: "1 council/mo" },
@@ -11,10 +12,22 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: OpenWorkSes
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function oauth(method: "google" | "apple" | "sso") {
+  const googleReady = googleSignInAvailable();
+
+  async function continueWithGoogle() {
     setError(null);
-    onSignedIn(signInWithOAuth(method));
+    setBusy(true);
+    try {
+      const session = await beginGoogleSignIn();
+      const signedIn = await runGoogleSignIn(session);
+      onSignedIn(signedIn);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function submitPassword(e: React.FormEvent) {
@@ -36,13 +49,20 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: OpenWorkSes
         <h1>Open Work</h1>
         <div className="signin-tag">Every model. One workspace. Better decisions.</div>
 
-        <button type="button" className="sso-btn" onClick={() => oauth("google")}>
-          Continue with Google
+        <button
+          type="button"
+          className="sso-btn"
+          onClick={continueWithGoogle}
+          disabled={!googleReady || busy}
+          title={googleReady ? undefined : googleUnavailableReason() ?? undefined}
+        >
+          {busy ? "Waiting for Google…" : "Continue with Google"}
         </button>
-        <button type="button" className="sso-btn" onClick={() => oauth("apple")}>
+        {!googleReady && <div className="signin-note signin-note-inline">{googleUnavailableReason()}</div>}
+        <button type="button" className="sso-btn" disabled title="Coming soon">
           Continue with Apple
         </button>
-        <button type="button" className="sso-btn" onClick={() => oauth("sso")}>
+        <button type="button" className="sso-btn" disabled title="Coming soon">
           🏢 Continue with company SSO
         </button>
 
@@ -73,7 +93,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: OpenWorkSes
             />
           </div>
           {error && <div className="signin-error">{error}</div>}
-          <button type="submit" className="primary-btn signin-submit">
+          <button type="submit" className="primary-btn signin-submit" disabled={busy}>
             Sign in
           </button>
         </form>

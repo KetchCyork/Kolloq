@@ -15,6 +15,7 @@ pub fn run() {
             keychain::get_credential,
             keychain::delete_credential,
             oauth::oauth_token_request,
+            oauth::google_oauth_capture,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;

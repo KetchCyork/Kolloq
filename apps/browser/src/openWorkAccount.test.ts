@@ -18,7 +18,7 @@ class MemoryStorage {
 
 (globalThis as unknown as { localStorage: Storage }).localStorage = new MemoryStorage() as unknown as Storage;
 
-import { loadOpenWorkSession, signInWithOAuth, signInWithPassword, signOutOpenWork } from "./openWorkAccount";
+import { loadOpenWorkSession, signInWithPassword, signOutOpenWork } from "./openWorkAccount";
 
 beforeEach(() => {
   signOutOpenWork();
@@ -45,14 +45,6 @@ describe("signInWithPassword", () => {
 
   it("rejects an empty email", () => {
     expect(() => signInWithPassword("   ")).toThrow(/email/i);
-  });
-});
-
-describe("signInWithOAuth", () => {
-  it("mints and persists a session for the chosen provider", () => {
-    const session = signInWithOAuth("google");
-    expect(session.method).toBe("google");
-    expect(loadOpenWorkSession()).toEqual(session);
   });
 });
 

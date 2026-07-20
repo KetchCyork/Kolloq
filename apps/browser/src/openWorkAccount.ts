@@ -38,7 +38,9 @@ export function loadOpenWorkSession(): OpenWorkSession | null {
   }
 }
 
-function persistOpenWorkSession(session: OpenWorkSession): void {
+/** Persists a session to local storage. Used by the email/password form and the real Google flow
+ * (see openWorkGoogleAuth.ts), which produces its session from a Google-verified id_token. */
+export function persistOpenWorkSession(session: OpenWorkSession): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
@@ -48,12 +50,10 @@ export function signOutOpenWork(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 
-/** Stub sign-in for OAuth/SSO buttons. Replace with a real redirect + token exchange later. */
-export function signInWithOAuth(method: Extract<SignInMethod, "google" | "apple" | "sso">): OpenWorkSession {
-  const session: OpenWorkSession = { email: `${method}-user@openwork.local`, method, signedInAt: Date.now() };
-  persistOpenWorkSession(session);
-  return session;
-}
+// Google "Continue with Google" is a real OpenID Connect sign-in — see openWorkGoogleAuth.ts.
+// Apple and company-SSO have no real path without an Open Work backend, so the UI disables those
+// buttons rather than minting a fake session (the previous stub here did the latter, which is what
+// made "Continue with Google" drop straight into the app without verifying anything).
 
 /** Stub sign-in for the email/password form. Replace with a real API call later. */
 export function signInWithPassword(email: string): OpenWorkSession {

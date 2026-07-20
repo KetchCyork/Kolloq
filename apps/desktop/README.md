@@ -52,6 +52,49 @@ in `src-tauri/`.
 The browser build's existing behavior (key inline in IndexedDB) is
 unchanged — this only activates under Tauri.
 
+## "Continue with Google" account sign-in
+
+The Open Work account gate (`apps/browser/src/components/SignInScreen.tsx`)
+offers a real Google sign-in — OpenID Connect on top of OAuth 2.0 with PKCE,
+implemented in `apps/browser/src/openWorkGoogleAuth.ts` plus the Rust
+`google_oauth_capture` loopback command in `src-tauri/src/oauth.rs`. The flow:
+
+1. The frontend mints PKCE/`state`/`nonce` and builds Google's real authorize
+   URL (`accounts.google.com/o/oauth2/v2/auth`).
+2. Rust binds a one-shot loopback listener on `127.0.0.1:8765` and the user is
+   sent to Google's consent screen in their system browser.
+3. Google redirects back to the loopback with an authorization `code`, which
+   Rust captures and returns.
+4. The code is exchanged for tokens via the `oauth_token_request` command
+   (Google's token endpoint, like Anthropic's, is not callable from a browser
+   tab), and the user's verified email is read from the returned `id_token`
+   (issuer/audience/nonce/expiry/`email_verified` all checked).
+
+Google removed the out-of-band "paste the code" flow in 2022, so native apps
+must use this loopback redirect — that's why it lives in the desktop shell
+only. In the plain browser build the Google button is disabled with an
+explanatory note; it never mints a fake session.
+
+**Required credential — a Google OAuth Client ID (owner: CEO).** Until one is
+provisioned the Google button is disabled ("Google sign-in isn't configured
+yet") rather than faking a login. To enable it:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create (or
+   reuse) a project and configure the OAuth consent screen (External; app name
+   "OpenWork"; add your account as a test user while it's unverified).
+2. Under **APIs & Services → Credentials → Create credentials → OAuth client
+   ID**, choose application type **Desktop app**. No client secret is needed
+   (PKCE). Google accepts the `http://127.0.0.1` loopback redirect for desktop
+   clients automatically.
+3. Provide the resulting Client ID to the build via the
+   `VITE_GOOGLE_OAUTH_CLIENT_ID` env var (e.g. an untracked `apps/browser/.env`
+   with `VITE_GOOGLE_OAUTH_CLIENT_ID=<id>.apps.googleusercontent.com`, or as a
+   CI/build environment variable). No code change required — the button turns
+   on automatically once it's set.
+
+Apple and company-SSO have no working path without an Open Work backend, so
+those buttons are disabled ("Coming soon") instead of minting fake sessions.
+
 ## Native menu and system tray
 
 - `src/menu.rs` builds the OS-native menu bar (macOS app menu with
