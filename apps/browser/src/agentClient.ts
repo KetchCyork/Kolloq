@@ -42,6 +42,8 @@ export function runSessionTurn(
     model: session.providerConfig.model,
     apiKey: session.providerConfig.apiKey,
     baseURL: session.providerConfig.baseURL,
+    authType: session.providerConfig.authType,
+    accessToken: session.providerConfig.accessToken,
   });
 
   const runner = new AgentRunner({

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AccountsManager } from "./components/AccountsManager";
 import { ChatPanel } from "./components/ChatPanel";
+import { CouncilPanel } from "./components/CouncilPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { PreferencesPanel } from "./components/PreferencesPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -9,8 +10,18 @@ import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
-  const { ready, accounts, createSession, accountsManagerOpen, preferences, preferencesOpen, openPreferences, closePreferences } =
-    useStore();
+  const {
+    ready,
+    accounts,
+    createSession,
+    councilSessions,
+    activeSessionId,
+    accountsManagerOpen,
+    preferences,
+    preferencesOpen,
+    openPreferences,
+    closePreferences,
+  } = useStore();
 
   useEffect(() => {
     const teardown = setupDesktopIntegration({ onNewSession: () => createSession() });
@@ -47,10 +58,12 @@ export function App() {
     return <OnboardingWizard />;
   }
 
+  const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
+
   return (
     <div className="app">
       <Sidebar />
-      <ChatPanel />
+      {activeCouncilSession ? <CouncilPanel session={activeCouncilSession} /> : <ChatPanel />}
       {accountsManagerOpen && <AccountsManager />}
       {preferencesOpen && <PreferencesPanel />}
     </div>

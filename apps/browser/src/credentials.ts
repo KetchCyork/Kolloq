@@ -31,3 +31,16 @@ export async function deleteApiKey(sessionId: string): Promise<void> {
 export function accountCredentialKey(accountId: string): string {
   return `account:${accountId}`;
 }
+
+/** Keychain key for an account's OAuth subscription tokens, kept distinct from its API-key entry. */
+export function accountOAuthKey(accountId: string): string {
+  return `oauth:${accountId}`;
+}
+
+/**
+ * Opens a URL in the user's browser for OAuth login. `window.open` works in the plain browser
+ * build and inside the Tauri webview (which routes external navigations to the system browser).
+ */
+export function openExternalUrl(url: string): void {
+  window.open(url, "_blank", "noopener,noreferrer");
+}

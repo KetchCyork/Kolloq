@@ -1,5 +1,6 @@
 mod keychain;
 mod menu;
+mod oauth;
 mod tray;
 
 use tauri::{Emitter, WindowEvent};
@@ -13,6 +14,7 @@ pub fn run() {
             keychain::set_credential,
             keychain::get_credential,
             keychain::delete_credential,
+            oauth::oauth_token_request,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;

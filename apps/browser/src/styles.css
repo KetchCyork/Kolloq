@@ -822,6 +822,42 @@ select {
   gap: 8px;
 }
 
+.auth-type-toggle {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.auth-type-toggle .settings-btn.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.auth-type-toggle .settings-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.subscription-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-alt);
+}
+
+.subscription-status {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.subscription-hint {
+  font-size: 12px;
+  color: var(--text-dim, #888);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
 .primary-btn {
   background: var(--accent);
   border: none;
@@ -1042,4 +1078,232 @@ select {
 
 .toggle-switch input:checked + .toggle-track::after {
   transform: translateX(16px);
+}
+
+/* Advisory Council */
+
+.sidebar-new-council-btn {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.council-setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.council-member-row {
+  display: grid;
+  grid-template-columns: 20px minmax(160px, 1fr) minmax(140px, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.council-member-index {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+}
+
+.council-member-row select,
+.council-member-row input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: var(--text);
+}
+
+.council-member-remove {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  height: 28px;
+  cursor: pointer;
+}
+
+.council-member-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.council-add-member {
+  align-self: flex-start;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.council-add-member:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.council-setup-error {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.council-setup-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.council-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.council-turn:last-child {
+  border-bottom: none;
+}
+
+.council-question {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.council-rounds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.council-round {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.council-round-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.council-position {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.council-position-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.council-position-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.council-position-role {
+  font-size: 10px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 6px;
+}
+
+.council-stance-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--border);
+  text-transform: capitalize;
+}
+
+.council-stance-badge.concur {
+  background: #065f46;
+}
+
+.council-stance-badge.dissent {
+  background: #7f1d1d;
+}
+
+.council-cost-note {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.council-position-reason {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.council-position-content {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.council-dropped {
+  font-size: 12px;
+  color: #f87171;
+}
+
+.council-answer {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.council-answer.no-consensus {
+  border-color: #d97706;
+}
+
+.council-answer-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.council-answer-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.council-total-cost {
+  margin-top: 8px;
+  margin-left: 0;
+}
+
+.council-live-status {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.council-composer textarea {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  resize: none;
+  min-height: 44px;
+  max-height: 160px;
 }

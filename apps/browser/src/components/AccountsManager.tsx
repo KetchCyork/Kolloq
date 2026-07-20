@@ -1,18 +1,35 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import type { Account, ProviderName } from "../types";
+import {
+  beginSubscriptionAuth,
+  completeSubscriptionAuth,
+  launchSubscriptionLogin,
+  providerSupportsSubscription,
+  subscriptionSignInAvailable,
+  type SubscriptionAuthSession,
+} from "../subscriptionAuth";
+import type { Account, AccountAuthType, OAuthCredential, ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
 
 interface DraftAccount {
   label: string;
   provider: ProviderName;
   model: string;
+  authType: AccountAuthType;
   apiKey: string;
   baseURL: string;
+  oauth?: OAuthCredential;
 }
 
 function blankDraft(): DraftAccount {
-  return { label: "", provider: "anthropic", model: PROVIDER_DEFAULT_MODELS.anthropic, apiKey: "", baseURL: "" };
+  return {
+    label: "",
+    provider: "anthropic",
+    model: PROVIDER_DEFAULT_MODELS.anthropic,
+    authType: "api_key",
+    apiKey: "",
+    baseURL: "",
+  };
 }
 
 function draftFromAccount(account: Account): DraftAccount {
@@ -20,8 +37,10 @@ function draftFromAccount(account: Account): DraftAccount {
     label: account.label,
     provider: account.provider,
     model: account.model,
+    authType: account.authType ?? "api_key",
     apiKey: "",
     baseURL: account.baseURL ?? "",
+    oauth: account.oauth,
   };
 }
 
@@ -30,40 +49,108 @@ export function AccountsManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(accounts.length === 0);
   const [draft, setDraft] = useState<DraftAccount>(blankDraft());
+  const [authSession, setAuthSession] = useState<SubscriptionAuthSession | null>(null);
+  const [authCode, setAuthCode] = useState("");
+  const [authStatus, setAuthStatus] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  function resetAuthState() {
+    setAuthSession(null);
+    setAuthCode("");
+    setAuthStatus(null);
+    setAuthBusy(false);
+  }
 
   function startAdd() {
     setDraft(blankDraft());
     setEditingId(null);
+    resetAuthState();
     setAdding(true);
   }
 
   function startEdit(account: Account) {
     setDraft(draftFromAccount(account));
     setEditingId(account.id);
+    resetAuthState();
     setAdding(true);
   }
 
   function cancelForm() {
     setAdding(false);
     setEditingId(null);
+    resetAuthState();
+  }
+
+  function changeProvider(provider: ProviderName) {
+    const authType = subscriptionSignInAvailable(provider) ? draft.authType : "api_key";
+    setDraft({ ...draft, provider, model: PROVIDER_DEFAULT_MODELS[provider], authType });
+    resetAuthState();
+  }
+
+  function changeAuthType(authType: AccountAuthType) {
+    setDraft({ ...draft, authType });
+    resetAuthState();
+  }
+
+  async function startSignIn() {
+    resetAuthState();
+    try {
+      const session = await beginSubscriptionAuth(draft.provider);
+      setAuthSession(session);
+      launchSubscriptionLogin(session);
+      setAuthStatus("Sign in in your browser, then paste the authorization code below.");
+    } catch (err) {
+      setAuthStatus(err instanceof Error ? err.message : "Could not start sign-in.");
+    }
+  }
+
+  async function finishSignIn() {
+    if (!authSession) return;
+    setAuthBusy(true);
+    setAuthStatus("Exchanging authorization code…");
+    try {
+      const oauth = await completeSubscriptionAuth(authSession, authCode);
+      setDraft((current) => ({ ...current, oauth }));
+      setAuthSession(null);
+      setAuthCode("");
+      setAuthStatus("Connected ✓");
+    } catch (err) {
+      setAuthStatus(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   function save() {
     const label = draft.label.trim() || `${PROVIDER_LABELS[draft.provider]} account`;
     const model = draft.model.trim() || PROVIDER_DEFAULT_MODELS[draft.provider];
     const baseURL = draft.baseURL.trim() || undefined;
+    const authType = draft.authType;
+
+    if (authType === "subscription" && !draft.oauth) {
+      setAuthStatus("Sign in to the subscription before saving.");
+      return;
+    }
 
     if (editingId) {
-      const patch: Partial<Omit<Account, "id" | "createdAt">> = { label, provider: draft.provider, model, baseURL };
-      if (draft.apiKey.trim()) patch.apiKey = draft.apiKey.trim();
+      const patch: Partial<Omit<Account, "id" | "createdAt">> = { label, provider: draft.provider, model, baseURL, authType };
+      if (authType === "subscription") {
+        patch.apiKey = undefined;
+        if (draft.oauth) patch.oauth = draft.oauth;
+      } else {
+        patch.oauth = undefined;
+        if (draft.apiKey.trim()) patch.apiKey = draft.apiKey.trim();
+      }
       updateAccount(editingId, patch);
     } else {
       createAccount({
         label,
         provider: draft.provider,
         model,
-        apiKey: draft.apiKey.trim() || undefined,
+        authType,
         baseURL,
+        apiKey: authType === "api_key" ? draft.apiKey.trim() || undefined : undefined,
+        oauth: authType === "subscription" ? draft.oauth : undefined,
       });
     }
     cancelForm();
@@ -75,6 +162,11 @@ export function AccountsManager() {
       if (editingId === account.id) cancelForm();
     }
   }
+
+  const providerHasOAuth = providerSupportsSubscription(draft.provider);
+  const supportsSubscription = subscriptionSignInAvailable(draft.provider);
+  const subscriptionNeedsDesktop = providerHasOAuth && !supportsSubscription;
+  const connected = !!draft.oauth;
 
   return (
     <div className="modal-overlay" onClick={closeAccountsManager}>
@@ -97,7 +189,7 @@ export function AccountsManager() {
               <div className="account-row-meta">
                 <div className="account-row-label">{account.label}</div>
                 <div className="account-row-sub">
-                  {PROVIDER_LABELS[account.provider]} · {account.model}
+                  {PROVIDER_LABELS[account.provider]} · {account.authType === "subscription" ? "Subscription" : account.model}
                 </div>
               </div>
               <button className="settings-btn" onClick={() => startEdit(account)}>
@@ -127,10 +219,7 @@ export function AccountsManager() {
               <select
                 id="account-provider"
                 value={draft.provider}
-                onChange={(e) => {
-                  const provider = e.target.value as ProviderName;
-                  setDraft({ ...draft, provider, model: PROVIDER_DEFAULT_MODELS[provider] });
-                }}
+                onChange={(e) => changeProvider(e.target.value as ProviderName)}
               >
                 {PROVIDER_NAMES.map((name) => (
                   <option key={name} value={name}>
@@ -138,6 +227,36 @@ export function AccountsManager() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="field span-full">
+              <label>Account type</label>
+              <div className="auth-type-toggle" role="radiogroup" aria-label="Account type">
+                <button
+                  type="button"
+                  className={`settings-btn${draft.authType === "api_key" ? " active" : ""}`}
+                  aria-pressed={draft.authType === "api_key"}
+                  onClick={() => changeAuthType("api_key")}
+                >
+                  API key
+                </button>
+                <button
+                  type="button"
+                  className={`settings-btn${draft.authType === "subscription" ? " active" : ""}`}
+                  aria-pressed={draft.authType === "subscription"}
+                  disabled={!supportsSubscription}
+                  title={
+                    supportsSubscription
+                      ? undefined
+                      : subscriptionNeedsDesktop
+                        ? "Subscription sign-in requires the desktop app (the browser can't complete the provider's login)."
+                        : "This provider has no subscription sign-in yet."
+                  }
+                  onClick={() => changeAuthType("subscription")}
+                >
+                  Subscription
+                </button>
+              </div>
             </div>
 
             <div className="field">
@@ -149,7 +268,46 @@ export function AccountsManager() {
               />
             </div>
 
-            {draft.provider === "ollama" ? (
+            {draft.authType === "subscription" ? (
+              <div className="field span-full subscription-panel">
+                {supportsSubscription ? (
+                  <>
+                    <div className="subscription-status">
+                      {connected ? "Connected ✓" : "Not connected"}
+                    </div>
+                    <button className="settings-btn" onClick={startSignIn} disabled={authBusy}>
+                      {connected ? `Re-connect ${PROVIDER_LABELS[draft.provider]}` : `Sign in to ${PROVIDER_LABELS[draft.provider]}`}
+                    </button>
+                    {authSession && (
+                      <div className="field" style={{ marginTop: 8 }}>
+                        <label htmlFor="account-authcode">Authorization code</label>
+                        <input
+                          id="account-authcode"
+                          placeholder="Paste the code from the login page"
+                          value={authCode}
+                          onChange={(e) => setAuthCode(e.target.value)}
+                        />
+                        <button
+                          className="primary-btn"
+                          style={{ marginTop: 8 }}
+                          onClick={finishSignIn}
+                          disabled={authBusy || !authCode.trim()}
+                        >
+                          {authBusy ? "Connecting…" : "Connect"}
+                        </button>
+                      </div>
+                    )}
+                    {authStatus && <div className="subscription-hint">{authStatus}</div>}
+                  </>
+                ) : (
+                  <div className="subscription-hint">
+                    {subscriptionNeedsDesktop
+                      ? `Subscription sign-in for ${PROVIDER_LABELS[draft.provider]} requires the New Vector Cowork desktop app — the browser can't complete the provider's login. Use an API key here, or add this account from the desktop app.`
+                      : `${PROVIDER_LABELS[draft.provider]} has no subscription sign-in yet — use an API key.`}
+                  </div>
+                )}
+              </div>
+            ) : draft.provider === "ollama" ? (
               <div className="field">
                 <label htmlFor="account-baseurl">Ollama base URL</label>
                 <input

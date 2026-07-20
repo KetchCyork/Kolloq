@@ -4,6 +4,7 @@ export * from "./tools/permissions.js";
 export * from "./tools/builtin/webSearch.js";
 export * from "./agent/runner.js";
 export * from "./agent/orchestrator.js";
+export * from "./agent/council.js";
 
 /**
  * Node-only builtin tools (fs/shell/codeInterpreter) and the disk-based plugin

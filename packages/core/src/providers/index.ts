@@ -20,6 +20,10 @@ export interface CreateProviderOptions {
   model?: string;
   apiKey?: string;
   baseURL?: string;
+  /** `"subscription"` authenticates via an OAuth bearer token (`accessToken`) instead of `apiKey`. */
+  authType?: "api_key" | "subscription";
+  /** OAuth access token used when `authType` is `"subscription"`. */
+  accessToken?: string;
 }
 
 /** Single entry point for constructing a `ChatProvider` from a provider name + config. */
