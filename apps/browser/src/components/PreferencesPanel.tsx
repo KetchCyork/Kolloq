@@ -19,7 +19,13 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 
 const KEYBIND_ACTIONS = Object.keys(KEYBIND_ACTION_LABELS) as KeybindAction[];
 
-export function PreferencesPanel() {
+export function PreferencesPanel({
+  accountEmail,
+  onSignOut,
+}: {
+  accountEmail?: string;
+  onSignOut?: () => void;
+}) {
   const { preferences, updatePreferences, closePreferences } = useStore();
   const [recording, setRecording] = useState<KeybindAction | null>(null);
 
@@ -88,6 +94,23 @@ export function PreferencesPanel() {
             />
           </div>
         </div>
+
+        {onSignOut && (
+          <>
+            <div className="settings-section-label">Account</div>
+            <div className="settings-panel">
+              <div className="field span-full telemetry-row">
+                <div className="telemetry-text">
+                  <span className="telemetry-label">{accountEmail}</span>
+                  <span className="telemetry-hint">Signed in to Open Work. Your chats and files stay on this device.</span>
+                </div>
+                <button type="button" className="settings-btn" onClick={onSignOut}>
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="settings-section-label">Privacy</div>
         <div className="settings-panel">

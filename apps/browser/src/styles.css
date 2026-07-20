@@ -1041,6 +1041,148 @@ select {
   font-weight: 700;
 }
 
+/* Open Work sign-in (account gate, spec §8.1) */
+.signin-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(1200px 600px at 50% -10%, var(--accent-soft) 0%, var(--sidebar) 60%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+
+.signin-card {
+  width: 400px;
+  max-width: 92vw;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 30px 32px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.signin-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.signin-card h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: center;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.signin-tag {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.sso-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 9px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sso-btn:hover {
+  background: var(--panel-alt);
+}
+
+.signin-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  margin: 14px 0;
+}
+
+.signin-or::before,
+.signin-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.signin-field {
+  margin-bottom: 10px;
+}
+
+.signin-error {
+  color: var(--red);
+  font-size: 12.5px;
+  margin-bottom: 10px;
+}
+
+.signin-submit {
+  width: 100%;
+  padding: 10px;
+  margin-top: 4px;
+}
+
+.signin-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-top: 16px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.signin-tier-strip {
+  display: flex;
+  gap: 10px;
+  width: 400px;
+  max-width: 92vw;
+}
+
+.signin-tier {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.signin-tier b {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+:root[data-theme="light"] .signin-tier {
+  background: rgba(20, 30, 50, 0.04);
+}
+
 /* Telemetry toggle row */
 .telemetry-row {
   flex-direction: row;

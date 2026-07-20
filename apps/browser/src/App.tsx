@@ -1,15 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AccountsManager } from "./components/AccountsManager";
 import { ChatPanel } from "./components/ChatPanel";
 import { CouncilPanel } from "./components/CouncilPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { PreferencesPanel } from "./components/PreferencesPanel";
+import { SignInScreen } from "./components/SignInScreen";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
+import { loadOpenWorkSession, signOutOpenWork, type OpenWorkSession } from "./openWorkAccount";
 import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
+  // Open Work account gate (spec §8.1) — separate from the LLM provider connections below.
+  const [openWorkSession, setOpenWorkSession] = useState<OpenWorkSession | null>(() => loadOpenWorkSession());
+
   const {
     ready,
     accounts,
@@ -50,6 +55,10 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [preferences, preferencesOpen, createSession, openPreferences, closePreferences]);
 
+  if (!openWorkSession) {
+    return <SignInScreen onSignedIn={setOpenWorkSession} />;
+  }
+
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
   }
@@ -60,12 +69,19 @@ export function App() {
 
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
 
+  function signOutOfOpenWork() {
+    signOutOpenWork();
+    setOpenWorkSession(null);
+  }
+
   return (
     <div className="app">
       <Sidebar />
       {activeCouncilSession ? <CouncilPanel session={activeCouncilSession} /> : <ChatPanel />}
       {accountsManagerOpen && <AccountsManager />}
-      {preferencesOpen && <PreferencesPanel />}
+      {preferencesOpen && (
+        <PreferencesPanel accountEmail={openWorkSession.email} onSignOut={signOutOfOpenWork} />
+      )}
     </div>
   );
 }
