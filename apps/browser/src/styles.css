@@ -148,36 +148,40 @@ select {
   margin-bottom: 10px;
 }
 
-.sidebar-nav-item {
+.nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
   background: none;
   border: none;
   color: var(--text);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 9px;
+  padding: 8px 12px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
   width: 100%;
+  margin-bottom: 2px;
 }
 
-.sidebar-nav-item:hover {
+.nav-item svg {
+  width: 17px;
+  height: 17px;
+  stroke: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
   background: var(--panel-alt);
 }
 
-.sidebar-nav-icon {
-  color: var(--text-dim);
+.nav-item.active {
+  background: var(--accent-soft);
+  font-weight: 600;
 }
 
-.sidebar-nav-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-dim);
-  background: var(--panel-alt);
-  border-radius: 999px;
-  padding: 1px 7px;
+.nav-item.active svg {
+  stroke: var(--accent);
 }
 
 .sidebar-section-label {
@@ -207,27 +211,38 @@ select {
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 0 8px;
 }
 
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+.convo {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 12px;
   border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
-  margin-bottom: 4px;
-  border: 1px solid transparent;
 }
 
-.session-item:hover {
+.convo:hover {
   background: var(--panel-alt);
 }
 
-.session-item.active {
-  background: var(--panel-alt);
-  border-color: var(--accent);
+.convo.active {
+  background: var(--accent-soft);
+}
+
+.convo small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .avatar {
@@ -241,24 +256,17 @@ select {
   flex-shrink: 0;
 }
 
-.session-item-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.session-item-name {
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.session-item-sub {
-  font-size: 11px;
-  color: var(--text-dim);
+.sidebar-footer .avatar {
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .live-dot {
+  position: absolute;
+  top: 8px;
+  right: 10px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -278,13 +286,43 @@ select {
 }
 
 .sidebar-footer {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+}
+
+.sidebar-footer-identity {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-pill {
+  margin-left: auto;
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-io-bar {
   padding: 10px;
   border-top: 1px solid var(--border);
   display: flex;
   gap: 8px;
 }
 
-.sidebar-footer button {
+.sidebar-io-bar button {
   flex: 1;
   background: var(--panel-alt);
   border: 1px solid var(--border);
@@ -295,7 +333,7 @@ select {
   font-size: 12px;
 }
 
-.sidebar-footer button:hover {
+.sidebar-io-bar button:hover {
   border-color: var(--accent);
 }
 
@@ -1265,62 +1303,165 @@ select {
   color: var(--text);
 }
 
-.council-setup-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  grid-column: 1 / -1;
+/* Generic badge/hint/meter primitives shared by the setup, live, and Decision Brief views
+ * (ported from the Open Work mockup, docs/openwork-mockup.html, onto this app's own token names). */
+.badge {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.council-member-row {
-  display: grid;
-  grid-template-columns: 20px minmax(160px, 1fr) minmax(140px, 1fr) 28px;
-  align-items: center;
-  gap: 8px;
+.badge.green {
+  background: #17301f;
+  color: var(--green);
 }
 
-.council-member-index {
-  color: var(--text-dim);
-  font-size: 12px;
-  text-align: center;
-}
-
-.council-member-row select,
-.council-member-row input {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 9px;
-  color: var(--text);
-}
-
-.council-member-remove {
+.badge.gray {
   background: var(--panel-alt);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  height: 28px;
-  cursor: pointer;
+  color: var(--text-dim);
 }
 
-.council-member-remove:disabled {
-  opacity: 0.4;
+.badge.red {
+  background: #3a1e19;
+  color: var(--red);
+}
+
+.badge.amber {
+  background: #35290f;
+  color: var(--amber);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 5px;
+}
+
+.meter {
+  height: 10px;
+  border-radius: 10px;
+  background: var(--border);
+  overflow: hidden;
+  margin: 8px 0 4px;
+}
+
+.meter > div {
+  height: 100%;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--amber), var(--green));
+  transition: width 0.4s;
+}
+
+.settings-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.council-add-member {
-  align-self: flex-start;
-  background: var(--panel-alt);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 12px;
+/* ---- Setup ---- */
+.council-setup-page {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 32px;
 }
 
-.council-add-member:disabled {
-  opacity: 0.4;
+.council-setup-page-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.council-rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.council-cost-estimate {
+  margin: 4px 0 18px;
+}
+
+.council-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---- Setup: seat picker ---- */
+.council-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.seat {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  background: none;
+  width: 100%;
+}
+
+.seat.filled {
+  border-style: solid;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: default;
+}
+
+.seat .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.seat b {
+  font-size: 13px;
+}
+
+.seat small {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.seat-stance-input {
+  width: 90%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--text);
+  text-align: center;
+}
+
+.seat-remove {
+  position: relative;
+  top: -2px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.seat-remove:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
@@ -1334,111 +1475,148 @@ select {
   font-size: 13px;
 }
 
-.council-turn {
+/* ---- Live split-view ---- */
+.council-layout {
+  flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  min-height: 0;
 }
 
-.council-turn:last-child {
-  border-bottom: none;
+.council-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
 }
 
-.council-question {
-  font-weight: 600;
-  font-size: 15px;
+.council-side {
+  width: 280px;
+  min-width: 280px;
+  border-left: 1px solid var(--border);
+  padding: 18px;
+  overflow-y: auto;
+  background: var(--bg);
 }
 
-.council-rounds {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.council-round {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.council-round-label {
+.council-side-h {
   font-size: 11px;
-  color: var(--text-dim);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  margin: 18px 0 8px;
 }
 
-.council-position {
-  background: var(--panel-alt);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
+.council-side-h:first-child {
+  margin-top: 0;
 }
 
-.council-position-head {
+.council-round-divider {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.council-position-name {
-  font-weight: 600;
-  font-size: 12px;
-}
-
-.council-position-role {
-  font-size: 10px;
+  gap: 10px;
   color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 18px 0 12px;
 }
 
-.council-stance-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 10px;
+.council-round-divider::before,
+.council-round-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
   background: var(--border);
-  text-transform: capitalize;
 }
 
-.council-stance-badge.concur {
-  background: #065f46;
+.council-msg {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
-.council-stance-badge.dissent {
-  background: #7f1d1d;
+.council-msg-who {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.council-cost-note {
-  margin-left: auto;
-  font-size: 10px;
+.council-msg-meta {
+  font-size: 11px;
   color: var(--text-dim);
+  margin-bottom: 3px;
 }
 
-.council-position-reason {
+.council-msg-meta b {
+  color: var(--text);
+}
+
+.council-msg.mod .council-msg-meta b {
+  color: var(--accent);
+}
+
+.council-msg-badges {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.council-msg-reason {
   font-size: 12px;
   color: var(--text-dim);
   font-style: italic;
-  margin-top: 4px;
-}
-
-.council-position-content {
-  margin-top: 4px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  margin-top: 3px;
 }
 
 .council-dropped {
   font-size: 12px;
   color: #f87171;
+  margin-bottom: 16px;
+}
+
+.council-score-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  margin-bottom: 7px;
+}
+
+.council-score-row .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.council-score-row .val {
+  margin-left: auto;
+}
+
+.council-side-kv {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.council-side-kv b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.council-live-status {
+  color: var(--text-dim);
+  font-size: 13px;
 }
 
 .council-answer {
@@ -1446,6 +1624,7 @@ select {
   border: 1px solid var(--accent);
   border-radius: 10px;
   padding: 12px 16px;
+  margin-top: 6px;
 }
 
 .council-answer.no-consensus {
@@ -1465,16 +1644,6 @@ select {
   word-break: break-word;
 }
 
-.council-total-cost {
-  margin-top: 8px;
-  margin-left: 0;
-}
-
-.council-live-status {
-  color: var(--text-dim);
-  font-size: 13px;
-}
-
 .council-composer textarea {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1483,4 +1652,59 @@ select {
   resize: none;
   min-height: 44px;
   max-height: 160px;
+}
+
+/* ---- Decision Brief ---- */
+.council-brief {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  box-shadow: var(--shadow);
+}
+
+.council-brief h3 {
+  font-size: 18px;
+  margin: 0 0 2px;
+}
+
+.council-brief-meta {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.council-brief h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin: 18px 0 8px;
+}
+
+.council-brief p,
+.council-brief li {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.council-brief ul {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.council-brief-dissent {
+  border-left: 3px solid var(--a4);
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: 0 8px 8px 0;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.council-brief-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
 }

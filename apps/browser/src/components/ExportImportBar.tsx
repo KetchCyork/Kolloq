@@ -37,7 +37,7 @@ export function ExportImportBar() {
   }
 
   return (
-    <div className="sidebar-footer">
+    <div className="sidebar-io-bar">
       <button onClick={handleExport}>Export JSON</button>
       <button onClick={() => fileInputRef.current?.click()}>Import JSON</button>
       <input
