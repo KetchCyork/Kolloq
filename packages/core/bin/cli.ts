@@ -5,7 +5,7 @@ import { AgentRunner } from "../src/agent/runner.js";
 import { AgentOrchestrator, type OrchestratedAgentEvent } from "../src/agent/orchestrator.js";
 import { createProvider, type ProviderName } from "../src/providers/index.js";
 import { ToolRegistry, defineTool } from "../src/tools/registry.js";
-import { createFileTools, createShellTool, createWebSearchTool, createCodeInterpreterTool } from "../src/tools/builtin/index.js";
+import { createFileTools, createShellTool, createWebSearchTool, createCodeInterpreterTool, createOfficeTools } from "../src/tools/builtin/index.js";
 import { loadToolPlugins } from "../src/tools/plugins.js";
 
 interface CliArgs {
@@ -73,6 +73,7 @@ async function buildTools(args: CliArgs): Promise<ToolRegistry> {
   );
 
   for (const tool of createFileTools(args.sandboxDir)) tools.register(tool);
+  for (const tool of createOfficeTools(args.sandboxDir)) tools.register(tool);
   tools.register(createCodeInterpreterTool());
 
   if (args.allowShell) {

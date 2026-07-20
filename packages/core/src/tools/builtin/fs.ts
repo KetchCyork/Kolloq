@@ -3,62 +3,9 @@ import path from "node:path";
 import { z } from "zod";
 import { defineTool } from "../registry.js";
 import type { ToolDefinition } from "../../providers/types.js";
+import { resolveSandboxedRead, resolveSandboxedWrite } from "./sandbox.js";
 
 const MAX_READ_BYTES = 1_000_000;
-
-function assertLexicallyInside(resolvedRoot: string, lexical: string, requested: string) {
-  if (lexical !== resolvedRoot && !lexical.startsWith(resolvedRoot + path.sep)) {
-    throw new Error(`Path "${requested}" escapes the sandboxed root directory`);
-  }
-}
-
-function assertRealpathInside(realRoot: string, real: string, requested: string) {
-  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
-    throw new Error(`Path "${requested}" escapes the sandboxed root directory via symlink`);
-  }
-}
-
-/**
- * Resolves `requested` against `rootDir` for a read operation. Checks both the lexical path
- * and the realpath (following symlinks) so a symlink inside the sandbox pointing outside it
- * doesn't bypass containment. The file must exist (realpath throws ENOENT otherwise).
- */
-async function resolveSandboxedRead(rootDir: string, requested: string): Promise<string> {
-  const resolvedRoot = path.resolve(rootDir);
-  const lexical = path.resolve(resolvedRoot, requested);
-  assertLexicallyInside(resolvedRoot, lexical, requested);
-  const realRoot = await fs.realpath(resolvedRoot);
-  const real = await fs.realpath(lexical);
-  assertRealpathInside(realRoot, real, requested);
-  return real;
-}
-
-/**
- * Resolves `requested` against `rootDir` for a write operation. The file may not exist yet,
- * so realpath is applied to the nearest existing ancestor instead of the full path.
- */
-async function resolveSandboxedWrite(rootDir: string, requested: string): Promise<string> {
-  const resolvedRoot = path.resolve(rootDir);
-  const lexical = path.resolve(resolvedRoot, requested);
-  assertLexicallyInside(resolvedRoot, lexical, requested);
-  // Walk up to find the nearest existing ancestor to realpath-check, then reattach the tail.
-  const realRoot = await fs.realpath(resolvedRoot);
-  let ancestor = lexical;
-  const tail: string[] = [];
-  while (true) {
-    try {
-      const real = await fs.realpath(ancestor);
-      assertRealpathInside(realRoot, real, requested);
-      return path.join(real, ...tail);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-      tail.unshift(path.basename(ancestor));
-      const parent = path.dirname(ancestor);
-      if (parent === ancestor) throw new Error(`Path "${requested}" could not be resolved inside sandbox`);
-      ancestor = parent;
-    }
-  }
-}
 
 /**
  * File read/write tools sandboxed to `rootDir`. Every path is resolved and bounds-checked before

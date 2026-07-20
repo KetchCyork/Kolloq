@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="140" viewBox="0 0 480 140">
+  <!-- Open Work horizontal lockup for LIGHT backgrounds (navy wordmark). -->
+  <defs>
+    <linearGradient id="teal" x1="0.12" y1="0.05" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#41E8C6"/>
+      <stop offset="1" stop-color="#14B487"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(6,6) scale(0.125)">
+    <circle cx="512" cy="512" r="270" fill="none" stroke="url(#teal)" stroke-width="58"/>
+    <path d="M 384 432 L 456 604 L 512 500 L 568 604 L 640 432"
+          fill="none" stroke="url(#teal)" stroke-width="52"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="160" y="90" font-family="'SF Pro Display','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif"
+        font-size="60" font-weight="600" letter-spacing="0.5" fill="#16233F">Open Work</text>
+</svg>
