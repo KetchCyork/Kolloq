@@ -3,6 +3,7 @@ import { validateCouncilMembers } from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilSession } from "../types";
 import { CouncilSetupForm } from "./CouncilSetupForm";
+import { CouncilLiveView } from "./CouncilLiveView";
 import { CouncilTranscript } from "./CouncilTranscript";
 
 export function CouncilPanel({ session }: { session: CouncilSession }) {
@@ -113,7 +114,7 @@ export function CouncilPanel({ session }: { session: CouncilSession }) {
         </div>
       ) : (
         <>
-          <CouncilTranscript session={session} live={live} />
+          {live ? <CouncilLiveView session={session} live={live} /> : <CouncilTranscript session={session} />}
           {composer}
         </>
       )}
