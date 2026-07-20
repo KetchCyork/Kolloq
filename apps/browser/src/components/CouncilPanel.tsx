@@ -96,8 +96,8 @@ export function CouncilPanel({ session }: { session: CouncilSession }) {
       {settingsOpen && (
         <div className="settings-panel">
           <CouncilSetupForm
-            members={session.members}
-            onChange={(members) => updateCouncilSession(session.id, { members })}
+            session={session}
+            onChange={(patch) => updateCouncilSession(session.id, patch)}
           />
         </div>
       )}
