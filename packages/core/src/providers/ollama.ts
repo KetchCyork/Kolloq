@@ -5,6 +5,8 @@ import type { ChatProvider } from "./types.js";
 export interface OllamaProviderConfig {
   baseURL?: string;
   model?: string;
+  /** Custom `fetch` (desktop shell routes through Rust to bypass webview CORS). */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -16,6 +18,7 @@ export function createOllamaProvider(config: OllamaProviderConfig = {}): ChatPro
   const ollama = createOpenAICompatible({
     name: "ollama",
     baseURL: config.baseURL ?? "http://localhost:11434/v1",
+    fetch: config.fetchImpl,
   });
   return new AiSdkChatProvider("ollama", model, ollama(model));
 }

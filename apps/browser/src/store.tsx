@@ -371,9 +371,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
       capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
 
+      // Captures the most recent stream/provider error so a failed turn surfaces a visible ⚠️
+      // message instead of the empty assistant bubble the runner returns on error.
+      let turnError: string | undefined;
+
       const onEvent = (event: AgentEvent) => {
         if (event.type === "tool-call") {
           capture({ type: "tool_call", toolName: event.toolCall.name });
+        }
+        if (event.type === "error") {
+          turnError = event.error.message;
         }
         if (event.type === "error") {
           // AgentRunner emits this both for stream/provider failures and for tool execution
@@ -424,8 +431,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           providerConfig: resolveProviderConfig(session.providerConfig, accountsForTurn),
         };
         const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
-        const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
-        appendMessages(sessionId, storedTurn);
+        // Drop empty assistant messages (the runner returns `content: ""` when the stream errored)
+        // so a provider/CORS failure shows as a ⚠️ message rather than a silent blank bubble.
+        const meaningful = turn.filter(
+          (message) => (message.content && message.content.trim().length > 0) || (message.toolCalls?.length ?? 0) > 0,
+        );
+        if (meaningful.length > 0) {
+          const storedTurn: StoredMessage[] = meaningful.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
+          appendMessages(sessionId, storedTurn);
+        } else if (turnError) {
+          appendMessages(sessionId, [{ id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${turnError}` }]);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         capture({ type: "provider_error", provider: session.providerConfig.provider });

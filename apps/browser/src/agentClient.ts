@@ -1,6 +1,7 @@
 import type { AgentEvent, ChatAttachment, ChatMessage } from "@newvector/core";
 import { AgentRunner, createProvider, defineTool, ToolRegistry } from "@newvector/core";
 import { z } from "zod";
+import { getProviderFetch } from "./providerFetch";
 import type { AgentSession, StoredMessage } from "./types";
 
 function buildTools(): ToolRegistry {
@@ -44,6 +45,8 @@ export function runSessionTurn(
     baseURL: session.providerConfig.baseURL,
     authType: session.providerConfig.authType,
     accessToken: session.providerConfig.accessToken,
+    // Desktop shell: route inference through Rust so provider APIs aren't CORS-blocked by the webview.
+    fetchImpl: getProviderFetch(),
   });
 
   const runner = new AgentRunner({
