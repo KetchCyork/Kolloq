@@ -52,7 +52,9 @@ export function estimateCouncilCostRange(
 
 export function formatCouncilCostRange(estimate: CouncilCostRangeEstimate): string {
   if (estimate.allFree) return "~free (local)";
-  return `~$${estimate.lowUsd.toFixed(2)}–$${estimate.highUsd.toFixed(2)}`;
+  // 4 decimals, matching formatCostEstimate — a $0.00-$0.00 range on cheap models would otherwise
+  // read as "this is free" when it isn't.
+  return `~$${estimate.lowUsd.toFixed(4)}–$${estimate.highUsd.toFixed(4)}`;
 }
 
 /** Validates a council's member list before it can be saved or asked a question. Returns a

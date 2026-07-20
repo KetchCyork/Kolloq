@@ -514,7 +514,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await runCouncilTurn(
+      const result = await runCouncilTurn(
         session.members,
         accountsForTurn,
         session.maxRounds,
@@ -522,6 +522,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         question,
         onEvent,
       );
+      // On a moderator error, the "moderator-error" event only carries the error message — the
+      // engine's deterministic fallback synthesis (see Council.fallbackSynthesis) lives on the
+      // resolved result instead, so surface it here rather than leaving the turn's answer empty.
+      if (!liveTurn.answer && result.answer) {
+        liveTurn = { ...liveTurn, answer: result.answer };
+      }
     } catch (error) {
       // Council.run() itself never rejects (member/moderator errors surface as events); this only
       // fires for setup failures, e.g. a member's account was removed after validation passed.
