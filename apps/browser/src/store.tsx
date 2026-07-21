@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatAttachment, CouncilEvent, ToolCall } from "@newvector/core";
+import { classifyProviderError, type AgentEvent, type ChatAttachment, type CouncilEvent, type ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runSessionTurn } from "./agentClient";
 import { runCouncilTurn } from "./councilClient";
@@ -371,16 +371,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
       capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
 
-      // Captures the most recent stream/provider error so a failed turn surfaces a visible ⚠️
-      // message instead of the empty assistant bubble the runner returns on error.
-      let turnError: string | undefined;
+      // Captures the most recent stream/provider error so a failed turn surfaces a visibly distinct
+      // error message instead of the empty assistant bubble the runner returns on error.
+      let turnError: Error | undefined;
 
       const onEvent = (event: AgentEvent) => {
         if (event.type === "tool-call") {
           capture({ type: "tool_call", toolName: event.toolCall.name });
         }
         if (event.type === "error") {
-          turnError = event.error.message;
+          turnError = event.error;
         }
         if (event.type === "error") {
           // AgentRunner emits this both for stream/provider failures and for tool execution
@@ -440,13 +440,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const storedTurn: StoredMessage[] = meaningful.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
           appendMessages(sessionId, storedTurn);
         } else if (turnError) {
-          appendMessages(sessionId, [{ id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${turnError}` }]);
+          const classified = classifyProviderError(turnError);
+          appendMessages(sessionId, [
+            { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: classified },
+          ]);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const classified = classifyProviderError(error);
         capture({ type: "provider_error", provider: session.providerConfig.provider });
         appendMessages(sessionId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${message}` },
+          { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: classified },
         ]);
       } finally {
         setLive((prev) => {

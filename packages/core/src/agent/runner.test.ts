@@ -135,6 +135,33 @@ describe("AgentRunner", () => {
     expect(turn.filter((message) => message.role === "assistant")).toHaveLength(2);
   });
 
+  it("catches a provider.chat rejection and emits an error event instead of throwing", async () => {
+    class FailingProvider implements ChatProvider {
+      readonly id = "failing";
+      readonly model = "failing-model";
+      async chat(): Promise<ChatResponse> {
+        throw new Error("model not found");
+      }
+      async *stream(): AsyncIterable<StreamEvent> {
+        throw new Error("unused");
+      }
+    }
+
+    const errors: Error[] = [];
+    const runner = new AgentRunner({
+      provider: new FailingProvider(),
+      onEvent: (event) => {
+        if (event.type === "error") errors.push(event.error);
+      },
+    });
+
+    const turn = await runner.run("hello");
+
+    expect(turn).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toBe("model not found");
+  });
+
   it("runStream emits text-delta events and reassembles the same final message as run", async () => {
     const provider = new ScriptedProvider([
       {

@@ -1,4 +1,5 @@
 import type { CouncilDroppedMember, CouncilMemberConfig, CouncilMemberPosition } from "../types";
+import { CouncilErrorNotice } from "./CouncilErrorNotice";
 
 export const SEAT_COLORS = ["var(--a1)", "var(--a2)", "var(--a3)", "var(--a4)", "var(--a5)"];
 
@@ -49,9 +50,11 @@ export function CouncilRoundList({
           {dropped
             .filter((member) => member.round === roundIndex)
             .map((member) => (
-              <div className="council-dropped" key={member.memberId}>
-                ⚠ {member.label} dropped after a provider error: {member.error}
-              </div>
+              <CouncilErrorNotice
+                key={member.memberId}
+                label={`${member.label} dropped from the debate after a provider error`}
+                error={member.error}
+              />
             ))}
         </div>
       ))}

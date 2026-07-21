@@ -12,6 +12,7 @@ export { createAnthropicProvider } from "./anthropic.js";
 export { createGoogleProvider } from "./google.js";
 export { createOllamaProvider } from "./ollama.js";
 export { createOpenRouterProvider } from "./openrouter.js";
+export { classifyProviderError, type ProviderErrorReason } from "./errorReason.js";
 
 export type ProviderName = "openai" | "anthropic" | "google" | "ollama" | "openrouter";
 

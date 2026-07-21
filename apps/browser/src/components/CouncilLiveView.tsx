@@ -2,6 +2,7 @@ import { computeAlignment, computeTotalCostNote } from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilSession, LiveCouncilTurn } from "../types";
 import { colorForSeat, CouncilRoundList } from "./CouncilRoundList";
+import { CouncilErrorNotice } from "./CouncilErrorNotice";
 
 const CONTROLS_TOOLTIP =
   "Not yet available — the council engine runs a debate turn to completion and doesn't support mid-run control yet.";
@@ -60,9 +61,7 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
         <div className="council-main">
           <CouncilRoundList rounds={live.rounds} dropped={live.dropped} members={session.members} />
           {live.moderatorError && (
-            <div className="council-answer no-consensus">
-              <div className="council-answer-label">Moderator error: {live.moderatorError}</div>
-            </div>
+            <CouncilErrorNotice label="The moderator couldn't synthesize a final answer" error={live.moderatorError} />
           )}
           {!live.moderatorError && live.rounds.length === 0 && <div className="council-live-status">Starting…</div>}
         </div>

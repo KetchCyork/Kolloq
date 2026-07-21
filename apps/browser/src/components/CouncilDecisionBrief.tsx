@@ -1,5 +1,6 @@
 import { parseDecisionBrief } from "../councilReducer";
 import type { CouncilSession, CouncilTurn } from "../types";
+import { CouncilErrorNotice } from "./CouncilErrorNotice";
 
 function buildMarkdown(turn: CouncilTurn): string {
   const sections = parseDecisionBrief(turn.answer);
@@ -73,6 +74,10 @@ export function CouncilDecisionBrief({
         {session.members.length}-seat council · {new Date(turn.createdAt).toLocaleDateString()}
       </div>
 
+      {turn.moderatorError && (
+        <CouncilErrorNotice label="The moderator couldn't synthesize a final answer" error={turn.moderatorError} />
+      )}
+
       {sections.structured ? (
         <>
           {sections.recommendation && (
@@ -121,7 +126,13 @@ export function CouncilDecisionBrief({
       {turn.dropped.length > 0 && (
         <>
           <h4>Dropped seats</h4>
-          <p>{turn.dropped.map((member) => `${member.label} (round ${member.round}: ${member.error})`).join("; ")}</p>
+          {turn.dropped.map((member) => (
+            <CouncilErrorNotice
+              key={member.memberId}
+              label={`${member.label} dropped in round ${member.round}`}
+              error={member.error}
+            />
+          ))}
         </>
       )}
 
