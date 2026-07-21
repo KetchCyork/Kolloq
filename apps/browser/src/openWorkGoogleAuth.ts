@@ -17,9 +17,16 @@
  *      OIDC id_token.
  *
  * Requirements / limits:
- *   - Needs a Google OAuth **Client ID** (Desktop-app type) supplied via the
- *     `VITE_GOOGLE_OAUTH_CLIENT_ID` build env var. Until that is set, `googleSignInConfigured()` is
- *     false and the UI must NOT offer a Google button that silently fakes a login.
+ *   - Needs a Google OAuth **Client ID** (baked in below — a Client ID is public by design, it is
+ *     visible in the authorize URL in every user's browser) and a matching **Client Secret**.
+ *   - The Client Secret is NOT baked in and must be supplied via the
+ *     `VITE_GOOGLE_OAUTH_CLIENT_SECRET` build env var. Until it is set, `googleSignInConfigured()`
+ *     is false and the UI must NOT offer a Google button that silently fakes a login.
+ *   - Google requires `client_secret` on the token exchange even for Desktop-app clients using
+ *     PKCE. Verified against the live endpoint: omitting it returns
+ *     `{"error":"invalid_request","error_description":"client_secret is missing."}`. Google's own
+ *     docs describe this value as not-really-secret for installed apps (it ships inside the
+ *     binary), but it is still kept out of source control here.
  *   - Only works in the Tauri desktop shell: the loopback capture and the CORS-free token exchange
  *     both live in Rust. In a plain browser build `googleSignInAvailable()` is false.
  *   - The id_token is read (not cryptographically re-verified) because it is received directly from
@@ -38,15 +45,33 @@ export const GOOGLE_LOOPBACK_PORT = 8765;
 const GOOGLE_REDIRECT_URI = `http://127.0.0.1:${GOOGLE_LOOPBACK_PORT}`;
 const GOOGLE_SCOPES = ["openid", "email", "profile"];
 
-/** The Google OAuth Client ID, injected at build time. Empty string means "not configured yet". */
-export function googleClientId(): string {
-  const fromEnv = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_GOOGLE_OAUTH_CLIENT_ID;
-  return (fromEnv ?? "").trim();
+/**
+ * OpenWork's Google OAuth Client ID. Safe to commit: a Client ID is a public identifier that Google
+ * echoes in the authorize URL of every sign-in, and it is useless without the paired secret.
+ */
+const DEFAULT_GOOGLE_CLIENT_ID = "582168889348-saprf1jsc5qpengcsjshvvlpnmsiodn9.apps.googleusercontent.com";
+
+function env(name: string): string {
+  const value = (import.meta as { env?: Record<string, string | undefined> }).env?.[name];
+  return (value ?? "").trim();
 }
 
-/** True once a Google OAuth Client ID has been provisioned. */
+/** The Google OAuth Client ID. Overridable per-build so a fork can point at its own Google project. */
+export function googleClientId(): string {
+  return env("VITE_GOOGLE_OAUTH_CLIENT_ID") || DEFAULT_GOOGLE_CLIENT_ID;
+}
+
+/**
+ * The Google OAuth Client Secret, injected at build time. Never committed. Empty means the token
+ * exchange cannot complete, so sign-in must stay disabled.
+ */
+export function googleClientSecret(): string {
+  return env("VITE_GOOGLE_OAUTH_CLIENT_SECRET");
+}
+
+/** True once both halves of the Google OAuth credential are present. */
 export function googleSignInConfigured(): boolean {
-  return googleClientId().length > 0;
+  return googleClientId().length > 0 && googleClientSecret().length > 0;
 }
 
 /**
@@ -60,7 +85,8 @@ export function googleSignInAvailable(): boolean {
 /** Human-readable reason Google sign-in is unavailable, or null if it is available. */
 export function googleUnavailableReason(): string | null {
   if (!isTauriRuntime()) return "Google sign-in is only available in the OpenWork desktop app.";
-  if (!googleSignInConfigured()) return "Google sign-in isn't configured yet.";
+  if (!googleClientId()) return "Google sign-in isn't configured yet (missing OAuth Client ID).";
+  if (!googleClientSecret()) return "Google sign-in isn't configured yet (missing OAuth Client Secret).";
   return null;
 }
 
@@ -115,6 +141,9 @@ export function buildGoogleAuthorizeUrl(opts: {
 export async function beginGoogleSignIn(): Promise<GoogleAuthSession> {
   const clientId = googleClientId();
   if (!clientId) throw new Error("Google sign-in isn't configured yet (missing OAuth Client ID).");
+  // Fail before sending the user to Google rather than after they have already logged in: without
+  // the secret the token exchange is guaranteed to be rejected.
+  if (!googleClientSecret()) throw new Error("Google sign-in isn't configured yet (missing OAuth Client Secret).");
   const verifier = randomToken();
   const challenge = await challengeFromVerifier(verifier);
   const state = randomToken();
@@ -162,6 +191,20 @@ interface GoogleTokenPayload {
   id_token?: string;
   refresh_token?: string;
   expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
+
+/**
+ * Turns a failed token response into something actionable. Google's `error_description` names the
+ * exact misconfiguration ("client_secret is missing.", "The provided client secret is invalid.",
+ * "redirect_uri_mismatch"), which a bare status code hides. Exported for testing.
+ */
+export function googleTokenErrorMessage(status: number, payload: GoogleTokenPayload): string {
+  const detail = payload.error_description || payload.error;
+  if (detail) return `Google sign-in failed: ${detail}`;
+  if (status >= 200 && status < 300) return "Google sign-in failed: no id_token was returned.";
+  return `Google token request failed (${status}).`;
 }
 
 /**
@@ -187,6 +230,7 @@ export async function runGoogleSignIn(session: GoogleAuthSession): Promise<OpenW
       grant_type: "authorization_code",
       code: captured.code,
       client_id: googleClientId(),
+      client_secret: googleClientSecret(),
       redirect_uri: GOOGLE_REDIRECT_URI,
       code_verifier: session.verifier,
     },
@@ -198,7 +242,7 @@ export async function runGoogleSignIn(session: GoogleAuthSession): Promise<OpenW
     throw new Error(`Google token request failed (${res.status}).`);
   }
   if (res.status < 200 || res.status >= 300 || !payload.id_token) {
-    throw new Error(`Google token request failed (${res.status}).`);
+    throw new Error(googleTokenErrorMessage(res.status, payload));
   }
   const email = verifiedEmailFromClaims(decodeIdToken(payload.id_token), {
     clientId: googleClientId(),

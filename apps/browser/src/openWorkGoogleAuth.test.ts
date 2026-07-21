@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildGoogleAuthorizeUrl, decodeIdToken, verifiedEmailFromClaims } from "./openWorkGoogleAuth";
+import {
+  buildGoogleAuthorizeUrl,
+  decodeIdToken,
+  googleClientId,
+  googleSignInConfigured,
+  googleTokenErrorMessage,
+  verifiedEmailFromClaims,
+} from "./openWorkGoogleAuth";
 
 /** Builds an unsigned JWT (header.payload.signature) for decode/verify tests. */
 function makeIdToken(claims: Record<string, unknown>): string {
@@ -63,5 +70,35 @@ describe("verifiedEmailFromClaims", () => {
 
   it("rejects an unverified email", () => {
     expect(() => verifiedEmailFromClaims({ ...base, email_verified: false }, { clientId: CLIENT_ID, nonce: NONCE })).toThrow(/not verified/i);
+  });
+});
+
+describe("credential configuration", () => {
+  it("ships a real Client ID so no per-machine setup is needed for the public half", () => {
+    expect(googleClientId()).toMatch(/\.apps\.googleusercontent\.com$/);
+  });
+
+  it("stays unconfigured while the Client Secret is absent", () => {
+    // Google rejects the token exchange without client_secret, so a Client ID alone must NOT light
+    // up the button — otherwise the user logs in at Google and only then hits a dead end.
+    expect(import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET ?? "").toBe("");
+    expect(googleSignInConfigured()).toBe(false);
+  });
+});
+
+describe("googleTokenErrorMessage", () => {
+  it("surfaces Google's description of the misconfiguration", () => {
+    expect(googleTokenErrorMessage(400, { error: "invalid_request", error_description: "client_secret is missing." })).toContain(
+      "client_secret is missing.",
+    );
+  });
+
+  it("falls back to the error code, then to the status", () => {
+    expect(googleTokenErrorMessage(401, { error: "invalid_client" })).toContain("invalid_client");
+    expect(googleTokenErrorMessage(500, {})).toContain("500");
+  });
+
+  it("explains a 200 that carried no id_token", () => {
+    expect(googleTokenErrorMessage(200, {})).toMatch(/no id_token/i);
   });
 });

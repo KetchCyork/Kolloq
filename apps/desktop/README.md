@@ -75,22 +75,36 @@ must use this loopback redirect — that's why it lives in the desktop shell
 only. In the plain browser build the Google button is disabled with an
 explanatory note; it never mints a fake session.
 
-**Required credential — a Google OAuth Client ID (owner: CEO).** Until one is
-provisioned the Google button is disabled ("Google sign-in isn't configured
-yet") rather than faking a login. To enable it:
+**Credentials.** The OAuth **Client ID** is provisioned and committed in
+`openWorkGoogleAuth.ts` — a Client ID is a public identifier (Google echoes it
+in the authorize URL of every sign-in) and is useless on its own.
+
+The matching **Client Secret** is *not* committed and must be supplied per
+build via `VITE_GOOGLE_OAUTH_CLIENT_SECRET` — e.g. an untracked
+`apps/browser/.env`, or a CI/build environment variable. Until it is set the
+Google button stays disabled ("missing OAuth Client Secret") rather than
+faking a login or dead-ending the user after they have already logged in at
+Google. No code change is required once it is set.
+
+> Google **requires** `client_secret` on the token exchange even for
+> Desktop-app clients using PKCE. Verified against the live endpoint: omitting
+> it returns `{"error":"invalid_request","error_description":"client_secret is
+> missing."}`. (An earlier revision of this README claimed no secret was needed
+> — that was wrong.) Google's docs treat this value as not-really-secret for
+> installed apps since it ships inside the binary, but we still keep it out of
+> source control.
+
+To rotate or point at a different Google project:
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create (or
    reuse) a project and configure the OAuth consent screen (External; app name
    "OpenWork"; add your account as a test user while it's unverified).
 2. Under **APIs & Services → Credentials → Create credentials → OAuth client
-   ID**, choose application type **Desktop app**. No client secret is needed
-   (PKCE). Google accepts the `http://127.0.0.1` loopback redirect for desktop
-   clients automatically.
-3. Provide the resulting Client ID to the build via the
-   `VITE_GOOGLE_OAUTH_CLIENT_ID` env var (e.g. an untracked `apps/browser/.env`
-   with `VITE_GOOGLE_OAUTH_CLIENT_ID=<id>.apps.googleusercontent.com`, or as a
-   CI/build environment variable). No code change required — the button turns
-   on automatically once it's set.
+   ID**, choose application type **Desktop app**. Google accepts the
+   `http://127.0.0.1` loopback redirect for desktop clients automatically
+   (the port is ignored when matching).
+3. Set `VITE_GOOGLE_OAUTH_CLIENT_ID` to override the committed default, and
+   `VITE_GOOGLE_OAUTH_CLIENT_SECRET` to the paired secret.
 
 Apple and company-SSO have no working path without an Open Work backend, so
 those buttons are disabled ("Coming soon") instead of minting fake sessions.
