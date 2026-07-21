@@ -10,7 +10,7 @@ export { AiSdkChatProvider } from "./ai-sdk-adapter.js";
 export { createOpenAiProvider } from "./openai.js";
 export { createAnthropicProvider } from "./anthropic.js";
 export { createGoogleProvider } from "./google.js";
-export { createOllamaProvider } from "./ollama.js";
+export { createOllamaProvider, DEFAULT_OLLAMA_BASE_URL, listOllamaModels } from "./ollama.js";
 export { createOpenRouterProvider } from "./openrouter.js";
 export { classifyProviderError, type ProviderErrorReason } from "./errorReason.js";
 

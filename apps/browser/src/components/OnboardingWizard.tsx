@@ -1,4 +1,6 @@
+import { DEFAULT_OLLAMA_BASE_URL } from "@newvector/core";
 import { useState } from "react";
+import { useOllamaModels } from "../ollamaDiscovery";
 import { useStore } from "../store";
 import { capture } from "../telemetry";
 import type { ProviderName } from "../types";
@@ -31,20 +33,29 @@ export function OnboardingWizard() {
   const [baseURL, setBaseURL] = useState("http://localhost:11434/v1");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
+  const ollama = useOllamaModels();
 
   function pickProvider(p: ProviderName) {
     setProvider(p);
-    setModel(PROVIDER_DEFAULT_MODELS[p]);
+    setModel(p === "ollama" ? "" : PROVIDER_DEFAULT_MODELS[p]);
     setApiKey("");
+    ollama.reset();
+    if (p === "ollama") void ollama.check(baseURL || DEFAULT_OLLAMA_BASE_URL);
   }
 
   async function finish() {
+    if (provider === "ollama") {
+      setSaving(true);
+      const models = await ollama.check(baseURL || DEFAULT_OLLAMA_BASE_URL, model);
+      setSaving(false);
+      if (models.length === 0 || !models.includes(model)) return;
+    }
     setSaving(true);
     const accountLabel = label.trim() || `${PROVIDER_LABELS[provider]} account`;
     createAccount({
       label: accountLabel,
       provider,
-      model: model.trim() || PROVIDER_DEFAULT_MODELS[provider],
+      model: provider === "ollama" ? model : model.trim() || PROVIDER_DEFAULT_MODELS[provider],
       apiKey: provider === "ollama" ? undefined : apiKey.trim() || undefined,
       baseURL: provider === "ollama" ? baseURL.trim() || undefined : undefined,
     });
@@ -55,7 +66,7 @@ export function OnboardingWizard() {
 
   const canFinish =
     provider === "ollama"
-      ? baseURL.trim().length > 0
+      ? baseURL.trim().length > 0 && model.trim().length > 0
       : apiKey.trim().length > 0;
 
   if (step === "done") {
@@ -91,14 +102,16 @@ export function OnboardingWizard() {
               />
             </div>
 
-            <div className="field">
-              <label htmlFor="ob-model">Default model</label>
-              <input
-                id="ob-model"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
-            </div>
+            {provider !== "ollama" && (
+              <div className="field">
+                <label htmlFor="ob-model">Default model</label>
+                <input
+                  id="ob-model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+              </div>
+            )}
 
             {provider === "ollama" ? (
               <div className="field">
@@ -107,8 +120,61 @@ export function OnboardingWizard() {
                   id="ob-baseurl"
                   value={baseURL}
                   onChange={(e) => setBaseURL(e.target.value)}
-                  placeholder="http://localhost:11434/v1"
+                  onBlur={(e) => void ollama.check(e.target.value, model)}
+                  placeholder={DEFAULT_OLLAMA_BASE_URL}
                 />
+                <div className="onboarding-hint" style={{ marginTop: 6, fontSize: 12 }}>
+                  Local ({DEFAULT_OLLAMA_BASE_URL}) or a remote/hosted Ollama-compatible API.
+                </div>
+
+                <div className="ollama-test-row">
+                  <button
+                    type="button"
+                    className="settings-btn"
+                    onClick={() => void ollama.check(baseURL, model)}
+                    disabled={ollama.status === "loading"}
+                  >
+                    {ollama.status === "loading" ? "Testing…" : "Test connection"}
+                  </button>
+                  {ollama.status === "loaded" && !ollama.error && (
+                    <span className="ollama-status ok">
+                      ✓ Connected — {ollama.models.length} model{ollama.models.length === 1 ? "" : "s"} found
+                    </span>
+                  )}
+                </div>
+                {ollama.error && <div className="ollama-status error">{ollama.error}</div>}
+
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label htmlFor="ob-model">Model</label>
+                  {ollama.models.length > 0 ? (
+                    <select
+                      id="ob-model"
+                      value={model}
+                      onChange={(e) => {
+                        setModel(e.target.value);
+                        void ollama.check(baseURL, e.target.value);
+                      }}
+                    >
+                      {!model && (
+                        <option value="" disabled>
+                          Select a model…
+                        </option>
+                      )}
+                      {ollama.models.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="ob-model"
+                      placeholder="Test the connection to list available models"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                    />
+                  )}
+                </div>
               </div>
             ) : (
               <div className="field">

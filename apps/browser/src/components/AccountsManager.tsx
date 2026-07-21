@@ -1,4 +1,7 @@
+import { DEFAULT_OLLAMA_BASE_URL } from "@newvector/core";
 import { useState } from "react";
+import { isTauriRuntime } from "../credentials";
+import { useOllamaModels } from "../ollamaDiscovery";
 import { useStore } from "../store";
 import {
   beginSubscriptionAuth,
@@ -54,6 +57,9 @@ export function AccountsManager() {
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
 
+  const ollama = useOllamaModels();
+  const [saveBusy, setSaveBusy] = useState(false);
+
   function resetAuthState() {
     setAuthSession(null);
     setAuthCode("");
@@ -65,6 +71,7 @@ export function AccountsManager() {
     setDraft(blankDraft());
     setEditingId(null);
     resetAuthState();
+    ollama.reset();
     setAdding(true);
   }
 
@@ -72,19 +79,29 @@ export function AccountsManager() {
     setDraft(draftFromAccount(account));
     setEditingId(account.id);
     resetAuthState();
+    ollama.reset();
     setAdding(true);
+    if (account.provider === "ollama" && account.authType !== "subscription") {
+      void ollama.check(account.baseURL ?? DEFAULT_OLLAMA_BASE_URL, account.model);
+    }
   }
 
   function cancelForm() {
     setAdding(false);
     setEditingId(null);
     resetAuthState();
+    ollama.reset();
   }
 
   function changeProvider(provider: ProviderName) {
     const authType = subscriptionSignInAvailable(provider) ? draft.authType : "api_key";
-    setDraft({ ...draft, provider, model: PROVIDER_DEFAULT_MODELS[provider], authType });
+    const model = provider === "ollama" ? "" : PROVIDER_DEFAULT_MODELS[provider];
+    setDraft({ ...draft, provider, model, authType });
     resetAuthState();
+    ollama.reset();
+    if (provider === "ollama" && authType !== "subscription") {
+      void ollama.check(draft.baseURL || DEFAULT_OLLAMA_BASE_URL);
+    }
   }
 
   function changeAuthType(authType: AccountAuthType) {
@@ -121,15 +138,24 @@ export function AccountsManager() {
     }
   }
 
-  function save() {
+  async function save() {
     const label = draft.label.trim() || `${PROVIDER_LABELS[draft.provider]} account`;
-    const model = draft.model.trim() || PROVIDER_DEFAULT_MODELS[draft.provider];
+    const model = draft.model.trim() || (draft.provider === "ollama" ? "" : PROVIDER_DEFAULT_MODELS[draft.provider]);
     const baseURL = draft.baseURL.trim() || undefined;
     const authType = draft.authType;
 
     if (authType === "subscription" && !draft.oauth) {
       setAuthStatus("Sign in to the subscription before saving.");
       return;
+    }
+
+    if (draft.provider === "ollama" && authType !== "subscription") {
+      setSaveBusy(true);
+      const models = await ollama.check(baseURL ?? DEFAULT_OLLAMA_BASE_URL, model);
+      setSaveBusy(false);
+      if (models.length === 0 || !models.includes(model)) {
+        return;
+      }
     }
 
     if (editingId) {
@@ -259,14 +285,16 @@ export function AccountsManager() {
               </div>
             </div>
 
-            <div className="field">
-              <label htmlFor="account-model">Default model</label>
-              <input
-                id="account-model"
-                value={draft.model}
-                onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-              />
-            </div>
+            {draft.provider === "ollama" && draft.authType !== "subscription" ? null : (
+              <div className="field">
+                <label htmlFor="account-model">Default model</label>
+                <input
+                  id="account-model"
+                  value={draft.model}
+                  onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                />
+              </div>
+            )}
 
             {draft.authType === "subscription" ? (
               <div className="field span-full subscription-panel">
@@ -308,14 +336,71 @@ export function AccountsManager() {
                 )}
               </div>
             ) : draft.provider === "ollama" ? (
-              <div className="field">
+              <div className="field span-full">
                 <label htmlFor="account-baseurl">Ollama base URL</label>
                 <input
                   id="account-baseurl"
-                  placeholder="http://localhost:11434/v1"
+                  placeholder={DEFAULT_OLLAMA_BASE_URL}
                   value={draft.baseURL}
                   onChange={(e) => setDraft({ ...draft, baseURL: e.target.value })}
+                  onBlur={(e) => void ollama.check(e.target.value, draft.model)}
                 />
+                <div className="subscription-hint">
+                  Works with a local install ({DEFAULT_OLLAMA_BASE_URL}) or a remote/hosted Ollama-compatible API — point
+                  this at whichever one you're running.
+                  {isTauriRuntime() &&
+                    " Note: the desktop app can only relay to a local instance (localhost/127.0.0.1); for a remote endpoint, add this account from the browser app instead."}
+                </div>
+
+                <div className="ollama-test-row">
+                  <button
+                    type="button"
+                    className="settings-btn"
+                    onClick={() => void ollama.check(draft.baseURL, draft.model)}
+                    disabled={ollama.status === "loading"}
+                  >
+                    {ollama.status === "loading" ? "Testing…" : "Test connection"}
+                  </button>
+                  {ollama.status === "loaded" && !ollama.error && (
+                    <span className="ollama-status ok">
+                      ✓ Connected — {ollama.models.length} model{ollama.models.length === 1 ? "" : "s"} found
+                    </span>
+                  )}
+                </div>
+                {ollama.error && <div className="ollama-status error">{ollama.error}</div>}
+
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label htmlFor="account-model">Model</label>
+                  {ollama.models.length > 0 ? (
+                    <select
+                      id="account-model"
+                      value={draft.model}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDraft({ ...draft, model: value });
+                        void ollama.check(draft.baseURL, value);
+                      }}
+                    >
+                      {!draft.model && (
+                        <option value="" disabled>
+                          Select a model…
+                        </option>
+                      )}
+                      {ollama.models.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="account-model"
+                      placeholder="Test the connection to list available models"
+                      value={draft.model}
+                      onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                    />
+                  )}
+                </div>
               </div>
             ) : (
               <div className="field">
@@ -334,8 +419,8 @@ export function AccountsManager() {
               <button className="settings-btn" onClick={cancelForm}>
                 Cancel
               </button>
-              <button className="primary-btn" onClick={save}>
-                {editingId ? "Save account" : "Add account"}
+              <button className="primary-btn" onClick={() => void save()} disabled={saveBusy}>
+                {saveBusy ? "Checking…" : editingId ? "Save account" : "Add account"}
               </button>
             </div>
           </div>
