@@ -1,17 +1,17 @@
-import { createAnthropicProvider } from "./anthropic.js";
-import { createGoogleProvider } from "./google.js";
-import { createOllamaProvider } from "./ollama.js";
-import { createOpenAiProvider } from "./openai.js";
-import { createOpenRouterProvider } from "./openrouter.js";
-import type { ChatProvider } from "./types.js";
+import { createAnthropicProvider, listAnthropicModels } from "./anthropic.js";
+import { createGoogleProvider, listGoogleModels } from "./google.js";
+import { createOllamaProvider, listOllamaModels } from "./ollama.js";
+import { createOpenAiProvider, listOpenAiModels } from "./openai.js";
+import { createOpenRouterProvider, listOpenRouterModels } from "./openrouter.js";
+import type { ChatProvider, ModelOption } from "./types.js";
 
 export * from "./types.js";
 export { AiSdkChatProvider } from "./ai-sdk-adapter.js";
-export { createOpenAiProvider } from "./openai.js";
-export { createAnthropicProvider } from "./anthropic.js";
-export { createGoogleProvider } from "./google.js";
-export { createOllamaProvider } from "./ollama.js";
-export { createOpenRouterProvider } from "./openrouter.js";
+export { createOpenAiProvider, listOpenAiModels } from "./openai.js";
+export { createAnthropicProvider, listAnthropicModels } from "./anthropic.js";
+export { createGoogleProvider, listGoogleModels } from "./google.js";
+export { createOllamaProvider, listOllamaModels } from "./ollama.js";
+export { createOpenRouterProvider, listOpenRouterModels } from "./openrouter.js";
 
 export type ProviderName = "openai" | "anthropic" | "google" | "ollama" | "openrouter";
 
@@ -39,6 +39,26 @@ export function createProvider(options: CreateProviderOptions): ChatProvider {
       return createOllamaProvider(options);
     case "openrouter":
       return createOpenRouterProvider(options);
+    default: {
+      const exhaustive: never = options.provider;
+      throw new Error(`Unknown provider: ${String(exhaustive)}`);
+    }
+  }
+}
+
+/** Single entry point for listing a provider's currently available models, mirroring `createProvider`. */
+export async function listModels(options: CreateProviderOptions): Promise<ModelOption[]> {
+  switch (options.provider) {
+    case "openai":
+      return listOpenAiModels(options);
+    case "anthropic":
+      return listAnthropicModels(options);
+    case "google":
+      return listGoogleModels(options);
+    case "ollama":
+      return listOllamaModels(options);
+    case "openrouter":
+      return listOpenRouterModels(options);
     default: {
       const exhaustive: never = options.provider;
       throw new Error(`Unknown provider: ${String(exhaustive)}`);

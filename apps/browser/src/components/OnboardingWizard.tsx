@@ -1,8 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ModelOption } from "@newvector/core";
+import { listModels } from "@newvector/core";
 import { useStore } from "../store";
 import { capture } from "../telemetry";
 import type { ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+
+/** Debounce before firing a live model-list request after the provider/key/base URL settle. */
+const MODEL_LIST_DEBOUNCE_MS = 500;
 
 type Step = "welcome" | "credentials" | "done";
 
@@ -31,12 +36,60 @@ export function OnboardingWizard() {
   const [baseURL, setBaseURL] = useState("http://localhost:11434/v1");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
   function pickProvider(p: ProviderName) {
     setProvider(p);
     setModel(PROVIDER_DEFAULT_MODELS[p]);
     setApiKey("");
+    setModelOptions([]);
+    setModelsError(null);
+    setModelsLoading(false);
   }
+
+  // Live model discovery: refetch whenever provider/key/base URL settle, so the "Default model"
+  // dropdown always reflects what the account can actually reach instead of a free-typed guess.
+  useEffect(() => {
+    const canList = provider === "ollama" || provider === "openrouter" || !!apiKey.trim();
+    if (!canList) {
+      setModelOptions([]);
+      setModelsError(null);
+      setModelsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setModelsLoading(true);
+    setModelsError(null);
+    const timer = setTimeout(() => {
+      listModels({
+        provider,
+        apiKey: apiKey.trim() || undefined,
+        // `baseURL` state defaults to the Ollama URL regardless of the selected provider (it's
+        // only ever edited via the Ollama-specific field below), so only forward it for Ollama —
+        // otherwise every other provider's list request gets misrouted to the local Ollama server.
+        baseURL: provider === "ollama" ? baseURL.trim() || undefined : undefined,
+      })
+        .then((models) => {
+          if (cancelled) return;
+          setModelOptions(models);
+          setModelsLoading(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setModelOptions([]);
+          setModelsError(err instanceof Error ? err.message : "Could not load models.");
+          setModelsLoading(false);
+        });
+    }, MODEL_LIST_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [provider, apiKey, baseURL]);
 
   async function finish() {
     setSaving(true);
@@ -73,6 +126,13 @@ export function OnboardingWizard() {
   }
 
   if (step === "credentials") {
+    // Always keep the current model selectable, even if it's not (yet) in the live list —
+    // e.g. while the live list is still loading, or if it failed and we fell back to the default.
+    const baseModelOptions = modelOptions.length > 0 ? modelOptions : [{ id: PROVIDER_DEFAULT_MODELS[provider] }];
+    const modelSelectOptions = baseModelOptions.some((opt) => opt.id === model)
+      ? baseModelOptions
+      : [{ id: model }, ...baseModelOptions];
+
     return (
       <div className="onboarding-overlay">
         <div className="onboarding-card">
@@ -93,11 +153,24 @@ export function OnboardingWizard() {
 
             <div className="field">
               <label htmlFor="ob-model">Default model</label>
-              <input
+              <select
                 id="ob-model"
                 value={model}
+                disabled={modelsLoading}
                 onChange={(e) => setModel(e.target.value)}
-              />
+              >
+                {modelSelectOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label && opt.label !== opt.id ? `${opt.label} (${opt.id})` : opt.id}
+                  </option>
+                ))}
+              </select>
+              {modelsLoading && <div className="field-hint">Loading available models…</div>}
+              {modelsError && !modelsLoading && (
+                <div className="field-hint field-hint-error">
+                  Couldn't load live models ({modelsError}). Showing the default list.
+                </div>
+              )}
             </div>
 
             {provider === "ollama" ? (

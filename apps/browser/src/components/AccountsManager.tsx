@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ModelOption } from "@newvector/core";
+import { listModels } from "@newvector/core";
 import { useStore } from "../store";
 import {
   beginSubscriptionAuth,
@@ -10,6 +12,9 @@ import {
 } from "../subscriptionAuth";
 import type { Account, AccountAuthType, OAuthCredential, ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+
+/** Debounce before firing a live model-list request after the account form's provider/key/base URL settle. */
+const MODEL_LIST_DEBOUNCE_MS = 500;
 
 interface DraftAccount {
   label: string;
@@ -53,6 +58,13 @@ export function AccountsManager() {
   const [authCode, setAuthCode] = useState("");
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
+  // The apiKey input is left blank when editing an existing account (so a saved secret is never
+  // echoed back into the DOM); this holds that account's real key so we can still list models for
+  // it until the user types a replacement.
+  const [originalApiKey, setOriginalApiKey] = useState<string | undefined>(undefined);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
   function resetAuthState() {
     setAuthSession(null);
@@ -61,30 +73,46 @@ export function AccountsManager() {
     setAuthBusy(false);
   }
 
+  function resetModelListState() {
+    setModelOptions([]);
+    setModelsError(null);
+    setModelsLoading(false);
+  }
+
   function startAdd() {
     setDraft(blankDraft());
     setEditingId(null);
+    setOriginalApiKey(undefined);
     resetAuthState();
+    resetModelListState();
     setAdding(true);
   }
 
   function startEdit(account: Account) {
     setDraft(draftFromAccount(account));
     setEditingId(account.id);
+    setOriginalApiKey(account.apiKey);
     resetAuthState();
+    resetModelListState();
     setAdding(true);
   }
 
   function cancelForm() {
     setAdding(false);
     setEditingId(null);
+    setOriginalApiKey(undefined);
     resetAuthState();
+    resetModelListState();
   }
 
   function changeProvider(provider: ProviderName) {
     const authType = subscriptionSignInAvailable(provider) ? draft.authType : "api_key";
-    setDraft({ ...draft, provider, model: PROVIDER_DEFAULT_MODELS[provider], authType });
+    // baseURL is only ever edited via the Ollama-specific field; clear it when switching away so
+    // a leftover Ollama URL doesn't get saved against (or used to list models for) another provider.
+    const baseURL = provider === "ollama" ? draft.baseURL : "";
+    setDraft({ ...draft, provider, model: PROVIDER_DEFAULT_MODELS[provider], authType, baseURL });
     resetAuthState();
+    resetModelListState();
   }
 
   function changeAuthType(authType: AccountAuthType) {
@@ -120,6 +148,58 @@ export function AccountsManager() {
       setAuthBusy(false);
     }
   }
+
+  // Live model discovery: refetch whenever provider/key/base URL settle, so the "Default model"
+  // dropdown always reflects what the account can actually reach instead of a free-typed guess.
+  useEffect(() => {
+    const provider = draft.provider;
+    const apiKey = draft.apiKey.trim() || originalApiKey;
+    const accessToken = draft.authType === "subscription" ? draft.oauth?.accessToken : undefined;
+
+    const canList =
+      provider === "ollama" ||
+      provider === "openrouter" ||
+      (draft.authType === "subscription" ? !!accessToken : !!apiKey);
+
+    if (!canList) {
+      setModelOptions([]);
+      setModelsError(null);
+      setModelsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setModelsLoading(true);
+    setModelsError(null);
+    const timer = setTimeout(() => {
+      listModels({
+        provider,
+        apiKey,
+        // `draft.baseURL` is only ever edited via the Ollama-specific field, but changing
+        // provider doesn't clear it — forward it for Ollama only, so switching from a custom
+        // Ollama URL to another provider doesn't misroute that provider's list request there.
+        baseURL: provider === "ollama" ? draft.baseURL.trim() || undefined : undefined,
+        authType: draft.authType,
+        accessToken,
+      })
+        .then((models) => {
+          if (cancelled) return;
+          setModelOptions(models);
+          setModelsLoading(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setModelOptions([]);
+          setModelsError(err instanceof Error ? err.message : "Could not load models.");
+          setModelsLoading(false);
+        });
+    }, MODEL_LIST_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [draft.provider, draft.apiKey, draft.baseURL, draft.authType, draft.oauth, originalApiKey]);
 
   function save() {
     const label = draft.label.trim() || `${PROVIDER_LABELS[draft.provider]} account`;
@@ -167,6 +247,13 @@ export function AccountsManager() {
   const supportsSubscription = subscriptionSignInAvailable(draft.provider);
   const subscriptionNeedsDesktop = providerHasOAuth && !supportsSubscription;
   const connected = !!draft.oauth;
+
+  // Always keep the current draft model selectable, even if it's not (yet) in the live list —
+  // e.g. a saved account whose model was retired, or while the live list is still loading.
+  const baseModelOptions = modelOptions.length > 0 ? modelOptions : [{ id: PROVIDER_DEFAULT_MODELS[draft.provider] }];
+  const modelSelectOptions = baseModelOptions.some((opt) => opt.id === draft.model)
+    ? baseModelOptions
+    : [{ id: draft.model }, ...baseModelOptions];
 
   return (
     <div className="modal-overlay" onClick={closeAccountsManager}>
@@ -261,11 +348,24 @@ export function AccountsManager() {
 
             <div className="field">
               <label htmlFor="account-model">Default model</label>
-              <input
+              <select
                 id="account-model"
                 value={draft.model}
+                disabled={modelsLoading}
                 onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-              />
+              >
+                {modelSelectOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label && opt.label !== opt.id ? `${opt.label} (${opt.id})` : opt.id}
+                  </option>
+                ))}
+              </select>
+              {modelsLoading && <div className="field-hint">Loading available models…</div>}
+              {modelsError && !modelsLoading && (
+                <div className="field-hint field-hint-error">
+                  Couldn't load live models ({modelsError}). Showing the default list.
+                </div>
+              )}
             </div>
 
             {draft.authType === "subscription" ? (
