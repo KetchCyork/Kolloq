@@ -12,7 +12,7 @@ export interface ProviderErrorReason {
 }
 
 const AUTH_PATTERN = /\b(401|403)\b|unauthori[sz]ed|forbidden|invalid[_ -]?api[_ -]?key|incorrect api key|api key not (found|valid)/i;
-const MODEL_NOT_FOUND_PATTERN = /model[^.]*(not found|does not exist|try pulling)|no such model|unknown model|model_not_found/i;
+const MODEL_NOT_FOUND_PATTERN = /model.*?(not found|does not exist|try pulling)|no such model|unknown model|model_not_found/i;
 const RATE_LIMIT_PATTERN = /\b429\b|rate.?limit(ed)?|too many requests/i;
 const CONNECTIVITY_PATTERN =
   /econnrefused|enotfound|etimedout|fetch failed|failed to fetch|network ?error|could not connect|connection refused|timed? ?out/i;

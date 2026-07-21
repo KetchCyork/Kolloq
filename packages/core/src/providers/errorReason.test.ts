@@ -38,6 +38,14 @@ describe("classifyProviderError", () => {
     expect(result.reason).toMatch(/model not found/i);
   });
 
+  it("classifies an Ollama model-not-found message when the model tag contains a period", () => {
+    // Real Ollama tags almost always have a version period (llama3.1, qwen2.5, ...) — a prior
+    // regex used `[^.]*` between "model" and "not found", which silently failed to match these.
+    const result = classifyProviderError("model 'llama3.1' not found, try pulling it first");
+    expect(result.isConfigIssue).toBe(true);
+    expect(result.reason).toMatch(/model not found/i);
+  });
+
   it("classifies a connection-refused failure as a config issue", () => {
     const result = classifyProviderError(new Error("fetch failed: connect ECONNREFUSED 127.0.0.1:11434"));
     expect(result.isConfigIssue).toBe(true);
