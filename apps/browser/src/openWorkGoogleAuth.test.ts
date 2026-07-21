@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGoogleAuthorizeUrl,
+  credentialsComplete,
   decodeIdToken,
   googleClientId,
+  googleClientSecret,
   googleSignInConfigured,
   googleTokenErrorMessage,
   verifiedEmailFromClaims,
@@ -74,16 +76,27 @@ describe("verifiedEmailFromClaims", () => {
 });
 
 describe("credential configuration", () => {
+  // These drive the pure predicate rather than the ambient env: the real secret lives in an
+  // untracked apps/browser/.env on a configured machine, and Vite inlines `import.meta.env` at
+  // transform time (so `vi.stubEnv` cannot reach it). Asserting on the loaded value would flip the
+  // result per-machine and print the secret into test output on failure.
   it("ships a real Client ID so no per-machine setup is needed for the public half", () => {
     expect(googleClientId()).toMatch(/\.apps\.googleusercontent\.com$/);
   });
 
   it("treats a Client ID alone as not configured — the secret is what gates the button", () => {
     // Google rejects the token exchange without client_secret, so a Client ID alone must NOT light
-    // up the button, otherwise the user logs in at Google and only then hits a dead end. Written
-    // against ambient env so it holds both before and after the secret is provisioned.
-    const hasSecret = (import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET ?? "").trim().length > 0;
-    expect(googleSignInConfigured()).toBe(hasSecret);
+    // up the button — otherwise the user logs in at Google and only then hits a dead end.
+    expect(credentialsComplete(googleClientId(), "")).toBe(false);
+    expect(credentialsComplete(googleClientId(), "   ")).toBe(false);
+  });
+
+  it("becomes configured once the Client Secret is supplied at build time", () => {
+    expect(credentialsComplete(googleClientId(), "GOCSPX-test-value")).toBe(true);
+  });
+
+  it("agrees with the env-backed check on this machine", () => {
+    expect(googleSignInConfigured()).toBe(credentialsComplete(googleClientId(), googleClientSecret()));
   });
 });
 

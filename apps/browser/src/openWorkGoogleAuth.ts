@@ -69,9 +69,18 @@ export function googleClientSecret(): string {
   return env("VITE_GOOGLE_OAUTH_CLIENT_SECRET");
 }
 
+/**
+ * Pure predicate over the two credential halves. Split out from the env reads because Vite inlines
+ * `import.meta.env` at transform time, so the env cannot be stubbed in a test — testing the rule
+ * through this function keeps the suite green whether or not the machine has a real `.env`.
+ */
+export function credentialsComplete(clientId: string, clientSecret: string): boolean {
+  return clientId.trim().length > 0 && clientSecret.trim().length > 0;
+}
+
 /** True once both halves of the Google OAuth credential are present. */
 export function googleSignInConfigured(): boolean {
-  return googleClientId().length > 0 && googleClientSecret().length > 0;
+  return credentialsComplete(googleClientId(), googleClientSecret());
 }
 
 /**
