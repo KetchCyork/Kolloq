@@ -2,5 +2,7 @@ node_modules/
 dist/
 .env
 .env.*
+# ...but the checked-in templates carry no secrets and must ship.
+!.env.example
 *.log
 .DS_Store

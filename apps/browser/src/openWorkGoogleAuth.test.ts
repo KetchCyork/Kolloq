@@ -78,11 +78,12 @@ describe("credential configuration", () => {
     expect(googleClientId()).toMatch(/\.apps\.googleusercontent\.com$/);
   });
 
-  it("stays unconfigured while the Client Secret is absent", () => {
+  it("treats a Client ID alone as not configured — the secret is what gates the button", () => {
     // Google rejects the token exchange without client_secret, so a Client ID alone must NOT light
-    // up the button — otherwise the user logs in at Google and only then hits a dead end.
-    expect(import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET ?? "").toBe("");
-    expect(googleSignInConfigured()).toBe(false);
+    // up the button, otherwise the user logs in at Google and only then hits a dead end. Written
+    // against ambient env so it holds both before and after the secret is provisioned.
+    const hasSecret = (import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET ?? "").trim().length > 0;
+    expect(googleSignInConfigured()).toBe(hasSecret);
   });
 });
 
