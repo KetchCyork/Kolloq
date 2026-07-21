@@ -1,5 +1,6 @@
 import { generateText, streamText, tool as aiTool, type CoreMessage, type LanguageModel } from "ai";
 import { z } from "zod";
+import { extractAttachmentText } from "./attachment-text.js";
 import type { ChatAttachment, ChatMessage, ChatProvider, ChatRequest, ChatResponse, StreamEvent, ToolDefinition } from "./types.js";
 
 /**
@@ -14,8 +15,35 @@ function attachmentsToText(providerId: string, attachments: ChatAttachment[]): s
   return `[${attachments.length} attachment(s) not sent — the "${providerId}" provider does not support image/file attachments: ${kinds}]`;
 }
 
+/**
+ * A "file" content part is only reliably accepted by providers as application/pdf — Anthropic's
+ * API rejects any other document media type outright (the literal error a user sees is something
+ * like "must be a valid PDF"). Every other non-image attachment (Word, Excel, PowerPoint,
+ * Markdown, plain text, ...) gets its text extracted and inlined instead of sent as an opaque blob.
+ */
+async function attachmentToContentPart(
+  attachment: ChatAttachment,
+): Promise<{ type: "image"; image: string; mimeType: string } | { type: "file"; data: string; mimeType: string; filename: string } | { type: "text"; text: string }> {
+  if (attachment.kind === "image") {
+    return { type: "image", image: attachment.data, mimeType: attachment.mimeType };
+  }
+  if (attachment.mimeType === "application/pdf") {
+    return { type: "file", data: attachment.data, mimeType: attachment.mimeType, filename: attachment.name };
+  }
+
+  try {
+    const extracted = await extractAttachmentText(attachment);
+    if (extracted !== null) {
+      return { type: "text", text: `--- ${attachment.name} (${attachment.mimeType}) ---\n${extracted}` };
+    }
+  } catch {
+    // Fall through to the degrade note below — a corrupt/unreadable file shouldn't fail the whole request.
+  }
+  return { type: "text", text: `[Could not read "${attachment.name}" (${attachment.mimeType}) — unsupported or unreadable file type]` };
+}
+
 /** Exported for unit testing the attachment-mapping/degradation logic without spinning up a live model. */
-export function toUserContent(providerId: string, message: ChatMessage): CoreMessage["content"] {
+export async function toUserContent(providerId: string, message: ChatMessage): Promise<CoreMessage["content"]> {
   if (!message.attachments?.length) return message.content;
 
   if (ATTACHMENT_INCAPABLE_PROVIDERS.has(providerId)) {
@@ -23,53 +51,50 @@ export function toUserContent(providerId: string, message: ChatMessage): CoreMes
     return message.content ? `${message.content}\n\n${note}` : note;
   }
 
-  return [
-    ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
-    ...message.attachments.map((attachment) =>
-      attachment.kind === "image"
-        ? { type: "image" as const, image: attachment.data, mimeType: attachment.mimeType }
-        : { type: "file" as const, data: attachment.data, mimeType: attachment.mimeType, filename: attachment.name },
-    ),
-  ];
+  const attachmentParts = await Promise.all(message.attachments.map(attachmentToContentPart));
+
+  return [...(message.content ? [{ type: "text" as const, text: message.content }] : []), ...attachmentParts];
 }
 
-function toCoreMessages(providerId: string, messages: ChatMessage[]): CoreMessage[] {
-  return messages.map((message): CoreMessage => {
-    if (message.role === "tool") {
-      return {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: message.toolCallId ?? "",
-            toolName: message.name ?? "",
-            result: message.content,
-          },
-        ],
-      };
-    }
+async function toCoreMessages(providerId: string, messages: ChatMessage[]): Promise<CoreMessage[]> {
+  return Promise.all(
+    messages.map(async (message): Promise<CoreMessage> => {
+      if (message.role === "tool") {
+        return {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: message.toolCallId ?? "",
+              toolName: message.name ?? "",
+              result: message.content,
+            },
+          ],
+        };
+      }
 
-    if (message.role === "assistant" && message.toolCalls?.length) {
-      return {
-        role: "assistant",
-        content: [
-          ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
-          ...message.toolCalls.map((toolCall) => ({
-            type: "tool-call" as const,
-            toolCallId: toolCall.id,
-            toolName: toolCall.name,
-            args: toolCall.arguments,
-          })),
-        ],
-      };
-    }
+      if (message.role === "assistant" && message.toolCalls?.length) {
+        return {
+          role: "assistant",
+          content: [
+            ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
+            ...message.toolCalls.map((toolCall) => ({
+              type: "tool-call" as const,
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              args: toolCall.arguments,
+            })),
+          ],
+        };
+      }
 
-    if (message.role === "user") {
-      return { role: "user", content: toUserContent(providerId, message) } as CoreMessage;
-    }
+      if (message.role === "user") {
+        return { role: "user", content: await toUserContent(providerId, message) } as CoreMessage;
+      }
 
-    return { role: message.role, content: message.content } as CoreMessage;
-  });
+      return { role: message.role, content: message.content } as CoreMessage;
+    }),
+  );
 }
 
 /**
@@ -137,7 +162,7 @@ export class AiSdkChatProvider implements ChatProvider {
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const result = await generateText({
       model: this.languageModel,
-      messages: toCoreMessages(this.id, request.messages),
+      messages: await toCoreMessages(this.id, request.messages),
       tools: toAiTools(request.tools),
       temperature: request.temperature,
       maxTokens: request.maxTokens,
@@ -162,7 +187,7 @@ export class AiSdkChatProvider implements ChatProvider {
   async *stream(request: ChatRequest): AsyncIterable<StreamEvent> {
     const result = streamText({
       model: this.languageModel,
-      messages: toCoreMessages(this.id, request.messages),
+      messages: await toCoreMessages(this.id, request.messages),
       tools: toAiTools(request.tools),
       temperature: request.temperature,
       maxTokens: request.maxTokens,
