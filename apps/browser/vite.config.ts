@@ -1,7 +1,42 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
+
+/**
+ * Machine-level env dir, used to fill in vars the repo-local files don't set.
+ *
+ * `apps/browser/.env` is untracked, so it never travels to a fresh clone or to the throwaway
+ * git worktrees releases get built from — and a build from such a working copy inlines the
+ * missing var as empty and ships the feature disabled, with nothing in the UI saying why
+ * (NEW-131: three of four working copies on the build machine had no `.env`, and the desktop
+ * app that reached the user had "Continue with Google" permanently greyed out).
+ *
+ * Provisioning `~/.openwork/.env` once per machine makes every working copy on it build the
+ * same binary. This is a fallback only: an explicit process env var (CI) or a repo-local
+ * `.env` still wins.
+ */
+const USER_ENV_DIR = (process.env.OPENWORK_ENV_DIR ?? "").trim() || join(homedir(), ".openwork");
+
+/**
+ * Copies `VITE_`-prefixed vars from the machine-level env dir into `process.env` for keys
+ * nothing else has set.
+ *
+ * Writing to `process.env` — rather than just merging into the local `env` map below — is what
+ * makes the value reach the bundle: Vite assembles `import.meta.env` from its own `.env` scan
+ * plus `process.env`, and it does that after this config factory has run. Only `VITE_` keys are
+ * copied, so an unrelated var in that file can't leak into the build environment.
+ */
+function applyUserEnvFallback(mode: string): void {
+  for (const [key, value] of Object.entries(loadEnv(mode, USER_ENV_DIR, ""))) {
+    if (!key.startsWith("VITE_")) continue;
+    if (!value.trim()) continue;
+    if ((process.env[key] ?? "").trim()) continue;
+    process.env[key] = value;
+  }
+}
 
 /**
  * Build env vars a *shippable* binary cannot go out without.
@@ -26,21 +61,29 @@ function assertReleaseEnv(env: Record<string, string>, isRelease: boolean): void
   if (missing.length === 0) return;
 
   const detail = missing.map((name) => `  - ${name}: ${RELEASE_REQUIRED_ENV[name]}`).join("\n");
+  const provision =
+    `Provision them in ${join(USER_ENV_DIR, ".env")} (machine-wide, survives fresh clones and ` +
+    "worktrees) or in apps/browser/.env, and rebuild.";
   if (!isRelease) {
     console.warn(
-      `\n[build] Missing optional build env (not a release build, continuing):\n${detail}\n`,
+      `\n[build] WARNING - building with these vars empty, so the features they gate will be ` +
+        `DISABLED in this bundle:\n${detail}\n${provision}\n` +
+        "Continuing because this is not a release build (RELEASE_BUILD is unset).\n",
     );
     return;
   }
   throw new Error(
     `Release build is missing required env var(s):\n${detail}\n\n` +
       "Set them in the release pipeline's secret store and export them for the build step " +
-      "(GitHub Actions: repository secrets, see .github/workflows/desktop-release.yml), " +
-      "or locally in apps/browser/.env. Refusing to ship a build with the feature disabled.",
+      `(GitHub Actions: repository secrets, see .github/workflows/desktop-release.yml). ` +
+      `Locally: ${provision} Refusing to ship a build with the feature disabled.`,
   );
 }
 
 export default defineConfig(({ command, mode }) => {
+  // Fill gaps from ~/.openwork/.env before anything reads the environment, so a working copy
+  // without its own .env still builds a complete binary.
+  applyUserEnvFallback(mode);
   // loadEnv reads .env files the same way Vite does for import.meta.env; process.env alone
   // would miss a locally-provisioned apps/browser/.env and fail a correct build.
   const env = { ...loadEnv(mode, process.cwd(), ""), ...process.env } as Record<string, string>;
