@@ -40,7 +40,16 @@ import type {
   SessionExportFile,
   StoredMessage,
 } from "./types";
-import { nowMs, randomId, randomIdentity } from "./utils";
+import {
+  councilIdentity,
+  isAutoCouncilName,
+  nowMs,
+  randomId,
+  randomIdentity,
+  renameLegacyCouncilIdentities,
+  shortCouncilTitle,
+  titleUntitledCouncils,
+} from "./utils";
 
 /**
  * Persists a session, routing its API key to the OS keychain instead of
@@ -228,10 +237,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setSessions(migration.sessions);
       setAccounts(migration.accounts);
-      // No migration needed for council sessions: this is a brand-new IndexedDB store (see db.ts),
-      // so there is no legacy shape to reconcile — just load and go.
-      setCouncilSessions(loadedCouncilSessions);
-      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? loadedCouncilSessions[0]?.id ?? null);
+      // Councils created before they had their own naming were stored as "Agent N"; rename them,
+      // then title the ones that already have a question to answer for (see titleUntitledCouncils).
+      const renamed = renameLegacyCouncilIdentities(loadedCouncilSessions);
+      const titled = titleUntitledCouncils(renamed.sessions);
+      const changedCouncilIds = new Set([...renamed.changedIds, ...titled.changedIds]);
+      await Promise.all(
+        titled.sessions.filter((session) => changedCouncilIds.has(session.id)).map(putCouncilSession),
+      );
+      setCouncilSessions(titled.sessions);
+      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
       setReady(true);
     }
     void init();
@@ -433,11 +448,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const createCouncilSession = useCallback((members: Array<Omit<CouncilMemberConfig, "id">>): CouncilSession => {
-    const identity = randomIdentity(sessionsRef.current.length + councilSessionsRef.current.length);
     const session: CouncilSession = {
       id: randomId(),
-      // Council-only override so it reads as a debate, not a single-model chat, in the sidebar.
-      identity: { ...identity, emoji: "\u{1F3DB}\u{FE0F}" },
+      identity: councilIdentity(councilSessionsRef.current.length),
       members: members.map((member) => ({ ...member, id: randomId() })),
       turns: [],
       createdAt: nowMs(),
@@ -527,7 +540,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setCouncilSessions((prev) =>
           prev.map((candidate) => {
             if (candidate.id !== sessionId) return candidate;
-            const updated = { ...candidate, turns: [...candidate.turns, turnRecord], updatedAt: nowMs() };
+            // The first question a council is asked becomes its title, so the sidebar says what the
+            // council is about instead of "Council 3". Renamed councils keep the name they were given.
+            const shouldTitle = candidate.turns.length === 0 && isAutoCouncilName(candidate.identity.name);
+            const title = shouldTitle ? shortCouncilTitle(turnRecord.question) : "";
+            const updated = {
+              ...candidate,
+              identity: title ? { ...candidate.identity, name: title } : candidate.identity,
+              turns: [...candidate.turns, turnRecord],
+              updatedAt: nowMs(),
+            };
             void putCouncilSession(updated);
             return updated;
           }),
