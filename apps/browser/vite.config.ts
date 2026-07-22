@@ -5,14 +5,22 @@ import { defineConfig } from "vite";
 
 // Ollama's own CORS allowlist (`OLLAMA_ORIGINS`) rejects requests whose Origin header isn't
 // localhost, which blocks the browser app's direct Ollama fetches whenever it's loaded from a
-// tailnet IP/hostname (see NEW-97). Proxying same-origin requests through this dev/preview server
-// to the local daemon avoids the browser ever cross-origin-fetching Ollama directly.
+// tailnet IP/hostname (see NEW-97). Routing through this dev/preview server's proxy avoids a
+// cross-origin browser fetch, but Ollama checks the literal Origin header value it receives —
+// `changeOrigin` only rewrites the outgoing Host header, so the browser's original (tailnet)
+// Origin would otherwise still reach Ollama unchanged and get rejected exactly the same way.
+// Stripping it makes the proxied request look origin-less, which Ollama always allows.
 const OLLAMA_PROXY_PREFIX = "/__ollama__";
 const ollamaProxy = {
   [OLLAMA_PROXY_PREFIX]: {
     target: "http://localhost:11434",
     changeOrigin: true,
     rewrite: (path: string) => path.replace(new RegExp(`^${OLLAMA_PROXY_PREFIX}`), ""),
+    configure: (proxy: import("http-proxy")) => {
+      proxy.on("proxyReq", (proxyReq: import("http").ClientRequest) => {
+        proxyReq.removeHeader("origin");
+      });
+    },
   },
 };
 
