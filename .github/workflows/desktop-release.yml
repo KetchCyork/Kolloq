@@ -4,6 +4,12 @@ name: Desktop release
 # (.AppImage/.deb) and publishes them to a GitHub Release, with a latest.json
 # manifest for the Tauri auto-updater.
 #
+# Requires this repository secret for every release build (the job fails fast
+# without it, rather than shipping a binary with the feature disabled):
+#   VITE_GOOGLE_OAUTH_CLIENT_SECRET      - Google OAuth Client Secret; Vite inlines
+#                                          it into the bundle at build time, and
+#                                          "Continue with Google" is disabled without it
+#
 # Requires these repository secrets to produce SIGNED artifacts (see
 # apps/desktop/README.md for how to generate each one):
 #   TAURI_SIGNING_PRIVATE_KEY            - updater signing key (tauri signer generate)
@@ -39,6 +45,21 @@ jobs:
       release_id: ${{ steps.create.outputs.result }}
     steps:
       - uses: actions/checkout@v4
+
+      # Fail before the draft release exists (and before ~20 min of Rust builds)
+      # if a build-time secret is missing. Vite bakes VITE_ vars in at build time,
+      # so a missing one produces a silently degraded binary, not a build error.
+      - name: Preflight - required build secrets
+        shell: bash
+        env:
+          VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          if [ -z "${VITE_GOOGLE_OAUTH_CLIENT_SECRET}" ]; then
+            echo "::error::Repository secret VITE_GOOGLE_OAUTH_CLIENT_SECRET is not set. Google sign-in would ship disabled. Add it with: gh secret set VITE_GOOGLE_OAUTH_CLIENT_SECRET --repo ${{ github.repository }}"
+            exit 1
+          fi
+          echo "All required build secrets are present."
+
       - name: Create draft release
         id: create
         uses: actions/github-script@v7
@@ -118,6 +139,11 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Inlined into the web bundle by Vite via tauri.conf.json's
+          # beforeBuildCommand; RELEASE_BUILD makes vite.config.ts hard-fail
+          # rather than emit a bundle with Google sign-in disabled.
+          RELEASE_BUILD: "1"
+          VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -136,6 +162,8 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BUILD: "1"
+          VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
