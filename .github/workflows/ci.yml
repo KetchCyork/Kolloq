@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      # No `cache: pnpm` — this job never runs `pnpm install`, so there is no
+      # store to save and the cache post-step fails the run.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Runs before install: it only reads tracked files, so a naming
+      # regression fails in seconds instead of after a full dependency install.
+      - name: App name
+        run: pnpm check:app-name
+
+      # Typecheck and test are NOT wired up yet. This repo had no CI at all, and
+      # `pnpm typecheck` already fails on main — missing Office type deps in
+      # packages/core, and StoredMessage type drift in apps/browser. Enabling
+      # them here would make this workflow red on arrival and train everyone to
+      # ignore it. NEW-110 fixes the type errors and turns these on:
+      #
+      #   - name: Install
+      #     run: pnpm install --frozen-lockfile
+      #   - name: Typecheck
+      #     run: pnpm typecheck
+      #   - name: Test
+      #     run: pnpm test

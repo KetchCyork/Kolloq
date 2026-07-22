@@ -31,7 +31,7 @@ async function checkForUpdate(updater: typeof import("@tauri-apps/plugin-updater
     return;
   }
   const shouldInstall = window.confirm(
-    `New Vector Cowork ${update.version} is available. Download and install now?`,
+    `Open Work ${update.version} is available. Download and install now?`,
   );
   if (!shouldInstall) return;
 

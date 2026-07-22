@@ -48,7 +48,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: context.ref.replace('refs/tags/', ''),
-              name: `New Vector Cowork ${context.ref.replace('refs/tags/desktop-v', '')}`,
+              name: `Open Work ${context.ref.replace('refs/tags/desktop-v', '')}`,
               draft: true,
               prerelease: false,
             });
