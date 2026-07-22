@@ -28,13 +28,14 @@ export function getAgentStatus(providerConfig: ProviderConfig, accounts: Account
       }
       return { status: "ready", label: "Ready" };
     }
-    if (!account.apiKey) {
+    // Ollama runs against a local endpoint and never has an API key — that's expected, not an error.
+    if (!account.apiKey && account.provider !== "ollama") {
       return { status: "error", label: "Connection error", detail: "Its API key is missing — replace it." };
     }
     return { status: "ready", label: "Ready" };
   }
 
-  if (providerConfig.apiKey || providerConfig.authType === "subscription") {
+  if (providerConfig.apiKey || providerConfig.authType === "subscription" || providerConfig.provider === "ollama") {
     return { status: "ready", label: "Ready" };
   }
 

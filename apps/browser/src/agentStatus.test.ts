@@ -52,4 +52,15 @@ describe("getAgentStatus", () => {
     const config: ProviderConfig = { provider: "anthropic", model: "x" };
     expect(getAgentStatus(config, [])).toMatchObject({ status: "error", label: "No connection" });
   });
+
+  it("is ready for an Ollama account with no API key, since Ollama runs locally with no credentials", () => {
+    const config: ProviderConfig = { provider: "ollama", model: "llama3.1", accountId: "acc-1" };
+    const ollama = account({ provider: "ollama", authType: "api_key", apiKey: undefined, baseURL: "http://localhost:11434" });
+    expect(getAgentStatus(config, [ollama]).status).toBe("ready");
+  });
+
+  it("is ready for a legacy Ollama config with no accountId and no API key", () => {
+    const config: ProviderConfig = { provider: "ollama", model: "llama3.1" };
+    expect(getAgentStatus(config, []).status).toBe("ready");
+  });
 });
