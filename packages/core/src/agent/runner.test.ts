@@ -190,4 +190,27 @@ describe("AgentRunner", () => {
     const toolMessage = runner.getHistory().find((message) => message.role === "tool");
     expect(toolMessage?.content).toBe("5");
   });
+
+  it("runStream throws when the provider reports failure as a stream event instead of a rejection", async () => {
+    class FailingStreamProvider implements ChatProvider {
+      readonly id = "failing";
+      readonly model = "failing-model";
+      async chat(): Promise<ChatResponse> {
+        throw new Error("not used");
+      }
+      async *stream(): AsyncIterable<StreamEvent> {
+        yield { type: "text-delta", delta: "partial" };
+        yield { type: "error", error: new Error("connection reset") };
+      }
+    }
+
+    const events: string[] = [];
+    const runner = new AgentRunner({
+      provider: new FailingStreamProvider(),
+      onEvent: (event) => events.push(event.type),
+    });
+
+    await expect(runner.runStream("Hi")).rejects.toThrow("connection reset");
+    expect(events).toEqual(["text-delta", "error"]);
+  });
 });
