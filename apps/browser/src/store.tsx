@@ -40,7 +40,16 @@ import type {
   SessionExportFile,
   StoredMessage,
 } from "./types";
-import { councilIdentity, nowMs, randomId, randomIdentity, renameLegacyCouncilIdentities } from "./utils";
+import {
+  councilIdentity,
+  isAutoCouncilName,
+  nowMs,
+  randomId,
+  randomIdentity,
+  renameLegacyCouncilIdentities,
+  shortCouncilTitle,
+  titleUntitledCouncils,
+} from "./utils";
 
 /**
  * Persists a session, routing its API key to the OS keychain instead of
@@ -228,15 +237,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setSessions(migration.sessions);
       setAccounts(migration.accounts);
-      // Councils created before they had their own naming were stored as "Agent N"; rename them.
-      const councilMigration = renameLegacyCouncilIdentities(loadedCouncilSessions);
+      // Councils created before they had their own naming were stored as "Agent N"; rename them,
+      // then title the ones that already have a question to answer for (see titleUntitledCouncils).
+      const renamed = renameLegacyCouncilIdentities(loadedCouncilSessions);
+      const titled = titleUntitledCouncils(renamed.sessions);
+      const changedCouncilIds = new Set([...renamed.changedIds, ...titled.changedIds]);
       await Promise.all(
-        councilMigration.sessions
-          .filter((session) => councilMigration.changedIds.has(session.id))
-          .map(putCouncilSession),
+        titled.sessions.filter((session) => changedCouncilIds.has(session.id)).map(putCouncilSession),
       );
-      setCouncilSessions(councilMigration.sessions);
-      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? councilMigration.sessions[0]?.id ?? null);
+      setCouncilSessions(titled.sessions);
+      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
       setReady(true);
     }
     void init();
@@ -530,7 +540,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setCouncilSessions((prev) =>
           prev.map((candidate) => {
             if (candidate.id !== sessionId) return candidate;
-            const updated = { ...candidate, turns: [...candidate.turns, turnRecord], updatedAt: nowMs() };
+            // The first question a council is asked becomes its title, so the sidebar says what the
+            // council is about instead of "Council 3". Renamed councils keep the name they were given.
+            const shouldTitle = candidate.turns.length === 0 && isAutoCouncilName(candidate.identity.name);
+            const title = shouldTitle ? shortCouncilTitle(turnRecord.question) : "";
+            const updated = {
+              ...candidate,
+              identity: title ? { ...candidate.identity, name: title } : candidate.identity,
+              turns: [...candidate.turns, turnRecord],
+              updatedAt: nowMs(),
+            };
             void putCouncilSession(updated);
             return updated;
           }),

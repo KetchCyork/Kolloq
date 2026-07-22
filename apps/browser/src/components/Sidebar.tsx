@@ -1,5 +1,6 @@
 import { useStore } from "../store";
 import type { AgentSession, CouncilSession } from "../types";
+import { councilListSubtitle, councilListTitle } from "../utils";
 import { ExportImportBar } from "./ExportImportBar";
 
 type SidebarEntry = { kind: "agent"; session: AgentSession } | { kind: "council"; session: CouncilSession };
@@ -68,15 +69,17 @@ export function Sidebar() {
         {entries.map((entry) => {
           const session = entry.session;
           let isLive: boolean;
+          let title: string;
           let sub: string;
           if (entry.kind === "agent") {
             isLive = Boolean(live[entry.session.id]);
             const lastMessage = entry.session.messages.at(-1);
+            title = entry.session.identity.name;
             sub = `${entry.session.providerConfig.provider} · ${entry.session.providerConfig.model}${lastMessage ? ` · ${lastMessage.content.slice(0, 24)}` : ""}`;
           } else {
             isLive = Boolean(councilLive[entry.session.id]);
-            const lastTurn = entry.session.turns.at(-1);
-            sub = `Council · ${entry.session.members.length} members${lastTurn ? ` · ${lastTurn.question.slice(0, 24)}` : ""}`;
+            title = councilListTitle(entry.session);
+            sub = councilListSubtitle(entry.session, isLive);
           }
           return (
             <div
@@ -88,7 +91,9 @@ export function Sidebar() {
                 {session.identity.emoji}
               </div>
               <div className="session-item-meta">
-                <div className="session-item-name">{session.identity.name}</div>
+                <div className="session-item-name" title={title}>
+                  {title}
+                </div>
                 <div className="session-item-sub">{sub}</div>
               </div>
               {isLive && <div className="live-dot" title="Streaming…" />}
