@@ -4,12 +4,14 @@ import type { ProjectMemberConfig, ProjectTaskStatus } from "./types";
 export const AUTO_ROUTE = "auto";
 
 /** Finds the first `@name` mention in `text` that matches a roster member's identity name
- * (case-insensitive, first word only — roster names are single words like "Atlas" or "Critic"). */
+ * (case-insensitive, first word only — roster names are single words like "Atlas" or "Critic").
+ * The `@` must not be preceded by a word character or a dot, so email addresses like
+ * `support@Nova.io` are never mistaken for a mention of a roster member named "Nova". */
 export function resolveMentionedMember(
   text: string,
   roster: ProjectMemberConfig[],
 ): ProjectMemberConfig | undefined {
-  const match = text.match(/@([A-Za-z0-9_-]+)/);
+  const match = text.match(/(?<![\w.])@([A-Za-z0-9_-]+)/);
   if (!match) return undefined;
   const mention = match[1].toLowerCase();
   return roster.find((member) => member.identity.name.toLowerCase() === mention);

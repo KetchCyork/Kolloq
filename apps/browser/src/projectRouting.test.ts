@@ -18,6 +18,12 @@ describe("resolveMentionedMember", () => {
     expect(resolveMentionedMember("just a plain message", roster)).toBeUndefined();
     expect(resolveMentionedMember("@nobody here", roster)).toBeUndefined();
   });
+
+  it("does not treat an email address's domain as a mention", () => {
+    const nova = [...roster, member("m4", "Nova")];
+    expect(resolveMentionedMember("please email support@Nova.io about this", nova)).toBeUndefined();
+    expect(resolveMentionedMember("cc atlas@Forge.io and @Atlas too", roster)?.id).toBe("m1");
+  });
 });
 
 describe("resolveRoutedMember", () => {
