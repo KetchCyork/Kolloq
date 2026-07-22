@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AgentsView } from "./components/AgentsView";
 import { ChatPanel } from "./components/ChatPanel";
 import { ComingSoonView } from "./components/ComingSoonView";
 import { CouncilEmptyState } from "./components/CouncilEmptyState";
@@ -76,9 +77,7 @@ export function App() {
       case "projects":
         return activeProject ? <ProjectPanel project={activeProject} /> : <ProjectsEmptyState />;
       case "agents":
-        return (
-          <ComingSoonView title="Agents" description="Create, edit, duplicate, and archive agents from here soon." />
-        );
+        return <AgentsView />;
       case "settings":
         return <SettingsView />;
       case "chat":
