@@ -49,42 +49,49 @@ export function CouncilSetupForm({ session, onChange }: { session: CouncilSessio
       <div className="field span-full">
         <label>Council seats — {MIN_COUNCIL_MEMBERS} to {MAX_COUNCIL_MEMBERS} agents</label>
         <div className="council-seats">
-          {members.map((member, index) => (
-            <div className="seat filled" key={member.id}>
-              <span className="dot" style={{ background: SEAT_COLORS[index % SEAT_COLORS.length] }} />
-              <select
-                aria-label={`Account for council seat ${index + 1}`}
-                value={member.accountId}
-                onChange={(e) => updateMember(member.id, { accountId: e.target.value })}
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.label} · {account.model}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                className="seat-stance-input"
-                placeholder="Stance (optional)"
-                value={member.role ?? ""}
-                onChange={(e) => updateMember(member.id, { role: e.target.value || undefined })}
-              />
-              <button
-                type="button"
-                className="seat-remove"
-                onClick={() => removeMember(member.id)}
-                disabled={members.length <= MIN_COUNCIL_MEMBERS}
-                title={
-                  members.length <= MIN_COUNCIL_MEMBERS
-                    ? `A council needs at least ${MIN_COUNCIL_MEMBERS} members`
-                    : "Remove seat"
-                }
-              >
-                ✕ Remove
-              </button>
-            </div>
-          ))}
+          {members.map((member, index) => {
+            const seatAccount = accounts.find((account) => account.id === member.accountId);
+            return (
+              <div className="seat filled" key={member.id}>
+                <span className="dot" style={{ background: SEAT_COLORS[index % SEAT_COLORS.length] }} />
+                {/* Seat tiles are narrow, so the picker carries the account label only and the model
+                 * gets its own line — cramming "label · model" into the select overflowed the tile. */}
+                <select
+                  aria-label={`Account for council seat ${index + 1}`}
+                  title={seatAccount ? `${seatAccount.label} · ${seatAccount.model}` : undefined}
+                  value={member.accountId}
+                  onChange={(e) => updateMember(member.id, { accountId: e.target.value })}
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.label}
+                    </option>
+                  ))}
+                </select>
+                <small className="seat-model">{seatAccount ? seatAccount.model : "Account removed"}</small>
+                <input
+                  type="text"
+                  className="seat-stance-input"
+                  placeholder="Stance (optional)"
+                  value={member.role ?? ""}
+                  onChange={(e) => updateMember(member.id, { role: e.target.value || undefined })}
+                />
+                <button
+                  type="button"
+                  className="seat-remove"
+                  onClick={() => removeMember(member.id)}
+                  disabled={members.length <= MIN_COUNCIL_MEMBERS}
+                  title={
+                    members.length <= MIN_COUNCIL_MEMBERS
+                      ? `A council needs at least ${MIN_COUNCIL_MEMBERS} members`
+                      : "Remove seat"
+                  }
+                >
+                  ✕ Remove
+                </button>
+              </div>
+            );
+          })}
           {members.length < MAX_COUNCIL_MEMBERS && (
             <button type="button" className="seat" onClick={addMember}>
               ＋ Add seat
