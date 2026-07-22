@@ -10,7 +10,14 @@
     "declaration": false,
     "declarationMap": false,
     "isolatedModules": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": {
+      // Mirror the Vite alias in vite.config.ts: resolve @newvector/core from
+      // its TypeScript source instead of ./dist, which doesn't exist until
+      // `pnpm build` runs. Scoped to the exact specifier so the Node-only
+      // @newvector/core/node subpath (unused here) still resolves normally.
+      "@newvector/core": ["../../packages/core/src/index.ts"]
+    }
   },
   "include": ["src"]
 }
