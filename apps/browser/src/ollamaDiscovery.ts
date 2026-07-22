@@ -1,7 +1,7 @@
 import { listModels } from "@newvector/core";
 import { useCallback, useState } from "react";
 
-const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
+export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
 
 /**
  * Fetches the models actually installed at an Ollama-compatible endpoint, so the account form can

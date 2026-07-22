@@ -1,7 +1,6 @@
-import { DEFAULT_OLLAMA_BASE_URL } from "@newvector/core";
 import { useState } from "react";
 import { isTauriRuntime } from "../credentials";
-import { useOllamaModels } from "../ollamaDiscovery";
+import { DEFAULT_OLLAMA_BASE_URL, useOllamaModels } from "../ollamaDiscovery";
 import { useStore } from "../store";
 import type { Account, ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
