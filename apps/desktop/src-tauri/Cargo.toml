@@ -1,7 +1,7 @@
 [package]
 name = "newvector-cowork-desktop"
 version = "0.1.0"
-description = "New Vector Cowork desktop shell"
+description = "Open Work desktop shell"
 edition = "2021"
 rust-version = "1.77"
 

@@ -43,5 +43,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running the New Vector Cowork desktop app");
+        .expect("error while running the Open Work desktop app");
 }
