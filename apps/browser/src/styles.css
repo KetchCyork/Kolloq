@@ -8,6 +8,7 @@
   --text: #e6e8ef;
   --text-dim: #8b8fa3;
   --accent: #6366f1;
+  --accent-soft: #23264a;
 }
 
 :root[data-theme="light"] {
@@ -19,6 +20,7 @@
   --text: #1b1d23;
   --text-dim: #6b7080;
   --accent: #6366f1;
+  --accent-soft: #e8e7fb;
 }
 
 * {
@@ -113,36 +115,40 @@ select {
   margin-bottom: 10px;
 }
 
-.sidebar-nav-item {
+.nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
   background: none;
   border: none;
   color: var(--text);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 9px;
+  padding: 8px 12px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
   width: 100%;
+  margin-bottom: 2px;
 }
 
-.sidebar-nav-item:hover {
+.nav-item svg {
+  width: 17px;
+  height: 17px;
+  stroke: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.nav-item:hover {
   background: var(--panel-alt);
 }
 
-.sidebar-nav-icon {
-  color: var(--text-dim);
+.nav-item.active {
+  background: var(--accent-soft);
+  font-weight: 600;
 }
 
-.sidebar-nav-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-dim);
-  background: var(--panel-alt);
-  border-radius: 999px;
-  padding: 1px 7px;
+.nav-item.active svg {
+  stroke: var(--accent);
 }
 
 .sidebar-section-label {
@@ -243,13 +249,50 @@ select {
 }
 
 .sidebar-footer {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+}
+
+.sidebar-footer .avatar {
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar-footer-identity {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-pill {
+  margin-left: auto;
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-io-bar {
   padding: 10px;
   border-top: 1px solid var(--border);
   display: flex;
   gap: 8px;
 }
 
-.sidebar-footer button {
+.sidebar-io-bar button {
   flex: 1;
   background: var(--panel-alt);
   border: 1px solid var(--border);
@@ -260,7 +303,7 @@ select {
   font-size: 12px;
 }
 
-.sidebar-footer button:hover {
+.sidebar-io-bar button:hover {
   border-color: var(--accent);
 }
 

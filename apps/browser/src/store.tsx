@@ -140,6 +140,9 @@ export interface LiveTurn {
   error?: string;
 }
 
+/** Top-level sidebar nav areas from the Open Work mockup/spec (§3.2). */
+export type WorkspaceView = "chat" | "projects" | "council" | "agents" | "settings";
+
 interface StoreState {
   sessions: AgentSession[];
   councilSessions: CouncilSession[];
@@ -151,10 +154,12 @@ interface StoreState {
   accountsManagerOpen: boolean;
   preferences: Preferences;
   preferencesOpen: boolean;
+  currentView: WorkspaceView;
 }
 
 interface StoreApi extends StoreState {
   setActiveSessionId: (id: string) => void;
+  setCurrentView: (view: WorkspaceView) => void;
   createSession: () => AgentSession;
   updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
   deleteSession: (id: string) => void;
@@ -191,6 +196,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<WorkspaceView>("chat");
   const sessionsRef = useRef<AgentSession[]>([]);
   sessionsRef.current = sessions;
   const councilSessionsRef = useRef<CouncilSession[]>([]);
@@ -247,6 +253,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       setCouncilSessions(titled.sessions);
       setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
+      // No agent sessions to land on but a council exists — open straight to the Advisory Council view instead of an empty Chat.
+      if (migration.sessions.length === 0 && titled.sessions.length > 0) {
+        setCurrentView("council");
+      }
       setReady(true);
     }
     void init();
@@ -269,6 +279,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     setSessions((prev) => [...prev, session]);
     setActiveSessionId(session.id);
+    setCurrentView("chat");
     void persistSession(session);
     capture({ type: "session_created", provider: providerConfig.provider });
     return session;
@@ -458,6 +469,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
     setCouncilSessions((prev) => [...prev, session]);
     setActiveSessionId(session.id);
+    setCurrentView("council");
     void putCouncilSession(session);
     return session;
   }, []);
@@ -608,7 +620,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       accountsManagerOpen,
       preferences,
       preferencesOpen,
+      currentView,
       setActiveSessionId,
+      setCurrentView,
       createSession,
       updateSession,
       deleteSession: deleteSessionById,
@@ -639,6 +653,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       accountsManagerOpen,
       preferences,
       preferencesOpen,
+      currentView,
       createSession,
       updateSession,
       deleteSessionById,
