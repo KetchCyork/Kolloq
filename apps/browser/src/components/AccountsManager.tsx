@@ -11,7 +11,7 @@ import {
   type SubscriptionAuthSession,
 } from "../subscriptionAuth";
 import type { Account, AccountAuthType, OAuthCredential, ProviderName } from "../types";
-import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+import { DEFAULT_OLLAMA_BASE_URL, PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
 
 /** Debounce before firing a live model-list request after the account form's provider/key/base URL settle. */
 const MODEL_LIST_DEBOUNCE_MS = 500;
@@ -178,7 +178,7 @@ export function AccountsManager() {
         // `draft.baseURL` is only ever edited via the Ollama-specific field, but changing
         // provider doesn't clear it — forward it for Ollama only, so switching from a custom
         // Ollama URL to another provider doesn't misroute that provider's list request there.
-        baseURL: provider === "ollama" ? draft.baseURL.trim() || undefined : undefined,
+        baseURL: provider === "ollama" ? draft.baseURL.trim() || DEFAULT_OLLAMA_BASE_URL : undefined,
         authType: draft.authType,
         accessToken,
       })
@@ -201,10 +201,20 @@ export function AccountsManager() {
     };
   }, [draft.provider, draft.apiKey, draft.baseURL, draft.authType, draft.oauth, originalApiKey]);
 
+  // A live list load must never leave a stale/hardcoded model (e.g. the initial provider default)
+  // selected once real values are available — jump to the first live entry instead.
+  useEffect(() => {
+    if (modelOptions.length === 0) return;
+    setDraft((current) => {
+      if (modelOptions.some((opt) => opt.id === current.model)) return current;
+      return { ...current, model: modelOptions[0].id };
+    });
+  }, [modelOptions]);
+
   function save() {
     const label = draft.label.trim() || `${PROVIDER_LABELS[draft.provider]} account`;
     const model = draft.model.trim() || PROVIDER_DEFAULT_MODELS[draft.provider];
-    const baseURL = draft.baseURL.trim() || undefined;
+    const baseURL = draft.provider === "ollama" ? draft.baseURL.trim() || DEFAULT_OLLAMA_BASE_URL : undefined;
     const authType = draft.authType;
 
     if (authType === "subscription" && !draft.oauth) {
@@ -251,9 +261,12 @@ export function AccountsManager() {
   // Always keep the current draft model selectable, even if it's not (yet) in the live list —
   // e.g. a saved account whose model was retired, or while the live list is still loading.
   const baseModelOptions = modelOptions.length > 0 ? modelOptions : [{ id: PROVIDER_DEFAULT_MODELS[draft.provider] }];
-  const modelSelectOptions = baseModelOptions.some((opt) => opt.id === draft.model)
-    ? baseModelOptions
-    : [{ id: draft.model }, ...baseModelOptions];
+  // Once a live list has loaded, only ever offer values from it — never fall back to a stale
+  // hardcoded/previously-saved model that isn't actually in the provider's real catalog.
+  const modelSelectOptions =
+    modelOptions.length > 0 || baseModelOptions.some((opt) => opt.id === draft.model)
+      ? baseModelOptions
+      : [{ id: draft.model }, ...baseModelOptions];
 
   return (
     <div className="modal-overlay" onClick={closeAccountsManager}>
@@ -412,7 +425,7 @@ export function AccountsManager() {
                 <label htmlFor="account-baseurl">Ollama base URL</label>
                 <input
                   id="account-baseurl"
-                  placeholder="http://localhost:11434/v1"
+                  placeholder={DEFAULT_OLLAMA_BASE_URL}
                   value={draft.baseURL}
                   onChange={(e) => setDraft({ ...draft, baseURL: e.target.value })}
                 />

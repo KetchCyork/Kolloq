@@ -4,7 +4,7 @@ import { listModels } from "@newvector/core";
 import { useStore } from "../store";
 import { capture } from "../telemetry";
 import type { ProviderName } from "../types";
-import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+import { DEFAULT_OLLAMA_BASE_URL, PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
 
 /** Debounce before firing a live model-list request after the provider/key/base URL settle. */
 const MODEL_LIST_DEBOUNCE_MS = 500;
@@ -33,7 +33,7 @@ export function OnboardingWizard() {
   const [provider, setProvider] = useState<ProviderName>("anthropic");
   const [model, setModel] = useState(PROVIDER_DEFAULT_MODELS.anthropic);
   const [apiKey, setApiKey] = useState("");
-  const [baseURL, setBaseURL] = useState("http://localhost:11434/v1");
+  const [baseURL, setBaseURL] = useState(DEFAULT_OLLAMA_BASE_URL);
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
@@ -70,7 +70,7 @@ export function OnboardingWizard() {
         // `baseURL` state defaults to the Ollama URL regardless of the selected provider (it's
         // only ever edited via the Ollama-specific field below), so only forward it for Ollama —
         // otherwise every other provider's list request gets misrouted to the local Ollama server.
-        baseURL: provider === "ollama" ? baseURL.trim() || undefined : undefined,
+        baseURL: provider === "ollama" ? baseURL.trim() || DEFAULT_OLLAMA_BASE_URL : undefined,
       })
         .then((models) => {
           if (cancelled) return;
@@ -91,6 +91,13 @@ export function OnboardingWizard() {
     };
   }, [provider, apiKey, baseURL]);
 
+  // A live list load must never leave a stale/hardcoded model (e.g. the initial provider default)
+  // selected once real values are available — jump to the first live entry instead.
+  useEffect(() => {
+    if (modelOptions.length === 0) return;
+    setModel((current) => (modelOptions.some((opt) => opt.id === current) ? current : modelOptions[0].id));
+  }, [modelOptions]);
+
   async function finish() {
     setSaving(true);
     const accountLabel = label.trim() || `${PROVIDER_LABELS[provider]} account`;
@@ -99,7 +106,7 @@ export function OnboardingWizard() {
       provider,
       model: model.trim() || PROVIDER_DEFAULT_MODELS[provider],
       apiKey: provider === "ollama" ? undefined : apiKey.trim() || undefined,
-      baseURL: provider === "ollama" ? baseURL.trim() || undefined : undefined,
+      baseURL: provider === "ollama" ? baseURL.trim() || DEFAULT_OLLAMA_BASE_URL : undefined,
     });
     capture({ type: "onboarding_completed", provider });
     setSaving(false);
@@ -129,9 +136,12 @@ export function OnboardingWizard() {
     // Always keep the current model selectable, even if it's not (yet) in the live list —
     // e.g. while the live list is still loading, or if it failed and we fell back to the default.
     const baseModelOptions = modelOptions.length > 0 ? modelOptions : [{ id: PROVIDER_DEFAULT_MODELS[provider] }];
-    const modelSelectOptions = baseModelOptions.some((opt) => opt.id === model)
-      ? baseModelOptions
-      : [{ id: model }, ...baseModelOptions];
+    // Once a live list has loaded, only ever offer values from it — never fall back to a stale
+    // hardcoded model that isn't actually in the provider's real catalog.
+    const modelSelectOptions =
+      modelOptions.length > 0 || baseModelOptions.some((opt) => opt.id === model)
+        ? baseModelOptions
+        : [{ id: model }, ...baseModelOptions];
 
     return (
       <div className="onboarding-overlay">
@@ -180,7 +190,7 @@ export function OnboardingWizard() {
                   id="ob-baseurl"
                   value={baseURL}
                   onChange={(e) => setBaseURL(e.target.value)}
-                  placeholder="http://localhost:11434/v1"
+                  placeholder={DEFAULT_OLLAMA_BASE_URL}
                 />
               </div>
             ) : (
