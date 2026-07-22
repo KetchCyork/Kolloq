@@ -115,3 +115,14 @@ export async function putAllCouncilSessions(sessions: CouncilSession[]): Promise
     db.close();
   }
 }
+
+// Escape hatch for unrecoverable init failures (e.g. a stale on-disk DB version that
+// can never be opened by an older client). Deletes all local session/account data.
+export function resetDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => resolve();
+  });
+}

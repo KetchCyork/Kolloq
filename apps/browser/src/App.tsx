@@ -12,6 +12,9 @@ import { useStore } from "./store";
 export function App() {
   const {
     ready,
+    initError,
+    retryInit,
+    resetLocalData,
     accounts,
     createSession,
     councilSessions,
@@ -52,6 +55,30 @@ export function App() {
 
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
+  }
+
+  if (initError) {
+    return (
+      <div className="no-session init-error">
+        <p>Couldn't load your local sessions.</p>
+        <p className="init-error-detail">{initError}</p>
+        <div className="init-error-actions">
+          <button type="button" onClick={retryInit}>
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("This deletes all local sessions and accounts stored on this device. Continue?")) {
+                void resetLocalData();
+              }
+            }}
+          >
+            Reset local data and reload
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (accounts.length === 0) {

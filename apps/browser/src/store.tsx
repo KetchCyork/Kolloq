@@ -22,6 +22,7 @@ import {
   putAllSessions,
   putCouncilSession,
   putSession,
+  resetDatabase,
   deleteSession as deleteSessionRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
@@ -139,12 +140,15 @@ interface StoreState {
   live: Record<string, LiveTurn>;
   councilLive: Record<string, LiveCouncilTurn>;
   ready: boolean;
+  initError: string | null;
   accountsManagerOpen: boolean;
   preferences: Preferences;
   preferencesOpen: boolean;
 }
 
 interface StoreApi extends StoreState {
+  retryInit: () => void;
+  resetLocalData: () => Promise<void>;
   setActiveSessionId: (id: string) => void;
   createSession: () => AgentSession;
   updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
@@ -179,6 +183,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
   const [ready, setReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -205,11 +210,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => media.removeEventListener("change", onChange);
   }, [preferences.theme]);
 
-  useEffect(() => {
-    if (initStarted.current) return;
-    initStarted.current = true;
-
-    async function init() {
+  const runInit = useCallback(async () => {
+    setInitError(null);
+    try {
       const [loadedSessions, loadedAccounts, loadedCouncilSessions] = await Promise.all([
         loadAllSessions(),
         loadAllAccounts(),
@@ -232,9 +235,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // so there is no legacy shape to reconcile — just load and go.
       setCouncilSessions(loadedCouncilSessions);
       setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? loadedCouncilSessions[0]?.id ?? null);
+    } catch (error) {
+      // Any IndexedDB failure here (quota, corruption, private mode, version skew) must not
+      // hang the app on the loading screen forever — surface it and let the user recover.
+      console.error("Failed to initialize local session store", error);
+      setInitError(error instanceof Error ? error.message : String(error));
+    } finally {
       setReady(true);
     }
-    void init();
+  }, []);
+
+  useEffect(() => {
+    if (initStarted.current) return;
+    initStarted.current = true;
+    void runInit();
+  }, [runInit]);
+
+  const retryInit = useCallback(() => {
+    setReady(false);
+    void runInit();
+  }, [runInit]);
+
+  const resetLocalData = useCallback(async () => {
+    await resetDatabase();
+    if (typeof window !== "undefined") window.location.reload();
   }, []);
 
   const createSession = useCallback((): AgentSession => {
@@ -583,9 +607,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live,
       councilLive,
       ready,
+      initError,
       accountsManagerOpen,
       preferences,
       preferencesOpen,
+      retryInit,
+      resetLocalData,
       setActiveSessionId,
       createSession,
       updateSession,
@@ -614,9 +641,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live,
       councilLive,
       ready,
+      initError,
       accountsManagerOpen,
       preferences,
       preferencesOpen,
+      retryInit,
+      resetLocalData,
       createSession,
       updateSession,
       deleteSessionById,
