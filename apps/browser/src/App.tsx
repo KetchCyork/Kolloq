@@ -1,9 +1,12 @@
 import { useEffect } from "react";
 import { AccountsManager } from "./components/AccountsManager";
 import { ChatPanel } from "./components/ChatPanel";
+import { ComingSoonView } from "./components/ComingSoonView";
+import { CouncilEmptyState } from "./components/CouncilEmptyState";
 import { CouncilPanel } from "./components/CouncilPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { PreferencesPanel } from "./components/PreferencesPanel";
+import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
 import { matchesBinding } from "./preferences";
@@ -21,6 +24,7 @@ export function App() {
     preferencesOpen,
     openPreferences,
     closePreferences,
+    currentView,
   } = useStore();
 
   useEffect(() => {
@@ -60,10 +64,33 @@ export function App() {
 
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
 
+  function renderMain() {
+    switch (currentView) {
+      case "council":
+        return activeCouncilSession ? <CouncilPanel session={activeCouncilSession} /> : <CouncilEmptyState />;
+      case "projects":
+        return (
+          <ComingSoonView
+            title="Projects"
+            description="Cowork-style workspaces with a connected folder, files, and assigned agents are coming soon."
+          />
+        );
+      case "agents":
+        return (
+          <ComingSoonView title="Agents" description="Create, edit, duplicate, and archive agents from here soon." />
+        );
+      case "settings":
+        return <SettingsView />;
+      case "chat":
+      default:
+        return <ChatPanel />;
+    }
+  }
+
   return (
     <div className="app">
       <Sidebar />
-      {activeCouncilSession ? <CouncilPanel session={activeCouncilSession} /> : <ChatPanel />}
+      {renderMain()}
       {accountsManagerOpen && <AccountsManager />}
       {preferencesOpen && <PreferencesPanel />}
     </div>
