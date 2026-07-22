@@ -65,3 +65,10 @@ export interface ChatProvider {
   chat(request: ChatRequest): Promise<ChatResponse>;
   stream(request: ChatRequest): AsyncIterable<StreamEvent>;
 }
+
+/** One model a provider currently offers, as returned by that provider's model-listing endpoint. */
+export interface ModelOption {
+  id: string;
+  /** Human-friendly name, when the provider returns one distinct from `id`. */
+  label?: string;
+}

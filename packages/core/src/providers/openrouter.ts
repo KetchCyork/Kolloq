@@ -1,6 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { AiSdkChatProvider } from "./ai-sdk-adapter.js";
-import type { ChatProvider } from "./types.js";
+import type { ChatProvider, ModelOption } from "./types.js";
 
 export interface OpenRouterProviderConfig {
   apiKey?: string;
@@ -21,4 +21,15 @@ export function createOpenRouterProvider(config: OpenRouterProviderConfig = {}):
     apiKey: config.apiKey,
   });
   return new AiSdkChatProvider("openrouter", model, openrouter(model));
+}
+
+/** OpenRouter's model catalog is public — no API key required to list it. */
+export async function listOpenRouterModels(config: OpenRouterProviderConfig = {}): Promise<ModelOption[]> {
+  const baseURL = (config.baseURL ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
+  const response = await fetch(`${baseURL}/models`);
+  if (!response.ok) {
+    throw new Error(`OpenRouter model list request failed: ${response.status} ${response.statusText}`);
+  }
+  const body = (await response.json()) as { data?: Array<{ id: string; name?: string }> };
+  return (body.data ?? []).map((m) => ({ id: m.id, label: m.name }));
 }

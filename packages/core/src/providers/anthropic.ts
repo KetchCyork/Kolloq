@@ -1,6 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { AiSdkChatProvider } from "./ai-sdk-adapter.js";
-import type { ChatProvider } from "./types.js";
+import type { ChatProvider, ModelOption } from "./types.js";
 
 export interface AnthropicProviderConfig {
   apiKey?: string;
@@ -38,4 +38,34 @@ function createSubscriptionAnthropic(accessToken: string, baseURL?: string) {
     return fetch(input, { ...init, headers });
   };
   return createAnthropic({ apiKey: "oauth-subscription-placeholder", baseURL, fetch: oauthFetch });
+}
+
+/**
+ * Lists the models available to this account via `GET /v1/models`, so callers can offer a
+ * dropdown instead of a free-text model field. Includes
+ * `anthropic-dangerous-direct-browser-access` because this fetch runs directly from renderer/
+ * browser JS (no backend proxy exists for provider calls in this app) and Anthropic's API
+ * otherwise rejects browser-origin requests.
+ */
+export async function listAnthropicModels(config: AnthropicProviderConfig = {}): Promise<ModelOption[]> {
+  const baseURL = (config.baseURL ?? "https://api.anthropic.com/v1").replace(/\/$/, "");
+  const headers: Record<string, string> = {
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+  };
+  if (config.authType === "subscription" && config.accessToken) {
+    headers.authorization = `Bearer ${config.accessToken}`;
+    headers["anthropic-beta"] = "oauth-2025-04-20";
+  } else if (config.apiKey) {
+    headers["x-api-key"] = config.apiKey;
+  } else {
+    throw new Error("An API key (or subscription sign-in) is required to list Anthropic models.");
+  }
+
+  const response = await fetch(`${baseURL}/models?limit=1000`, { headers });
+  if (!response.ok) {
+    throw new Error(`Anthropic model list request failed: ${response.status} ${response.statusText}`);
+  }
+  const body = (await response.json()) as { data?: Array<{ id: string; display_name?: string }> };
+  return (body.data ?? []).map((m) => ({ id: m.id, label: m.display_name }));
 }
