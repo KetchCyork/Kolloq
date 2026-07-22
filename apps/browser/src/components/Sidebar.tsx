@@ -1,9 +1,12 @@
 import { useStore, type WorkspaceView } from "../store";
-import type { AgentSession, CouncilSession } from "../types";
+import type { AgentSession, CouncilSession, Project } from "../types";
 import { councilListSubtitle, councilListTitle } from "../utils";
 import { ExportImportBar } from "./ExportImportBar";
 
-type SidebarEntry = { kind: "agent"; session: AgentSession } | { kind: "council"; session: CouncilSession };
+type SidebarEntry =
+  | { kind: "agent"; session: AgentSession }
+  | { kind: "council"; session: CouncilSession }
+  | { kind: "project"; session: Project };
 
 const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: JSX.Element }> = [
   {
@@ -65,12 +68,15 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
   const {
     sessions,
     councilSessions,
+    projects,
     activeSessionId,
     setActiveSessionId,
     createSession,
     createCouncilSession,
+    createProject,
     live,
     councilLive,
+    projectLive,
     accounts,
     openAccountsManager,
     currentView,
@@ -88,12 +94,13 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
 
   function openEntry(entry: SidebarEntry) {
     setActiveSessionId(entry.session.id);
-    setCurrentView(entry.kind === "council" ? "council" : "chat");
+    setCurrentView(entry.kind === "council" ? "council" : entry.kind === "project" ? "projects" : "chat");
   }
 
   const entries: SidebarEntry[] = [
     ...sessions.map((session): SidebarEntry => ({ kind: "agent", session })),
     ...councilSessions.map((session): SidebarEntry => ({ kind: "council", session })),
+    ...projects.map((session): SidebarEntry => ({ kind: "project", session })),
   ].sort((a, b) => b.session.createdAt - a.session.createdAt);
 
   return (
@@ -108,6 +115,9 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
       </button>
       <button className="sidebar-new-btn sidebar-new-council-btn" onClick={handleNewCouncil}>
         <span className="sidebar-new-btn-icon">+</span> New council
+      </button>
+      <button className="sidebar-new-btn sidebar-new-council-btn" onClick={() => createProject()}>
+        <span className="sidebar-new-btn-icon">+</span> New project
       </button>
 
       <nav className="sidebar-nav">
@@ -130,7 +140,7 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
       <div className="session-list">
         {entries.length === 0 && (
           <div className="empty-state" style={{ margin: "20px 8px", fontSize: 12 }}>
-            Nothing here yet. Click "New agent" or "New council" to create one.
+            Nothing here yet. Click "New agent", "New council", or "New project" to create one.
           </div>
         )}
         {entries.map((entry) => {
@@ -143,10 +153,14 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
             const lastMessage = entry.session.messages.at(-1);
             title = entry.session.identity.name;
             sub = `${entry.session.providerConfig.provider} · ${entry.session.providerConfig.model}${lastMessage ? ` · ${lastMessage.content.slice(0, 24)}` : ""}`;
-          } else {
+          } else if (entry.kind === "council") {
             isLive = Boolean(councilLive[entry.session.id]);
             title = councilListTitle(entry.session);
             sub = councilListSubtitle(entry.session, isLive);
+          } else {
+            isLive = Boolean(projectLive[entry.session.id]);
+            title = entry.session.identity.name;
+            sub = `${entry.session.roster.length} agent${entry.session.roster.length === 1 ? "" : "s"} · Project`;
           }
           return (
             <div

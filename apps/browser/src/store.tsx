@@ -1,6 +1,7 @@
-import type { AgentEvent, ChatAttachment, CouncilEvent, ToolCall } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { getToolCount, runSessionTurn } from "./agentClient";
+import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
+import { filesToAttachments } from "./attachments";
 import { runCouncilTurn } from "./councilClient";
 import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
 import {
@@ -14,18 +15,25 @@ import {
 import {
   deleteAccount as deleteAccountRecord,
   deleteCouncilSession as deleteCouncilSessionRecord,
+  deleteProject as deleteProjectRecord,
+  deleteProjectFolderHandle,
   loadAllAccounts,
   loadAllCouncilSessions,
+  loadAllProjects,
   loadAllSessions,
   putAccount,
   putAllCouncilSessions,
   putAllSessions,
   putCouncilSession,
+  putProject,
+  putProjectFolderHandle,
   putSession,
   deleteSession as deleteSessionRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
+import { pickWorkingFolder } from "./projectFolder";
+import { resolveRoutedMember } from "./projectRouting";
 import { isOAuthCredentialExpiring, refreshSubscriptionAuth } from "./subscriptionAuth";
 import { capture, setTelemetryEnabled } from "./telemetry";
 import type {
@@ -36,6 +44,12 @@ import type {
   CouncilTurn,
   LiveCouncilTurn,
   OAuthCredential,
+  Project,
+  ProjectChatMessage,
+  ProjectKnowledgeFile,
+  ProjectMemberConfig,
+  ProjectTask,
+  ProjectTaskStatus,
   ProviderConfig,
   SessionExportFile,
   StoredMessage,
@@ -146,10 +160,12 @@ export type WorkspaceView = "chat" | "projects" | "council" | "agents" | "settin
 interface StoreState {
   sessions: AgentSession[];
   councilSessions: CouncilSession[];
+  projects: Project[];
   accounts: Account[];
   activeSessionId: string | null;
   live: Record<string, LiveTurn>;
   councilLive: Record<string, LiveCouncilTurn>;
+  projectLive: Record<string, LiveTurn>;
   ready: boolean;
   accountsManagerOpen: boolean;
   preferences: Preferences;
@@ -181,6 +197,25 @@ interface StoreApi extends StoreState {
   updatePreferences: (patch: Partial<Preferences>) => void;
   openPreferences: () => void;
   closePreferences: () => void;
+  createProject: () => Project;
+  updateProject: (id: string, patch: Partial<Pick<Project, "identity" | "instructions">>) => void;
+  deleteProject: (id: string) => void;
+  connectProjectFolder: (id: string) => Promise<void>;
+  disconnectProjectFolder: (id: string) => void;
+  addProjectMember: (projectId: string, input: Omit<ProjectMemberConfig, "id">) => void;
+  updateProjectMember: (projectId: string, memberId: string, patch: Partial<Omit<ProjectMemberConfig, "id">>) => void;
+  removeProjectMember: (projectId: string, memberId: string) => void;
+  addProjectTask: (projectId: string, title: string, assigneeId?: string) => void;
+  updateProjectTaskStatus: (projectId: string, taskId: string, status: ProjectTaskStatus) => void;
+  deleteProjectTask: (projectId: string, taskId: string) => void;
+  addProjectKnowledgeFiles: (projectId: string, files: File[]) => Promise<void>;
+  removeProjectKnowledgeFile: (projectId: string, fileId: string) => void;
+  sendProjectMessage: (
+    projectId: string,
+    text: string,
+    pickedMemberId: string,
+    attachments?: ChatAttachment[],
+  ) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
@@ -188,10 +223,12 @@ const StoreContext = createContext<StoreApi | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [councilSessions, setCouncilSessions] = useState<CouncilSession[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
+  const [projectLive, setProjectLive] = useState<Record<string, LiveTurn>>({});
   const [ready, setReady] = useState(false);
   const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
@@ -201,6 +238,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   sessionsRef.current = sessions;
   const councilSessionsRef = useRef<CouncilSession[]>([]);
   councilSessionsRef.current = councilSessions;
+  const projectsRef = useRef<Project[]>([]);
+  projectsRef.current = projects;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
   const preferencesRef = useRef<Preferences>(preferences);
@@ -225,10 +264,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     initStarted.current = true;
 
     async function init() {
-      const [loadedSessions, loadedAccounts, loadedCouncilSessions] = await Promise.all([
+      const [loadedSessions, loadedAccounts, loadedCouncilSessions, loadedProjects] = await Promise.all([
         loadAllSessions(),
         loadAllAccounts(),
         loadAllCouncilSessions(),
+        loadAllProjects(),
       ]);
       const [hydratedSessions, hydratedAccounts] = await Promise.all([
         Promise.all(loadedSessions.map(hydrateSession)),
@@ -252,6 +292,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         titled.sessions.filter((session) => changedCouncilIds.has(session.id)).map(putCouncilSession),
       );
       setCouncilSessions(titled.sessions);
+      setProjects(loadedProjects);
       setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
       // No agent sessions to land on but a council exists — open straight to the Advisory Council view instead of an empty Chat.
       if (migration.sessions.length === 0 && titled.sessions.length > 0) {
@@ -570,6 +611,339 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const createProject = useCallback((): Project => {
+    const identity = randomIdentity(
+      sessionsRef.current.length + councilSessionsRef.current.length + projectsRef.current.length,
+    );
+    const project: Project = {
+      id: randomId(),
+      identity,
+      roster: [],
+      tasks: [],
+      knowledgeFiles: [],
+      instructions: "",
+      messages: [],
+      createdAt: nowMs(),
+      updatedAt: nowMs(),
+    };
+    setProjects((prev) => [...prev, project]);
+    setActiveSessionId(project.id);
+    setCurrentView("projects");
+    void putProject(project);
+    return project;
+  }, []);
+
+  const updateProjectById = useCallback(
+    (id: string, patch: Partial<Pick<Project, "identity" | "instructions">>) => {
+      setProjects((prev) =>
+        prev.map((project) => {
+          if (project.id !== id) return project;
+          const updated = { ...project, ...patch, updatedAt: nowMs() };
+          void putProject(updated);
+          return updated;
+        }),
+      );
+    },
+    [],
+  );
+
+  const deleteProjectById = useCallback((id: string) => {
+    setProjects((prev) => prev.filter((project) => project.id !== id));
+    void deleteProjectRecord(id);
+    void deleteProjectFolderHandle(id);
+    setActiveSessionId((current) => {
+      if (current !== id) return current;
+      const remainingProjects = projectsRef.current.filter((project) => project.id !== id);
+      return sessionsRef.current[0]?.id ?? councilSessionsRef.current[0]?.id ?? remainingProjects[0]?.id ?? null;
+    });
+  }, []);
+
+  /** Opens the native folder picker and connects the chosen folder. No-ops (no thrown error
+   * surfaced) if the user cancels the dialog or the browser doesn't support the File System
+   * Access API — the folder bar just stays in its current/disconnected state either way. */
+  const connectProjectFolder = useCallback(async (id: string) => {
+    let handle: FileSystemDirectoryHandle;
+    try {
+      handle = await pickWorkingFolder();
+    } catch {
+      return;
+    }
+    await putProjectFolderHandle(id, handle);
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== id) return project;
+        const updated: Project = {
+          ...project,
+          workingFolder: { name: handle.name, connectedAt: nowMs() },
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const disconnectProjectFolder = useCallback((id: string) => {
+    void deleteProjectFolderHandle(id);
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== id) return project;
+        const { workingFolder: _folder, ...rest } = project;
+        const updated: Project = { ...rest, updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const addProjectMember = useCallback((projectId: string, input: Omit<ProjectMemberConfig, "id">) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = { ...project, roster: [...project.roster, { ...input, id: randomId() }], updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const updateProjectMember = useCallback(
+    (projectId: string, memberId: string, patch: Partial<Omit<ProjectMemberConfig, "id">>) => {
+      setProjects((prev) =>
+        prev.map((project) => {
+          if (project.id !== projectId) return project;
+          const updated = {
+            ...project,
+            roster: project.roster.map((member) => (member.id === memberId ? { ...member, ...patch } : member)),
+            updatedAt: nowMs(),
+          };
+          void putProject(updated);
+          return updated;
+        }),
+      );
+    },
+    [],
+  );
+
+  const removeProjectMember = useCallback((projectId: string, memberId: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          roster: project.roster.filter((member) => member.id !== memberId),
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const addProjectTask = useCallback((projectId: string, title: string, assigneeId?: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const task: ProjectTask = {
+          id: randomId(),
+          title,
+          status: "todo",
+          assigneeId,
+          createdAt: nowMs(),
+          updatedAt: nowMs(),
+        };
+        const updated = { ...project, tasks: [...project.tasks, task], updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const updateProjectTaskStatus = useCallback((projectId: string, taskId: string, status: ProjectTaskStatus) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          tasks: project.tasks.map((task) => (task.id === taskId ? { ...task, status, updatedAt: nowMs() } : task)),
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const deleteProjectTask = useCallback((projectId: string, taskId: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = { ...project, tasks: project.tasks.filter((task) => task.id !== taskId), updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const addProjectKnowledgeFiles = useCallback(async (projectId: string, files: File[]) => {
+    const { attachments } = await filesToAttachments(files);
+    if (attachments.length === 0) return;
+    const knowledgeFiles: ProjectKnowledgeFile[] = attachments.map((attachment) => ({ ...attachment, addedAt: nowMs() }));
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          knowledgeFiles: [...project.knowledgeFiles, ...knowledgeFiles],
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const removeProjectKnowledgeFile = useCallback((projectId: string, fileId: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          knowledgeFiles: project.knowledgeFiles.filter((file) => file.id !== fileId),
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const appendProjectMessages = useCallback((projectId: string, messages: ProjectChatMessage[]) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = { ...project, messages: [...project.messages, ...messages], updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const sendProjectMessage = useCallback(
+    async (projectId: string, text: string, pickedMemberId: string, attachments?: ChatAttachment[]) => {
+      const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+      if (!project) return;
+
+      const userMessage: ProjectChatMessage = {
+        id: randomId(),
+        createdAt: nowMs(),
+        role: "user",
+        content: text,
+        ...(attachments?.length ? { attachments } : {}),
+      };
+      appendProjectMessages(projectId, [userMessage]);
+
+      const member = resolveRoutedMember(text, project.roster, pickedMemberId);
+      if (!member) {
+        appendProjectMessages(projectId, [
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            content: "⚠️ Add an agent to the roster before starting a project chat.",
+          },
+        ]);
+        return;
+      }
+
+      let accountsForTurn = accountsRef.current;
+      const account = accountsForTurn.find((candidate) => candidate.id === member.accountId);
+      if (!account) {
+        appendProjectMessages(projectId, [
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: `⚠️ ${member.identity.name}'s connection was removed. Reconnect it in Accounts.`,
+          },
+        ]);
+        return;
+      }
+
+      setProjectLive((prev) => ({ ...prev, [projectId]: { text: "", toolCalls: [] } }));
+
+      let turnError: Error | undefined;
+      const onEvent = (event: AgentEvent) => {
+        if (event.type === "error") turnError = event.error;
+        setProjectLive((prev) => {
+          const turn = prev[projectId] ?? { text: "", toolCalls: [] };
+          if (event.type === "text-delta") {
+            return { ...prev, [projectId]: { ...turn, text: turn.text + event.delta } };
+          }
+          if (event.type === "error") {
+            return { ...prev, [projectId]: { ...turn, error: event.error.message } };
+          }
+          return prev;
+        });
+      };
+
+      try {
+        const fresh = await refreshAccountIfNeeded(account);
+        if (fresh !== account) {
+          accountsForTurn = accountsForTurn.map((candidate) => (candidate.id === account.id ? fresh : candidate));
+        }
+        const providerConfig = resolveProviderConfig(
+          { provider: account.provider, model: account.model, accountId: account.id },
+          accountsForTurn,
+        );
+        const systemPrompt = [project.instructions, member.role ? `Your role on this project: ${member.role}.` : ""]
+          .filter(Boolean)
+          .join("\n\n");
+        const priorMessages: ChatMessage[] = project.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+        }));
+        const turn = await runProjectTurn(providerConfig, systemPrompt, priorMessages, text, attachments, onEvent);
+        const meaningful = turn.filter((message) => message.content && message.content.trim().length > 0);
+        if (meaningful.length > 0) {
+          const storedTurn: ProjectChatMessage[] = meaningful.map((message) => ({
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: message.content,
+          }));
+          appendProjectMessages(projectId, storedTurn);
+        } else if (turnError) {
+          appendProjectMessages(projectId, [
+            {
+              id: randomId(),
+              createdAt: nowMs(),
+              role: "assistant",
+              memberId: member.id,
+              content: "",
+              error: { reason: turnError.message },
+            },
+          ]);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        appendProjectMessages(projectId, [
+          { id: randomId(), createdAt: nowMs(), role: "assistant", memberId: member.id, content: "", error: { reason: message } },
+        ]);
+      } finally {
+        setProjectLive((prev) => {
+          const next = { ...prev };
+          delete next[projectId];
+          return next;
+        });
+      }
+    },
+    [appendProjectMessages, refreshAccountIfNeeded],
+  );
+
   const exportSessions = useCallback((): SessionExportFile => {
     return {
       format: "newvector-cowork-sessions",
@@ -612,10 +986,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       sessions,
       councilSessions,
+      projects,
       accounts,
       activeSessionId,
       live,
       councilLive,
+      projectLive,
       ready,
       accountsManagerOpen,
       preferences,
@@ -641,14 +1017,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePreferences,
       openPreferences: () => setPreferencesOpen(true),
       closePreferences: () => setPreferencesOpen(false),
+      createProject,
+      updateProject: updateProjectById,
+      deleteProject: deleteProjectById,
+      connectProjectFolder,
+      disconnectProjectFolder,
+      addProjectMember,
+      updateProjectMember,
+      removeProjectMember,
+      addProjectTask,
+      updateProjectTaskStatus,
+      deleteProjectTask,
+      addProjectKnowledgeFiles,
+      removeProjectKnowledgeFile,
+      sendProjectMessage,
     }),
     [
       sessions,
       councilSessions,
+      projects,
       accounts,
       activeSessionId,
       live,
       councilLive,
+      projectLive,
       ready,
       accountsManagerOpen,
       preferences,
@@ -668,6 +1060,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateAccount,
       deleteAccountById,
       updatePreferences,
+      createProject,
+      updateProjectById,
+      deleteProjectById,
+      connectProjectFolder,
+      disconnectProjectFolder,
+      addProjectMember,
+      updateProjectMember,
+      removeProjectMember,
+      addProjectTask,
+      updateProjectTaskStatus,
+      deleteProjectTask,
+      addProjectKnowledgeFiles,
+      removeProjectKnowledgeFile,
+      sendProjectMessage,
     ],
   );
 
