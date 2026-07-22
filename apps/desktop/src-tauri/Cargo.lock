@@ -1909,6 +1909,8 @@ name = "newvector-cowork-desktop"
 version = "0.1.0"
 dependencies = [
  "keyring",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

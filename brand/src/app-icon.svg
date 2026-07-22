@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Open Work — C4 "OW Loop" app icon. O (ring) + W monogram, teal→emerald on charcoal. -->
+  <defs>
+    <linearGradient id="bg" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#2C2F35"/>
+      <stop offset="1" stop-color="#161719"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0.12" y1="0.05" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#41E8C6"/>
+      <stop offset="1" stop-color="#14B487"/>
+    </linearGradient>
+  </defs>
+
+  <!-- full-bleed rounded square (iOS-style squircle radius ~22.5%) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bg)"/>
+
+  <!-- O = the loop -->
+  <circle cx="512" cy="512" r="270" fill="none" stroke="url(#teal)" stroke-width="58"/>
+
+  <!-- W monogram, with a subtle dark keyline for separation from the ring's core -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 384 432 L 456 604 L 512 500 L 568 604 L 640 432"
+          stroke="#101113" stroke-width="66"/>
+    <path d="M 384 432 L 456 604 L 512 500 L 568 604 L 640 432"
+          stroke="url(#teal)" stroke-width="52"/>
+  </g>
+</svg>
