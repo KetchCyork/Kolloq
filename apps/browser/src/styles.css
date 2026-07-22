@@ -409,6 +409,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .field label {
@@ -426,6 +427,11 @@ select {
   border-radius: 6px;
   padding: 7px 9px;
   color: var(--text);
+  /* A <select> is as wide as its longest option unless we let it shrink, which
+   * otherwise spills it out of narrow grid tracks and over the next column. */
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 .field textarea {
@@ -1555,6 +1561,26 @@ select {
   cursor: pointer;
   background: none;
   width: 100%;
+  min-width: 0;
+}
+
+.seat > * {
+  max-width: 100%;
+}
+
+/* Match the stance input below it so the seat reads as one stacked card. */
+.seat select {
+  width: 90%;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.seat-model {
+  width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .seat.filled {
