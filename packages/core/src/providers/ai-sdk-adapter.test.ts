@@ -140,6 +140,25 @@ describe("toUserContent", () => {
 
     expect(content).toBe('[1 attachment(s) not sent — the "ollama" provider does not support image/file attachments: "pixel.png"]');
   });
+
+  it("extracts text from a document attachment for an attachment-incapable provider instead of dropping it — text extraction needs no multimodal support", async () => {
+    const markdown: ChatMessage["attachments"] = [
+      { id: "9", kind: "file", name: "notes.md", mimeType: "text/markdown", data: Buffer.from("# Title\n\nBody").toString("base64") },
+    ];
+    const message: ChatMessage = { role: "user", content: "summarize this", attachments: markdown };
+    const content = await toUserContent("ollama", message);
+
+    expect(content).toBe("summarize this\n\n--- notes.md (text/markdown) ---\n# Title\n\nBody");
+  });
+
+  it("extracts what it can and notes only the undeliverable attachments for an attachment-incapable provider", async () => {
+    const message: ChatMessage = { role: "user", content: "what is this?", attachments: [...image!, ...textFile!] };
+    const content = await toUserContent("ollama", message);
+
+    expect(content).toBe(
+      'what is this?\n\n--- note.txt (text/plain) ---\nhello world\n\n[1 attachment(s) not sent — the "ollama" provider does not support image/file attachments: "pixel.png"]',
+    );
+  });
 });
 
 describe("repairStringifiedToolArgs", () => {

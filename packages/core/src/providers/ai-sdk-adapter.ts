@@ -42,13 +42,44 @@ async function attachmentToContentPart(
   return { type: "text", text: `[Could not read "${attachment.name}" (${attachment.mimeType}) — unsupported or unreadable file type]` };
 }
 
+/**
+ * Providers with no multimodal API can't receive image/file content parts, but text extraction
+ * needs no multimodal capability at all — a Word/Markdown/Excel doc extracted to plain text is
+ * just more text in the prompt. So extraction is attempted for every non-image attachment before
+ * falling back to a "not sent" note; only images (and files extraction can't read) actually degrade.
+ */
+async function toIncapableProviderContent(providerId: string, message: ChatMessage): Promise<CoreMessage["content"]> {
+  const textBlocks: string[] = [];
+  const undelivered: ChatAttachment[] = [];
+
+  for (const attachment of message.attachments ?? []) {
+    if (attachment.kind !== "image") {
+      try {
+        const extracted = await extractAttachmentText(attachment);
+        if (extracted !== null) {
+          textBlocks.push(`--- ${attachment.name} (${attachment.mimeType}) ---\n${extracted}`);
+          continue;
+        }
+      } catch {
+        // Fall through to undelivered below — a corrupt/unreadable file shouldn't fail the whole request.
+      }
+    }
+    undelivered.push(attachment);
+  }
+
+  const sections = [message.content, ...textBlocks];
+  if (undelivered.length) {
+    sections.push(attachmentsToText(providerId, undelivered));
+  }
+  return sections.filter(Boolean).join("\n\n");
+}
+
 /** Exported for unit testing the attachment-mapping/degradation logic without spinning up a live model. */
 export async function toUserContent(providerId: string, message: ChatMessage): Promise<CoreMessage["content"]> {
   if (!message.attachments?.length) return message.content;
 
   if (ATTACHMENT_INCAPABLE_PROVIDERS.has(providerId)) {
-    const note = attachmentsToText(providerId, message.attachments);
-    return message.content ? `${message.content}\n\n${note}` : note;
+    return toIncapableProviderContent(providerId, message);
   }
 
   const attachmentParts = await Promise.all(message.attachments.map(attachmentToContentPart));
