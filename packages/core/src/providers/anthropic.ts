@@ -16,9 +16,21 @@ export function createAnthropicProvider(config: AnthropicProviderConfig = {}): C
   const useSubscription = config.authType === "subscription" && !!config.accessToken;
   const anthropic = useSubscription
     ? createSubscriptionAnthropic(config.accessToken as string, config.baseURL)
-    : createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL });
+    : createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL, fetch: browserAccessFetch });
   return new AiSdkChatProvider("anthropic", model, anthropic(model));
 }
+
+/**
+ * There is no backend proxy for provider calls in this app: every request, including this one,
+ * fires directly from renderer/browser JS. Anthropic's API rejects browser-origin requests
+ * unless this header is present, so its CORS preflight fails and the call dies silently with no
+ * visible error. Exported for unit testing.
+ */
+export const browserAccessFetch: typeof fetch = (input, init) => {
+  const headers = new Headers(init?.headers);
+  headers.set("anthropic-dangerous-direct-browser-access", "true");
+  return fetch(input, { ...init, headers });
+};
 
 /**
  * Anthropic's subscription OAuth mode authenticates with a bearer token plus the
@@ -35,6 +47,7 @@ function createSubscriptionAnthropic(accessToken: string, baseURL?: string) {
     headers.delete("x-api-key");
     headers.set("authorization", `Bearer ${accessToken}`);
     headers.set("anthropic-beta", "oauth-2025-04-20");
+    headers.set("anthropic-dangerous-direct-browser-access", "true");
     return fetch(input, { ...init, headers });
   };
   return createAnthropic({ apiKey: "oauth-subscription-placeholder", baseURL, fetch: oauthFetch });
