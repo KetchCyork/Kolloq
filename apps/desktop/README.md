@@ -131,8 +131,9 @@ remaining repository secrets are required:
 | Secret | Purpose | Source | Status |
 | --- | --- | --- | --- |
 | `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` | Updater artifact signing | `tauri signer generate` (free, local) | ✅ set (2026-07-18) |
-| `APPLE_CERTIFICATE` / `_PASSWORD` | macOS code signing (.p12) | Apple Developer Program ($99/yr) | ⏳ pending — cert export in progress |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: New Vector AI (TEAMID)` | Apple Developer Program | ⏳ pending |
+| `APPLE_CERTIFICATE` | macOS code signing (.p12, base64) | Apple Developer Program ($99/yr), exported from Keychain Access | ✅ set (2026-07-22) |
+| `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 above | Chosen at export time in Keychain Access | ⏳ pending — CEO to set via `gh secret set` locally (not shared in chat) |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Christopher York (3B9Z7S9DWL)` | Read from local Keychain (`security find-identity -v -p codesigning`) | ✅ set (2026-07-22) |
 | `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ✅ set (2026-07-22) |
 | `WINDOWS_CERTIFICATE` / `_PASSWORD` | Windows code signing (.pfx) | Code-signing CA (e.g. DigiCert, ~$300+/yr) or Azure Trusted Signing | ⏳ pending |
 
