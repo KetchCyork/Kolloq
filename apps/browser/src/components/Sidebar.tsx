@@ -62,7 +62,7 @@ export function Sidebar() {
       <div className="session-list">
         {entries.length === 0 && (
           <div className="empty-state" style={{ margin: "20px 8px", fontSize: 12 }}>
-            No agents yet. Click "New agent" or "New council" to create one.
+            Nothing here yet. Click "New agent" or "New council" to create one.
           </div>
         )}
         {entries.map((entry) => {

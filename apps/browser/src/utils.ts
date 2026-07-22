@@ -1,4 +1,4 @@
-import type { AgentIdentity, ProviderName } from "./types";
+import type { AgentIdentity, CouncilSession, ProviderName } from "./types";
 
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "google", "ollama", "openrouter"];
 
@@ -36,6 +36,36 @@ export function randomIdentity(existingCount: number): AgentIdentity {
     color: IDENTITY_COLORS[index],
     emoji: IDENTITY_EMOJIS[index],
   };
+}
+
+// Councils are numbered independently of agents so the sidebar reads "Council 1, Council 2".
+export function councilIdentity(existingCouncilCount: number): AgentIdentity {
+  const index = existingCouncilCount % IDENTITY_COLORS.length;
+  return {
+    name: `Council ${existingCouncilCount + 1}`,
+    color: IDENTITY_COLORS[index],
+    emoji: "\u{1F3DB}\u{FE0F}",
+  };
+}
+
+// Councils created before they had their own naming were stored as "Agent N". Renumber those
+// in place (oldest first) so existing sidebars read "Council 1, Council 2" too.
+export function renameLegacyCouncilIdentities(councilSessions: CouncilSession[]): {
+  sessions: CouncilSession[];
+  changedIds: Set<string>;
+} {
+  const positionById = new Map<string, number>();
+  [...councilSessions]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .forEach((session, index) => positionById.set(session.id, index + 1));
+
+  const changedIds = new Set<string>();
+  const sessions = councilSessions.map((session) => {
+    if (!/^Agent \d+$/.test(session.identity.name)) return session;
+    changedIds.add(session.id);
+    return { ...session, identity: { ...session.identity, name: `Council ${positionById.get(session.id)}` } };
+  });
+  return { sessions, changedIds };
 }
 
 export function formatTime(ms: number): string {

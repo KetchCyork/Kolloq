@@ -40,7 +40,7 @@ import type {
   SessionExportFile,
   StoredMessage,
 } from "./types";
-import { nowMs, randomId, randomIdentity } from "./utils";
+import { councilIdentity, nowMs, randomId, randomIdentity, renameLegacyCouncilIdentities } from "./utils";
 
 /**
  * Persists a session, routing its API key to the OS keychain instead of
@@ -228,10 +228,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setSessions(migration.sessions);
       setAccounts(migration.accounts);
-      // No migration needed for council sessions: this is a brand-new IndexedDB store (see db.ts),
-      // so there is no legacy shape to reconcile — just load and go.
-      setCouncilSessions(loadedCouncilSessions);
-      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? loadedCouncilSessions[0]?.id ?? null);
+      // Councils created before they had their own naming were stored as "Agent N"; rename them.
+      const councilMigration = renameLegacyCouncilIdentities(loadedCouncilSessions);
+      await Promise.all(
+        councilMigration.sessions
+          .filter((session) => councilMigration.changedIds.has(session.id))
+          .map(putCouncilSession),
+      );
+      setCouncilSessions(councilMigration.sessions);
+      setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? councilMigration.sessions[0]?.id ?? null);
       setReady(true);
     }
     void init();
@@ -433,11 +438,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const createCouncilSession = useCallback((members: Array<Omit<CouncilMemberConfig, "id">>): CouncilSession => {
-    const identity = randomIdentity(sessionsRef.current.length + councilSessionsRef.current.length);
     const session: CouncilSession = {
       id: randomId(),
-      // Council-only override so it reads as a debate, not a single-model chat, in the sidebar.
-      identity: { ...identity, emoji: "\u{1F3DB}\u{FE0F}" },
+      identity: councilIdentity(councilSessionsRef.current.length),
       members: members.map((member) => ({ ...member, id: randomId() })),
       turns: [],
       createdAt: nowMs(),
