@@ -10,16 +10,15 @@
  * The out-of-band ("paste the code") variant is used so this works in both the browser and desktop
  * builds without a loopback HTTP server.
  *
- * Anthropic's token endpoint (console.anthropic.com/v1/oauth/token) does not send
- * `Access-Control-Allow-Origin` for third-party origins — it's designed to be called from a
- * CLI/native context (that's how Claude Code itself does it), not fetched directly from a browser
- * tab. Verified live: the consent screen completes but the token POST fails with a CORS error in
- * both the plain browser build and a `fetch` issued from the Tauri webview. So the exchange/refresh
- * request is routed through the desktop app's Rust layer (`oauth_token_request`, see
- * apps/desktop/src-tauri/src/oauth.rs), which isn't subject to browser CORS. There is no backend
- * server in this app to relay the request for the plain (non-Tauri) browser build, so subscription
- * sign-in there is gated off with a clear message rather than left to fail silently — see
+ * Token requests are routed through the desktop app's Rust layer (`oauth_token_request`, see
+ * apps/desktop/src-tauri/src/oauth.rs) rather than issued from the webview: provider token
+ * endpoints are designed for a CLI/native context and don't send `Access-Control-Allow-Origin`
+ * for third-party origins, so a browser `fetch` is CORS-blocked. There is no backend server in
+ * this app to relay it for the plain (non-Tauri) browser build, so subscription sign-in there is
+ * gated off with a clear message rather than left to fail silently — see
  * `subscriptionSignInAvailable`.
+ *
+ * No provider is wired up today (see `OAUTH_PROVIDERS`), so this module is currently inert.
  */
 import { isTauriRuntime, openExternalUrl } from "./credentials";
 import type { OAuthCredential, ProviderName } from "./types";
@@ -32,21 +31,21 @@ interface OAuthProviderConfig {
   scopes: string[];
 }
 
-const ANTHROPIC_OAUTH: OAuthProviderConfig = {
-  authorizeUrl: "https://claude.ai/oauth/authorize",
-  tokenUrl: "https://console.anthropic.com/v1/oauth/token",
-  clientId: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-  redirectUri: "https://console.anthropic.com/oauth/code/callback",
-  scopes: ["org:create_api_key", "user:profile", "user:inference"],
-};
-
 /**
- * Providers with a working subscription OAuth flow. OpenAI is intentionally absent: ChatGPT Plus
- * offers no supported OAuth path to drive the API, so those accounts must use an API key.
+ * Providers with a subscription OAuth flow we're allowed to ship. Empty today, so every account
+ * uses an API key:
+ *
+ * - **Anthropic**: removed 2026-07-22 by board decision (NEW-69). The only way to reach Claude
+ *   Pro/Max inference over OAuth was to authenticate as Anthropic's own registered "Claude Code"
+ *   client id, which put another product's identity on our users' consent screen and carried ToS
+ *   exposure. Re-enable only with an OAuth client registered to New Vector AI.
+ * - **OpenAI**: ChatGPT Plus offers no supported OAuth path to drive the API.
+ *
+ * The PKCE/token machinery below is kept intact so a provider can be re-enabled by adding its
+ * config here; with the map empty, `providerSupportsSubscription` is false everywhere and the
+ * Manage-accounts UI shows the "no subscription sign-in yet" state.
  */
-const OAUTH_PROVIDERS: Partial<Record<ProviderName, OAuthProviderConfig>> = {
-  anthropic: ANTHROPIC_OAUTH,
-};
+const OAUTH_PROVIDERS: Partial<Record<ProviderName, OAuthProviderConfig>> = {};
 
 export function providerSupportsSubscription(provider: ProviderName): boolean {
   return provider in OAUTH_PROVIDERS;

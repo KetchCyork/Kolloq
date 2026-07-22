@@ -16,11 +16,13 @@ vi.mock("./credentials", () => ({
 }));
 
 import {
+  beginSubscriptionAuth,
   isOAuthCredentialExpiring,
   providerSupportsSubscription,
   refreshSubscriptionAuth,
   subscriptionSignInAvailable,
 } from "./subscriptionAuth";
+import { PROVIDER_NAMES } from "./utils";
 
 function enterTauriRuntime() {
   inTauriRuntime = true;
@@ -30,29 +32,44 @@ function exitTauriRuntime() {
   inTauriRuntime = false;
 }
 
+// No provider ships a subscription OAuth flow (NEW-69: Anthropic's was removed rather than keep
+// authenticating as Anthropic's own "Claude Code" client id). These tests pin that shut, so
+// re-enabling a provider is a deliberate change with a failing test to answer for — the PKCE and
+// token-exchange machinery itself is unreachable in a shipped build while the map is empty.
 describe("providerSupportsSubscription", () => {
-  it("is true for anthropic, false for a provider with no subscription-OAuth path", () => {
-    expect(providerSupportsSubscription("anthropic")).toBe(true);
-    expect(providerSupportsSubscription("openai")).toBe(false);
+  it("is false for every provider — all accounts use an API key", () => {
+    for (const provider of PROVIDER_NAMES) {
+      expect(providerSupportsSubscription(provider)).toBe(false);
+    }
   });
 });
 
 describe("subscriptionSignInAvailable", () => {
   afterEach(exitTauriRuntime);
 
-  it("is false in the plain browser build even for a provider with an OAuth flow (CORS blocks the token exchange)", () => {
+  it("is false for every provider in the plain browser build", () => {
     exitTauriRuntime();
-    expect(subscriptionSignInAvailable("anthropic")).toBe(false);
+    for (const provider of PROVIDER_NAMES) {
+      expect(subscriptionSignInAvailable(provider)).toBe(false);
+    }
   });
 
-  it("is true for anthropic inside the Tauri desktop shell", () => {
+  it("stays false for every provider inside the Tauri desktop shell too", () => {
     enterTauriRuntime();
-    expect(subscriptionSignInAvailable("anthropic")).toBe(true);
+    for (const provider of PROVIDER_NAMES) {
+      expect(subscriptionSignInAvailable(provider)).toBe(false);
+    }
   });
+});
 
-  it("stays false for a provider with no OAuth path even inside Tauri", () => {
+describe("beginSubscriptionAuth", () => {
+  afterEach(exitTauriRuntime);
+
+  it("refuses to build an authorize URL for any provider, so no third-party client id can be sent", async () => {
     enterTauriRuntime();
-    expect(subscriptionSignInAvailable("openai")).toBe(false);
+    for (const provider of PROVIDER_NAMES) {
+      await expect(beginSubscriptionAuth(provider)).rejects.toThrow(/does not support/);
+    }
   });
 });
 
@@ -79,47 +96,14 @@ describe("refreshSubscriptionAuth", () => {
     invokeMock.mockReset();
   });
 
-  it("rejects with a clear message outside the Tauri desktop shell, without calling out to the network", async () => {
-    exitTauriRuntime();
-    await expect(refreshSubscriptionAuth("anthropic", "old-refresh")).rejects.toThrow(/desktop app/);
+  // An account saved before the flow was removed still holds a refresh token. The store swallows
+  // refresh failures and falls back to the stale token, so the only thing that matters here is that
+  // we reject locally instead of quietly re-contacting the provider with a client id we shouldn't use.
+  it("rejects every provider without calling out to the network", async () => {
+    enterTauriRuntime();
+    for (const provider of PROVIDER_NAMES) {
+      await expect(refreshSubscriptionAuth(provider, "old-refresh")).rejects.toThrow(/does not support/);
+    }
     expect(invokeMock).not.toHaveBeenCalled();
-  });
-
-  it("exchanges a refresh token for a new access token via the Tauri oauth_token_request command", async () => {
-    enterTauriRuntime();
-    invokeMock.mockResolvedValue({
-      status: 200,
-      body: JSON.stringify({ access_token: "new-access", refresh_token: "new-refresh", expires_in: 3600 }),
-    });
-
-    const before = Date.now();
-    const oauth = await refreshSubscriptionAuth("anthropic", "old-refresh");
-    expect(oauth.accessToken).toBe("new-access");
-    expect(oauth.refreshToken).toBe("new-refresh");
-    expect(oauth.expiresAt).toBeGreaterThanOrEqual(before + 3600 * 1000);
-    expect(invokeMock).toHaveBeenCalledWith(
-      "oauth_token_request",
-      expect.objectContaining({ tokenUrl: "https://console.anthropic.com/v1/oauth/token" }),
-    );
-  });
-
-  it("reuses the prior refresh token when the provider omits one on renewal", async () => {
-    enterTauriRuntime();
-    invokeMock.mockResolvedValue({ status: 200, body: JSON.stringify({ access_token: "new-access" }) });
-
-    const oauth = await refreshSubscriptionAuth("anthropic", "old-refresh");
-    expect(oauth.refreshToken).toBe("old-refresh");
-  });
-
-  it("throws when the provider rejects the refresh", async () => {
-    enterTauriRuntime();
-    invokeMock.mockResolvedValue({ status: 401, body: "invalid_grant" });
-
-    await expect(refreshSubscriptionAuth("anthropic", "revoked")).rejects.toThrow(/401/);
-  });
-
-  it("rejects a provider with no subscription-OAuth path", async () => {
-    enterTauriRuntime();
-    await expect(refreshSubscriptionAuth("openai", "x")).rejects.toThrow(/does not support/);
   });
 });
