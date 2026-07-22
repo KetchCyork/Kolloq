@@ -819,6 +819,13 @@ select {
   color: var(--text-dim);
 }
 
+.account-row-warning {
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 2px;
+  color: var(--danger, #d97706);
+}
+
 .account-form {
   border-bottom: none;
   margin: 12px 20px 20px;

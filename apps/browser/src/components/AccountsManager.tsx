@@ -37,15 +37,24 @@ function blankDraft(): DraftAccount {
   };
 }
 
+/**
+ * Accounts saved while a provider still offered subscription sign-in open in API-key mode once that
+ * provider is no longer wired up (see subscriptionAuth) — that's the only way left to make them
+ * work, so the edit form points the user straight at it.
+ */
 function draftFromAccount(account: Account): DraftAccount {
+  const savedAuthType = account.authType ?? "api_key";
+  const authType = savedAuthType === "subscription" && !providerSupportsSubscription(account.provider)
+    ? "api_key"
+    : savedAuthType;
   return {
     label: account.label,
     provider: account.provider,
     model: account.model,
-    authType: account.authType ?? "api_key",
+    authType,
     apiKey: "",
     baseURL: account.baseURL ?? "",
-    oauth: account.oauth,
+    oauth: authType === "subscription" ? account.oauth : undefined,
   };
 }
 
@@ -245,7 +254,6 @@ export function AccountsManager() {
 
   const providerHasOAuth = providerSupportsSubscription(draft.provider);
   const supportsSubscription = subscriptionSignInAvailable(draft.provider);
-  const subscriptionNeedsDesktop = providerHasOAuth && !supportsSubscription;
   const connected = !!draft.oauth;
 
   // Always keep the current draft model selectable, even if it's not (yet) in the live list —
@@ -278,6 +286,14 @@ export function AccountsManager() {
                 <div className="account-row-sub">
                   {PROVIDER_LABELS[account.provider]} · {account.authType === "subscription" ? "Subscription" : account.model}
                 </div>
+                {/* Saved before this provider's subscription sign-in was withdrawn: its stored token
+                    can't be renewed, so say so here rather than letting the next send fail on auth. */}
+                {account.authType === "subscription" && !providerSupportsSubscription(account.provider) && (
+                  <div className="account-row-warning">
+                    Subscription sign-in is no longer available for {PROVIDER_LABELS[account.provider]} — edit this
+                    account to add an API key.
+                  </div>
+                )}
               </div>
               <button className="settings-btn" onClick={() => startEdit(account)}>
                 Edit
@@ -316,35 +332,38 @@ export function AccountsManager() {
               </select>
             </div>
 
-            <div className="field span-full">
-              <label>Account type</label>
-              <div className="auth-type-toggle" role="radiogroup" aria-label="Account type">
-                <button
-                  type="button"
-                  className={`settings-btn${draft.authType === "api_key" ? " active" : ""}`}
-                  aria-pressed={draft.authType === "api_key"}
-                  onClick={() => changeAuthType("api_key")}
-                >
-                  API key
-                </button>
-                <button
-                  type="button"
-                  className={`settings-btn${draft.authType === "subscription" ? " active" : ""}`}
-                  aria-pressed={draft.authType === "subscription"}
-                  disabled={!supportsSubscription}
-                  title={
-                    supportsSubscription
-                      ? undefined
-                      : subscriptionNeedsDesktop
-                        ? "Subscription sign-in requires the desktop app (the browser can't complete the provider's login)."
-                        : "This provider has no subscription sign-in yet."
-                  }
-                  onClick={() => changeAuthType("subscription")}
-                >
-                  Subscription
-                </button>
+            {/* Only offered for providers that actually have a subscription flow — with none wired
+                up (see subscriptionAuth) there is nothing to choose, so the toggle stays hidden
+                rather than showing a permanently-disabled option. */}
+            {providerHasOAuth && (
+              <div className="field span-full">
+                <label>Account type</label>
+                <div className="auth-type-toggle" role="radiogroup" aria-label="Account type">
+                  <button
+                    type="button"
+                    className={`settings-btn${draft.authType === "api_key" ? " active" : ""}`}
+                    aria-pressed={draft.authType === "api_key"}
+                    onClick={() => changeAuthType("api_key")}
+                  >
+                    API key
+                  </button>
+                  <button
+                    type="button"
+                    className={`settings-btn${draft.authType === "subscription" ? " active" : ""}`}
+                    aria-pressed={draft.authType === "subscription"}
+                    disabled={!supportsSubscription}
+                    title={
+                      supportsSubscription
+                        ? undefined
+                        : "Subscription sign-in requires the desktop app (the browser can't complete the provider's login)."
+                    }
+                    onClick={() => changeAuthType("subscription")}
+                  >
+                    Subscription
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="field">
               <label htmlFor="account-model">Default model</label>
@@ -401,9 +420,9 @@ export function AccountsManager() {
                   </>
                 ) : (
                   <div className="subscription-hint">
-                    {subscriptionNeedsDesktop
+                    {providerHasOAuth
                       ? `Subscription sign-in for ${PROVIDER_LABELS[draft.provider]} requires the New Vector Cowork desktop app — the browser can't complete the provider's login. Use an API key here, or add this account from the desktop app.`
-                      : `${PROVIDER_LABELS[draft.provider]} has no subscription sign-in yet — use an API key.`}
+                      : `${PROVIDER_LABELS[draft.provider]} has no subscription sign-in — use an API key.`}
                   </div>
                 )}
               </div>
