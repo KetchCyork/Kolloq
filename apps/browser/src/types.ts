@@ -66,6 +66,24 @@ export interface AgentIdentity {
 export interface StoredMessage extends ChatMessage {
   id: string;
   createdAt: number;
+  /**
+   * Set only for messages produced by a sub-agent spawned via `delegate_task` (depth > 0).
+   * Absent/`depth` 0 means "the session's own top-level agent", so every session persisted
+   * before multi-agent existed reads exactly as it always did — no migration needed.
+   */
+  agentId?: string;
+  /** Label for the sub-agent that produced this message, e.g. "researcher" — shown alongside `depth` for indentation. */
+  agentName?: string;
+  /** The `agentId` of the agent that delegated this sub-agent's task. */
+  parentId?: string;
+  depth?: number;
+}
+
+/** Opt-in per session: lets the session's top-level agent delegate sub-tasks via `delegate_task`. */
+export interface MultiAgentConfig {
+  enabled: boolean;
+  /** Caps how many levels deep `delegate_task` can nest. Defaults to the orchestrator's own default (2). */
+  maxDepth?: number;
 }
 
 export interface AgentSession {
@@ -76,6 +94,8 @@ export interface AgentSession {
   messages: StoredMessage[];
   createdAt: number;
   updatedAt: number;
+  /** Absent means single-agent (the original, still-default behavior). */
+  multiAgent?: MultiAgentConfig;
 }
 
 /** One seat on an Advisory Council session. Each member is its own account (and therefore its own

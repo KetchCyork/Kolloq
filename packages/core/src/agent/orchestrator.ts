@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ChatMessage, ChatProvider } from "../providers/types.js";
+import type { ChatAttachment, ChatMessage, ChatProvider } from "../providers/types.js";
 import { defineTool, ToolRegistry } from "../tools/registry.js";
 import { scopeToolRegistry } from "../tools/permissions.js";
 import { AgentEvent, AgentRunner } from "./runner.js";
@@ -81,15 +81,37 @@ export class AgentOrchestrator {
     this.onEvent = options.onEvent;
   }
 
-  /** Runs the top-level agent for a session. Its `allowedTools` bounds what it and its descendants may ever reach. */
-  async run(spec: AgentSpec, input: string): Promise<ChatMessage[]> {
-    return this.runAgent(spec, input, { parentId: undefined, depth: 0, parentAllowedTools: spec.allowedTools ?? [] });
+  /**
+   * Runs the top-level agent for a session. Its `allowedTools` bounds what it and its descendants
+   * may ever reach. `initialMessages`/`attachments` let a caller that persists conversation history
+   * (e.g. a product session resuming across turns) seed the root agent the same way a plain
+   * `AgentRunner` would — sub-agents spawned via `delegate_task` never inherit these, since each gets
+   * a fresh task in place of a user message.
+   */
+  async run(
+    spec: AgentSpec,
+    input: string,
+    options?: { initialMessages?: ChatMessage[]; attachments?: ChatAttachment[] },
+  ): Promise<ChatMessage[]> {
+    return this.runAgent(spec, input, {
+      parentId: undefined,
+      depth: 0,
+      parentAllowedTools: spec.allowedTools ?? [],
+      initialMessages: options?.initialMessages,
+      attachments: options?.attachments,
+    });
   }
 
   private async runAgent(
     spec: AgentSpec,
     input: string,
-    context: { parentId?: string; depth: number; parentAllowedTools: string[] },
+    context: {
+      parentId?: string;
+      depth: number;
+      parentAllowedTools: string[];
+      initialMessages?: ChatMessage[];
+      attachments?: ChatAttachment[];
+    },
   ): Promise<ChatMessage[]> {
     const agentId = `agent-${++this.counter}`;
     const allowedTools = (spec.allowedTools ?? []).filter((name) => context.parentAllowedTools.includes(name));
@@ -103,11 +125,12 @@ export class AgentOrchestrator {
       tools: canDelegate ? this.withDelegateTool(tools, allowedTools, agentId, context.depth) : tools,
       systemPrompt: spec.systemPrompt,
       maxSteps: spec.maxSteps,
+      initialMessages: context.initialMessages,
       onEvent: (event) =>
         this.onEvent?.({ ...event, agentId, agentName: spec.name, parentId: context.parentId, depth: context.depth }),
     });
 
-    return runner.run(input);
+    return runner.run(input, context.attachments);
   }
 
   private withDelegateTool(scoped: ReturnType<typeof scopeToolRegistry>, allowedTools: string[], parentId: string, depth: number) {

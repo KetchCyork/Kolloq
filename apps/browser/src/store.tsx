@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, OrchestratedAgentEvent, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
@@ -143,14 +143,33 @@ export interface LiveToolCall {
   call: ToolCall;
   status: "running" | "done" | "error";
   result?: unknown;
+  /** Which agent made this call — used (with `call.id`) to match its later tool-result, since two
+   * different sub-agents can otherwise reuse the same provider-issued call id. */
+  agentId?: string;
   /** Set when this call came from a delegated sub-agent, so the step tracker can indent/label it. */
   agentName?: string;
   depth?: number;
+  /** Insertion order shared with `LiveTurn.subAgentMessages`, so the two arrays can be interleaved
+   * back into one chronological list for rendering. */
+  seq: number;
+}
+
+/** A sub-agent's plain-text answer, captured live so it's visible while the turn is still running —
+ * `AgentOrchestrator` runs each agent's non-streaming `run()`, so this is the only signal a sub-agent
+ * produced output before the whole top-level turn finishes and gets persisted. */
+export interface LiveAgentMessage {
+  id: string;
+  agentId: string;
+  agentName: string;
+  depth: number;
+  text: string;
+  seq: number;
 }
 
 export interface LiveTurn {
   text: string;
   toolCalls: LiveToolCall[];
+  subAgentMessages: LiveAgentMessage[];
   error?: string;
 }
 
@@ -180,7 +199,10 @@ interface StoreApi extends StoreState {
   setCurrentView: (view: WorkspaceView) => void;
   setSettingsTab: (tab: SettingsTabId) => void;
   createSession: () => AgentSession;
-  updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
+  updateSession: (
+    id: string,
+    patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt" | "multiAgent">>,
+  ) => void;
   deleteSession: (id: string) => void;
   sendMessage: (sessionId: string, text: string, attachments?: ChatAttachment[]) => Promise<void>;
   createCouncilSession: (members: Array<Omit<CouncilMemberConfig, "id">>) => CouncilSession;
@@ -375,7 +397,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSession = useCallback(
-    (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => {
+    (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt" | "multiAgent">>) => {
       setSessions((prev) =>
         prev.map((session) => {
           if (session.id !== id) return session;
@@ -427,10 +449,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...(attachments?.length ? { attachments } : {}),
       };
       appendMessages(sessionId, [userMessage]);
-      setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
+      setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [], subAgentMessages: [] } }));
       capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
 
-      const onEvent = (event: AgentEvent) => {
+      // Shared insertion-order counter for `toolCalls`/`subAgentMessages`, so the live view can
+      // interleave the two arrays back into one chronological list — scoped to this turn only.
+      let seq = 0;
+
+      const onEvent = (event: OrchestratedAgentEvent) => {
         if (event.type === "tool-call") {
           capture({ type: "tool_call", toolName: event.toolCall.name });
         }
@@ -440,14 +466,57 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           capture({ type: "provider_error", provider: session.providerConfig.provider });
         }
         setLive((prev) => {
-          const turn = prev[sessionId] ?? { text: "", toolCalls: [] };
+          const turn = prev[sessionId] ?? { text: "", toolCalls: [], subAgentMessages: [] };
           if (event.type === "text-delta") {
             return { ...prev, [sessionId]: { ...turn, text: turn.text + event.delta } };
           }
-          if (event.type === "tool-call") {
+          // Only multi-agent turns rely on this: `AgentOrchestrator` runs each agent's non-streaming
+          // `run()`, so `assistant-message` (one per step, full content) is the only way text arrives
+          // — single-agent sessions still stream via `text-delta` above and would otherwise see this
+          // duplicate their already-accumulated text.
+          if (event.type === "assistant-message" && event.depth === 0 && session.multiAgent?.enabled) {
+            return { ...prev, [sessionId]: { ...turn, text: turn.text + event.message.content } };
+          }
+          // A sub-agent's answer: same non-streaming `assistant-message` source as above, but for
+          // depth > 0 — without this, a sub-agent's plain-text answer is invisible until the whole
+          // top-level turn finishes and gets persisted, even though it may have been done for a while.
+          if (event.type === "assistant-message" && event.depth > 0 && event.message.content) {
             return {
               ...prev,
-              [sessionId]: { ...turn, toolCalls: [...turn.toolCalls, { call: event.toolCall, status: "running" }] },
+              [sessionId]: {
+                ...turn,
+                subAgentMessages: [
+                  ...turn.subAgentMessages,
+                  {
+                    id: `${event.agentId}-${turn.subAgentMessages.length}`,
+                    agentId: event.agentId,
+                    agentName: event.agentName,
+                    depth: event.depth,
+                    text: event.message.content,
+                    seq: seq++,
+                  },
+                ],
+              },
+            };
+          }
+          if (event.type === "tool-call") {
+            const isSubAgent = event.depth > 0;
+            return {
+              ...prev,
+              [sessionId]: {
+                ...turn,
+                toolCalls: [
+                  ...turn.toolCalls,
+                  {
+                    call: event.toolCall,
+                    status: "running",
+                    agentId: event.agentId,
+                    agentName: isSubAgent ? event.agentName : undefined,
+                    depth: isSubAgent ? event.depth : undefined,
+                    seq: seq++,
+                  },
+                ],
+              },
             };
           }
           if (event.type === "tool-result") {
@@ -456,7 +525,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               [sessionId]: {
                 ...turn,
                 toolCalls: turn.toolCalls.map((tc) =>
-                  tc.call.id === event.toolCall.id ? { ...tc, status: "done", result: event.result } : tc,
+                  tc.call.id === event.toolCall.id && tc.agentId === event.agentId
+                    ? { ...tc, status: "done", result: event.result }
+                    : tc,
                 ),
               },
             };
@@ -874,13 +945,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setProjectLive((prev) => ({ ...prev, [projectId]: { text: "", toolCalls: [] } }));
+      setProjectLive((prev) => ({ ...prev, [projectId]: { text: "", toolCalls: [], subAgentMessages: [] } }));
 
       let turnError: Error | undefined;
       const onEvent = (event: AgentEvent) => {
         if (event.type === "error") turnError = event.error;
         setProjectLive((prev) => {
-          const turn = prev[projectId] ?? { text: "", toolCalls: [] };
+          const turn = prev[projectId] ?? { text: "", toolCalls: [], subAgentMessages: [] };
           if (event.type === "text-delta") {
             return { ...prev, [projectId]: { ...turn, text: turn.text + event.delta } };
           }

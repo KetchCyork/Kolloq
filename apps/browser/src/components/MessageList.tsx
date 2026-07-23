@@ -40,6 +40,14 @@ export function MessageList({ session, live }: { session: AgentSession; live?: L
               result: tc.result,
               agentName: tc.agentName,
               depth: tc.depth,
+              seq: tc.seq,
+            }))}
+            subAgentMessages={live.subAgentMessages.map((message) => ({
+              id: message.id,
+              text: message.text,
+              depth: message.depth,
+              agentName: message.agentName,
+              seq: message.seq,
             }))}
           />
         </div>
