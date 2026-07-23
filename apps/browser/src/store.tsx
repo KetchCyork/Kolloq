@@ -149,11 +149,27 @@ export interface LiveToolCall {
   /** Set when this call came from a delegated sub-agent, so the step tracker can indent/label it. */
   agentName?: string;
   depth?: number;
+  /** Insertion order shared with `LiveTurn.subAgentMessages`, so the two arrays can be interleaved
+   * back into one chronological list for rendering. */
+  seq: number;
+}
+
+/** A sub-agent's plain-text answer, captured live so it's visible while the turn is still running —
+ * `AgentOrchestrator` runs each agent's non-streaming `run()`, so this is the only signal a sub-agent
+ * produced output before the whole top-level turn finishes and gets persisted. */
+export interface LiveAgentMessage {
+  id: string;
+  agentId: string;
+  agentName: string;
+  depth: number;
+  text: string;
+  seq: number;
 }
 
 export interface LiveTurn {
   text: string;
   toolCalls: LiveToolCall[];
+  subAgentMessages: LiveAgentMessage[];
   error?: string;
 }
 
@@ -433,8 +449,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...(attachments?.length ? { attachments } : {}),
       };
       appendMessages(sessionId, [userMessage]);
-      setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
+      setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [], subAgentMessages: [] } }));
       capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
+
+      // Shared insertion-order counter for `toolCalls`/`subAgentMessages`, so the live view can
+      // interleave the two arrays back into one chronological list — scoped to this turn only.
+      let seq = 0;
 
       const onEvent = (event: OrchestratedAgentEvent) => {
         if (event.type === "tool-call") {
@@ -446,7 +466,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           capture({ type: "provider_error", provider: session.providerConfig.provider });
         }
         setLive((prev) => {
-          const turn = prev[sessionId] ?? { text: "", toolCalls: [] };
+          const turn = prev[sessionId] ?? { text: "", toolCalls: [], subAgentMessages: [] };
           if (event.type === "text-delta") {
             return { ...prev, [sessionId]: { ...turn, text: turn.text + event.delta } };
           }
@@ -456,6 +476,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // duplicate their already-accumulated text.
           if (event.type === "assistant-message" && event.depth === 0 && session.multiAgent?.enabled) {
             return { ...prev, [sessionId]: { ...turn, text: turn.text + event.message.content } };
+          }
+          // A sub-agent's answer: same non-streaming `assistant-message` source as above, but for
+          // depth > 0 — without this, a sub-agent's plain-text answer is invisible until the whole
+          // top-level turn finishes and gets persisted, even though it may have been done for a while.
+          if (event.type === "assistant-message" && event.depth > 0 && event.message.content) {
+            return {
+              ...prev,
+              [sessionId]: {
+                ...turn,
+                subAgentMessages: [
+                  ...turn.subAgentMessages,
+                  {
+                    id: `${event.agentId}-${turn.subAgentMessages.length}`,
+                    agentId: event.agentId,
+                    agentName: event.agentName,
+                    depth: event.depth,
+                    text: event.message.content,
+                    seq: seq++,
+                  },
+                ],
+              },
+            };
           }
           if (event.type === "tool-call") {
             const isSubAgent = event.depth > 0;
@@ -471,6 +513,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     agentId: event.agentId,
                     agentName: isSubAgent ? event.agentName : undefined,
                     depth: isSubAgent ? event.depth : undefined,
+                    seq: seq++,
                   },
                 ],
               },
@@ -902,13 +945,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setProjectLive((prev) => ({ ...prev, [projectId]: { text: "", toolCalls: [] } }));
+      setProjectLive((prev) => ({ ...prev, [projectId]: { text: "", toolCalls: [], subAgentMessages: [] } }));
 
       let turnError: Error | undefined;
       const onEvent = (event: AgentEvent) => {
         if (event.type === "error") turnError = event.error;
         setProjectLive((prev) => {
-          const turn = prev[projectId] ?? { text: "", toolCalls: [] };
+          const turn = prev[projectId] ?? { text: "", toolCalls: [], subAgentMessages: [] };
           if (event.type === "text-delta") {
             return { ...prev, [projectId]: { ...turn, text: turn.text + event.delta } };
           }

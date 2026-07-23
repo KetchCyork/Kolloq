@@ -37,17 +37,25 @@ export interface TurnMessage extends ChatMessage {
 }
 
 /**
- * Rebuilds the persisted transcript for every sub-agent a multi-agent turn spawned, from the
- * `OrchestratedAgentEvent`s it emitted. The root agent's own messages come from `orchestrator.run`'s
- * return value instead (see `runMultiAgentTurn`) since that's the complete, authoritative list —
- * this only covers depth > 0, mirroring how `AgentRunner` builds its own `turnMessages` array from
- * assistant-message/tool-result events.
+ * Rebuilds the persisted transcript for an entire multi-agent turn — root and every sub-agent it
+ * spawned — from the single chronologically-ordered stream of `OrchestratedAgentEvent`s the
+ * orchestrator emits, mirroring how `AgentRunner` builds its own `turnMessages` array from
+ * assistant-message/tool-result events. Building from one ordered stream (rather than splicing the
+ * root's messages and the sub-agents' messages from two separately-sourced arrays) is what keeps a
+ * root's own `delegate_task` call correctly ordered *before* the sub-agent activity it caused, for
+ * any number of delegation rounds.
+ *
+ * Depth-0 (root) messages are left untagged (no agentId/agentName/parentId/depth), matching every
+ * session persisted before multi-agent existed — only depth > 0 messages get the sub-agent tags, so
+ * `MessageItem` only shows the indent/label for actual sub-agent steps.
  */
-export function subAgentEventsToMessages(events: OrchestratedAgentEvent[]): TurnMessage[] {
+export function eventsToMessages(events: OrchestratedAgentEvent[]): TurnMessage[] {
   const messages: TurnMessage[] = [];
   for (const event of events) {
-    if (event.depth === 0) continue;
-    const tags = { agentId: event.agentId, agentName: event.agentName, parentId: event.parentId, depth: event.depth };
+    const tags =
+      event.depth > 0
+        ? { agentId: event.agentId, agentName: event.agentName, parentId: event.parentId, depth: event.depth }
+        : {};
     if (event.type === "assistant-message") {
       messages.push({ ...event.message, ...tags });
     } else if (event.type === "tool-result") {
@@ -67,7 +75,7 @@ async function runMultiAgentTurn(
   onEvent: (event: OrchestratedAgentEvent) => void,
 ): Promise<TurnMessage[]> {
   const sharedTools = buildTools();
-  const childEvents: OrchestratedAgentEvent[] = [];
+  const allEvents: OrchestratedAgentEvent[] = [];
 
   const orchestrator = new AgentOrchestrator({
     provider,
@@ -75,7 +83,7 @@ async function runMultiAgentTurn(
     maxDepth: session.multiAgent?.maxDepth,
     onEvent: (event) => {
       onEvent(event);
-      if (event.depth > 0) childEvents.push(event);
+      allEvents.push(event);
     },
   });
 
@@ -87,16 +95,16 @@ async function runMultiAgentTurn(
     allowedTools: sharedTools.list().map((tool) => tool.name),
   };
 
-  const rootTurn = await orchestrator.run(rootSpec, userInput, {
+  await orchestrator.run(rootSpec, userInput, {
     initialMessages: priorMessages.map(toChatMessage),
     attachments,
   });
 
-  // Sub-agent activity happens while the root's `delegate_task` call is in flight, i.e. before the
-  // root's own delegate_task tool-result message — so it reads correctly placed ahead of the root's
-  // messages. (With more than one delegation round in a single turn, ordering between rounds isn't
-  // preserved; a fully chronological merge wasn't worth the complexity for the common one-round case.)
-  return [...subAgentEventsToMessages(childEvents), ...rootTurn];
+  // Build the persisted turn from the single chronologically-ordered event stream `onEvent` emitted
+  // (root and every sub-agent, interleaved as they actually happened) rather than the root's return
+  // value — that's what keeps a root's own `delegate_task` call ordered before the sub-agent activity
+  // it caused, correct for any number of delegation rounds, not just the first.
+  return eventsToMessages(allEvents);
 }
 
 /**
