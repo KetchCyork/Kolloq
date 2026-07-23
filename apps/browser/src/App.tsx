@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AgentsView } from "./components/AgentsView";
 import { ChatPanel } from "./components/ChatPanel";
 import { ComingSoonView } from "./components/ComingSoonView";
@@ -8,12 +8,17 @@ import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ProjectPanel } from "./components/ProjectPanel";
 import { ProjectsEmptyState } from "./components/ProjectsEmptyState";
 import { SettingsView } from "./components/SettingsView";
+import { SignInScreen } from "./components/SignInScreen";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
+import { loadOpenWorkSession, signOutOpenWork, type OpenWorkSession } from "./openWorkAccount";
 import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
+  // Open Work account gate (spec §8.1) — separate from the LLM provider connections in `store.tsx`.
+  const [openWorkSession, setOpenWorkSession] = useState<OpenWorkSession | null>(() => loadOpenWorkSession());
+
   const {
     ready,
     accounts,
@@ -59,6 +64,10 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [preferences, currentView, createSession, setCurrentView, setSettingsTab]);
 
+  if (!openWorkSession) {
+    return <SignInScreen onSignedIn={setOpenWorkSession} />;
+  }
+
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
   }
@@ -69,6 +78,12 @@ export function App() {
 
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
   const activeProject = projects.find((project) => project.id === activeSessionId);
+  const accountEmail = openWorkSession.email;
+
+  function signOutOfOpenWork() {
+    signOutOpenWork();
+    setOpenWorkSession(null);
+  }
 
   function renderMain() {
     switch (currentView) {
@@ -79,7 +94,7 @@ export function App() {
       case "agents":
         return <AgentsView />;
       case "settings":
-        return <SettingsView />;
+        return <SettingsView accountEmail={accountEmail} onSignOut={signOutOfOpenWork} />;
       case "chat":
       default:
         return <ChatPanel />;
@@ -88,7 +103,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar />
+      <Sidebar accountEmail={accountEmail} />
       {renderMain()}
     </div>
   );
