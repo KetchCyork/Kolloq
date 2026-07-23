@@ -20,6 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 "$(dirname "$0")/ensure-target-unindexed.sh"
+"$(dirname "$0")/drain-stale-bundle.sh"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 SLUG="$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')"
