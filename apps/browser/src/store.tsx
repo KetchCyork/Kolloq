@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, OrchestratedAgentEvent, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
@@ -143,6 +143,9 @@ export interface LiveToolCall {
   call: ToolCall;
   status: "running" | "done" | "error";
   result?: unknown;
+  /** Which agent made this call — used (with `call.id`) to match its later tool-result, since two
+   * different sub-agents can otherwise reuse the same provider-issued call id. */
+  agentId?: string;
   /** Set when this call came from a delegated sub-agent, so the step tracker can indent/label it. */
   agentName?: string;
   depth?: number;
@@ -180,7 +183,10 @@ interface StoreApi extends StoreState {
   setCurrentView: (view: WorkspaceView) => void;
   setSettingsTab: (tab: SettingsTabId) => void;
   createSession: () => AgentSession;
-  updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
+  updateSession: (
+    id: string,
+    patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt" | "multiAgent">>,
+  ) => void;
   deleteSession: (id: string) => void;
   sendMessage: (sessionId: string, text: string, attachments?: ChatAttachment[]) => Promise<void>;
   createCouncilSession: (members: Array<Omit<CouncilMemberConfig, "id">>) => CouncilSession;
@@ -375,7 +381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateSession = useCallback(
-    (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => {
+    (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt" | "multiAgent">>) => {
       setSessions((prev) =>
         prev.map((session) => {
           if (session.id !== id) return session;
@@ -430,7 +436,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
       capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
 
-      const onEvent = (event: AgentEvent) => {
+      const onEvent = (event: OrchestratedAgentEvent) => {
         if (event.type === "tool-call") {
           capture({ type: "tool_call", toolName: event.toolCall.name });
         }
@@ -444,10 +450,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (event.type === "text-delta") {
             return { ...prev, [sessionId]: { ...turn, text: turn.text + event.delta } };
           }
+          // Only multi-agent turns rely on this: `AgentOrchestrator` runs each agent's non-streaming
+          // `run()`, so `assistant-message` (one per step, full content) is the only way text arrives
+          // — single-agent sessions still stream via `text-delta` above and would otherwise see this
+          // duplicate their already-accumulated text.
+          if (event.type === "assistant-message" && event.depth === 0 && session.multiAgent?.enabled) {
+            return { ...prev, [sessionId]: { ...turn, text: turn.text + event.message.content } };
+          }
           if (event.type === "tool-call") {
+            const isSubAgent = event.depth > 0;
             return {
               ...prev,
-              [sessionId]: { ...turn, toolCalls: [...turn.toolCalls, { call: event.toolCall, status: "running" }] },
+              [sessionId]: {
+                ...turn,
+                toolCalls: [
+                  ...turn.toolCalls,
+                  {
+                    call: event.toolCall,
+                    status: "running",
+                    agentId: event.agentId,
+                    agentName: isSubAgent ? event.agentName : undefined,
+                    depth: isSubAgent ? event.depth : undefined,
+                  },
+                ],
+              },
             };
           }
           if (event.type === "tool-result") {
@@ -456,7 +482,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               [sessionId]: {
                 ...turn,
                 toolCalls: turn.toolCalls.map((tc) =>
-                  tc.call.id === event.toolCall.id ? { ...tc, status: "done", result: event.result } : tc,
+                  tc.call.id === event.toolCall.id && tc.agentId === event.agentId
+                    ? { ...tc, status: "done", result: event.result }
+                    : tc,
                 ),
               },
             };

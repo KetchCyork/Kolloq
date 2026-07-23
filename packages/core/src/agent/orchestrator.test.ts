@@ -159,4 +159,36 @@ describe("AgentOrchestrator", () => {
 
     expect(turn.at(-1)?.content).toBe("root done");
   });
+
+  it("seeds the root agent with prior conversation history, like AgentRunner does when resuming a session", async () => {
+    const provider = new ScriptedProvider([
+      { finishReason: "stop", message: { role: "assistant", content: "Following up on that." } },
+    ]);
+
+    let sentMessages: ChatRequest["messages"] = [];
+    const spyProvider: ChatProvider = {
+      id: provider.id,
+      model: provider.model,
+      chat: (request) => {
+        sentMessages = [...request.messages];
+        return provider.chat(request);
+      },
+      stream: provider.stream.bind(provider),
+    };
+
+    const orchestrator = new AgentOrchestrator({ provider: spyProvider, sharedTools: buildSharedTools() });
+    const turn = await orchestrator.run({ name: "lead" }, "and then?", {
+      initialMessages: [
+        { role: "user", content: "Remember the number 42." },
+        { role: "assistant", content: "Got it, 42." },
+      ],
+    });
+
+    expect(turn.at(-1)?.content).toBe("Following up on that.");
+    expect(sentMessages).toEqual([
+      { role: "user", content: "Remember the number 42." },
+      { role: "assistant", content: "Got it, 42." },
+      { role: "user", content: "and then?" },
+    ]);
+  });
 });

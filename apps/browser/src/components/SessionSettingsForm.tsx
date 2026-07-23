@@ -5,7 +5,7 @@ export function SessionSettingsForm({
   onChange,
 }: {
   session: AgentSession;
-  onChange: (patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
+  onChange: (patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt" | "multiAgent">>) => void;
 }) {
   const { identity, systemPrompt } = session;
 
@@ -37,6 +37,22 @@ export function SessionSettingsForm({
           value={systemPrompt}
           onChange={(e) => onChange({ systemPrompt: e.target.value })}
         />
+      </div>
+
+      <div className="field span-full">
+        <label htmlFor="multi-agent-toggle">
+          <input
+            id="multi-agent-toggle"
+            type="checkbox"
+            checked={session.multiAgent?.enabled ?? false}
+            onChange={(e) => onChange({ multiAgent: { ...session.multiAgent, enabled: e.target.checked } })}
+          />{" "}
+          Multi-agent (experimental)
+        </label>
+        <p className="field-hint">
+          Lets {identity.name} delegate sub-tasks to fresh sub-agents via a <code>delegate_task</code> tool and
+          synthesize their answers. Sub-agent steps appear indented and labeled, live and in the saved transcript.
+        </p>
       </div>
     </div>
   );
