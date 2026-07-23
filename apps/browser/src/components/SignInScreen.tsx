@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signInWithPassword, type OpenWorkSession } from "../openWorkAccount";
+import { signInWithPassword, type AppSession } from "../openWorkAccount";
 import { beginGoogleSignIn, googleSignInAvailable, googleUnavailableReason, runGoogleSignIn } from "../openWorkGoogleAuth";
 
 const TIERS = [
@@ -8,7 +8,7 @@ const TIERS = [
   { name: "Max", detail: "Unlimited", detail2: "everything" },
 ];
 
-export function SignInScreen({ onSignedIn }: { onSignedIn: (session: OpenWorkSession) => void }) {
+export function SignInScreen({ onSignedIn }: { onSignedIn: (session: AppSession) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

@@ -6,7 +6,7 @@
  *
  * There is no backend yet, so sign-in is stubbed: every method below mints a session locally and
  * persists it to `localStorage`. Swap the bodies of `signInWithPassword`/`signInWithOAuth` for real
- * network calls once a backend exists — the signatures and `OpenWorkSession` shape are the seam, so
+ * network calls once a backend exists — the signatures and `AppSession` shape are the seam, so
  * nothing else in the app (the gate in `App.tsx`, the sign-out in `PreferencesPanel`) needs to change.
  */
 
@@ -14,19 +14,19 @@ const SESSION_KEY = "openwork.account.session.v1";
 
 export type SignInMethod = "password" | "google" | "apple" | "sso";
 
-export interface OpenWorkSession {
+export interface AppSession {
   email: string;
   method: SignInMethod;
   signedInAt: number;
 }
 
-function isValidSession(value: unknown): value is OpenWorkSession {
+function isValidSession(value: unknown): value is AppSession {
   if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<OpenWorkSession>;
+  const candidate = value as Partial<AppSession>;
   return typeof candidate.email === "string" && typeof candidate.method === "string" && typeof candidate.signedInAt === "number";
 }
 
-export function loadOpenWorkSession(): OpenWorkSession | null {
+export function loadAppSession(): AppSession | null {
   if (typeof localStorage === "undefined") return null;
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -40,12 +40,12 @@ export function loadOpenWorkSession(): OpenWorkSession | null {
 
 /** Persists a session to local storage. Used by the email/password form and the real Google flow
  * (see openWorkGoogleAuth.ts), which produces its session from a Google-verified id_token. */
-export function persistOpenWorkSession(session: OpenWorkSession): void {
+export function persistAppSession(session: AppSession): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-export function signOutOpenWork(): void {
+export function signOut(): void {
   if (typeof localStorage === "undefined") return;
   localStorage.removeItem(SESSION_KEY);
 }
@@ -56,10 +56,10 @@ export function signOutOpenWork(): void {
 // made "Continue with Google" drop straight into the app without verifying anything).
 
 /** Stub sign-in for the email/password form. Replace with a real API call later. */
-export function signInWithPassword(email: string): OpenWorkSession {
+export function signInWithPassword(email: string): AppSession {
   const trimmed = email.trim();
   if (!trimmed) throw new Error("Enter your email address.");
-  const session: OpenWorkSession = { email: trimmed, method: "password", signedInAt: Date.now() };
-  persistOpenWorkSession(session);
+  const session: AppSession = { email: trimmed, method: "password", signedInAt: Date.now() };
+  persistAppSession(session);
   return session;
 }

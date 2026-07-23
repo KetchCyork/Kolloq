@@ -18,20 +18,20 @@ class MemoryStorage {
 
 (globalThis as unknown as { localStorage: Storage }).localStorage = new MemoryStorage() as unknown as Storage;
 
-import { loadOpenWorkSession, signInWithPassword, signOutOpenWork } from "./openWorkAccount";
+import { loadAppSession, signInWithPassword, signOut } from "./openWorkAccount";
 
 beforeEach(() => {
-  signOutOpenWork();
+  signOut();
 });
 
-describe("loadOpenWorkSession", () => {
+describe("loadAppSession", () => {
   it("is null when nothing has signed in yet", () => {
-    expect(loadOpenWorkSession()).toBeNull();
+    expect(loadAppSession()).toBeNull();
   });
 
   it("ignores corrupt storage instead of throwing", () => {
     localStorage.setItem("openwork.account.session.v1", "{not json");
-    expect(loadOpenWorkSession()).toBeNull();
+    expect(loadAppSession()).toBeNull();
   });
 });
 
@@ -40,7 +40,7 @@ describe("signInWithPassword", () => {
     const session = signInWithPassword("  person@example.com  ");
     expect(session.email).toBe("person@example.com");
     expect(session.method).toBe("password");
-    expect(loadOpenWorkSession()).toEqual(session);
+    expect(loadAppSession()).toEqual(session);
   });
 
   it("rejects an empty email", () => {
@@ -48,10 +48,10 @@ describe("signInWithPassword", () => {
   });
 });
 
-describe("signOutOpenWork", () => {
+describe("signOut", () => {
   it("clears a persisted session", () => {
     signInWithPassword("person@example.com");
-    signOutOpenWork();
-    expect(loadOpenWorkSession()).toBeNull();
+    signOut();
+    expect(loadAppSession()).toBeNull();
   });
 });

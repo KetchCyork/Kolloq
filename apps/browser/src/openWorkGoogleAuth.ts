@@ -35,7 +35,7 @@
  *     issuer/audience/nonce/expiry/email_verified.
  */
 import { isTauriRuntime } from "./credentials";
-import { persistOpenWorkSession, type OpenWorkSession } from "./openWorkAccount";
+import { persistAppSession, type AppSession } from "./openWorkAccount";
 
 const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -46,7 +46,7 @@ const GOOGLE_REDIRECT_URI = `http://127.0.0.1:${GOOGLE_LOOPBACK_PORT}`;
 const GOOGLE_SCOPES = ["openid", "email", "profile"];
 
 /**
- * OpenWork's Google OAuth Client ID. Safe to commit: a Client ID is a public identifier that Google
+ * Open Work's Google OAuth Client ID. Safe to commit: a Client ID is a public identifier that Google
  * echoes in the authorize URL of every sign-in, and it is useless without the paired secret.
  */
 const DEFAULT_GOOGLE_CLIENT_ID = "582168889348-saprf1jsc5qpengcsjshvvlpnmsiodn9.apps.googleusercontent.com";
@@ -93,7 +93,7 @@ export function googleSignInAvailable(): boolean {
 
 /** Human-readable reason Google sign-in is unavailable, or null if it is available. */
 export function googleUnavailableReason(): string | null {
-  if (!isTauriRuntime()) return "Google sign-in is only available in the OpenWork desktop app.";
+  if (!isTauriRuntime()) return "Google sign-in is only available in the Open Work desktop app.";
   if (!googleClientId()) return "Google sign-in isn't configured yet (missing OAuth Client ID).";
   if (!googleClientSecret()) return "Google sign-in isn't configured yet (missing OAuth Client Secret).";
   return null;
@@ -217,12 +217,12 @@ export function googleTokenErrorMessage(status: number, payload: GoogleTokenPayl
 }
 
 /**
- * Runs the full loopback capture + token exchange and returns an OpenWorkSession carrying the
+ * Runs the full loopback capture + token exchange and returns an AppSession carrying the
  * user's real, Google-verified email. Only valid under the desktop shell (see
  * `googleSignInAvailable`).
  */
-export async function runGoogleSignIn(session: GoogleAuthSession): Promise<OpenWorkSession> {
-  if (!isTauriRuntime()) throw new Error("Google sign-in is only available in the OpenWork desktop app.");
+export async function runGoogleSignIn(session: GoogleAuthSession): Promise<AppSession> {
+  if (!isTauriRuntime()) throw new Error("Google sign-in is only available in the Open Work desktop app.");
   const { invoke } = await import("@tauri-apps/api/core");
 
   // Bind the loopback listener first (the command awaits the redirect), then open the consent page.
@@ -257,7 +257,7 @@ export async function runGoogleSignIn(session: GoogleAuthSession): Promise<OpenW
     clientId: googleClientId(),
     nonce: session.nonce,
   });
-  const openWorkSession: OpenWorkSession = { email, method: "google", signedInAt: Date.now() };
-  persistOpenWorkSession(openWorkSession);
-  return openWorkSession;
+  const appSession: AppSession = { email, method: "google", signedInAt: Date.now() };
+  persistAppSession(appSession);
+  return appSession;
 }

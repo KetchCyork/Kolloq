@@ -11,13 +11,13 @@ import { SettingsView } from "./components/SettingsView";
 import { SignInScreen } from "./components/SignInScreen";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
-import { loadOpenWorkSession, signOutOpenWork, type OpenWorkSession } from "./openWorkAccount";
+import { loadAppSession, signOut, type AppSession } from "./openWorkAccount";
 import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
   // Open Work account gate (spec §8.1) — separate from the LLM provider connections in `store.tsx`.
-  const [openWorkSession, setOpenWorkSession] = useState<OpenWorkSession | null>(() => loadOpenWorkSession());
+  const [appSession, setAppSession] = useState<AppSession | null>(() => loadAppSession());
 
   const {
     ready,
@@ -64,8 +64,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [preferences, currentView, createSession, setCurrentView, setSettingsTab]);
 
-  if (!openWorkSession) {
-    return <SignInScreen onSignedIn={setOpenWorkSession} />;
+  if (!appSession) {
+    return <SignInScreen onSignedIn={setAppSession} />;
   }
 
   if (!ready) {
@@ -78,11 +78,11 @@ export function App() {
 
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
   const activeProject = projects.find((project) => project.id === activeSessionId);
-  const accountEmail = openWorkSession.email;
+  const accountEmail = appSession.email;
 
-  function signOutOfOpenWork() {
-    signOutOpenWork();
-    setOpenWorkSession(null);
+  function handleSignOut() {
+    signOut();
+    setAppSession(null);
   }
 
   function renderMain() {
@@ -94,7 +94,7 @@ export function App() {
       case "agents":
         return <AgentsView />;
       case "settings":
-        return <SettingsView accountEmail={accountEmail} onSignOut={signOutOfOpenWork} />;
+        return <SettingsView accountEmail={accountEmail} onSignOut={handleSignOut} />;
       case "chat":
       default:
         return <ChatPanel />;

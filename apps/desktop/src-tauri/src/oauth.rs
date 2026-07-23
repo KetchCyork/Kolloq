@@ -131,8 +131,8 @@ pub async fn google_oauth_capture(port: u16) -> Result<LoopbackCapture, String> 
 
         // Respond so the browser tab shows a friendly message either way.
         let (title, message) = match &result {
-            Ok(_) => ("Signed in", "You're signed in to OpenWork. You can close this tab and return to the app."),
-            Err(_) => ("Sign-in failed", "Something went wrong signing in. You can close this tab and try again in OpenWork."),
+            Ok(_) => ("Signed in", "You're signed in to Open Work. You can close this tab and return to the app."),
+            Err(_) => ("Sign-in failed", "Something went wrong signing in. You can close this tab and try again in Open Work."),
         };
         let html = format!(
             "<!doctype html><html><head><meta charset=utf-8><title>{title}</title><style>body{{font-family:-apple-system,system-ui,sans-serif;background:#0f1115;color:#e6e6e6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}div{{text-align:center;max-width:24rem}}h1{{font-size:1.25rem}}</style></head><body><div><h1>{title}</h1><p>{message}</p></div></body></html>"
