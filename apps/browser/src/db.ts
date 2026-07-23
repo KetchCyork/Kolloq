@@ -140,8 +140,8 @@ export async function deleteProject(id: string): Promise<void> {
   await withNamedStore(PROJECT_FOLDERS_STORE, "readwrite", (store) => store.delete(id));
 }
 
-/** `handle` is a `FileSystemDirectoryHandle` (see fileSystemAccess.d.ts) — typed as `unknown` here
- * so db.ts doesn't need the ambient DOM augmentation just to pass it through to IndexedDB. */
+/** `handle` is a `WorkingFolderHandle` (see projectFolder.ts) — typed as `unknown` here so db.ts
+ * doesn't need the ambient DOM augmentation just to pass it through to IndexedDB. */
 export async function putProjectFolderHandle(projectId: string, handle: unknown): Promise<void> {
   await withNamedStore(PROJECT_FOLDERS_STORE, "readwrite", (store) => store.put({ projectId, handle }));
 }
