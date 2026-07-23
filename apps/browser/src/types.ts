@@ -152,3 +152,65 @@ export interface SessionExportFile {
   /** Absent in exports produced before council sessions existed; treat as empty on import. */
   councilSessions?: CouncilSession[];
 }
+
+/** One agent assigned to a project's roster. Like a `CouncilMemberConfig`, it points at an
+ * `Account` for the model/credentials, but also carries its own display identity (name/color)
+ * since a roster member isn't tied to any single chat session's identity. */
+export interface ProjectMemberConfig {
+  id: string;
+  accountId: string;
+  identity: AgentIdentity;
+  /** Optional one-line role shown under the name in the roster, e.g. "Writing & strategy". */
+  role?: string;
+}
+
+export type ProjectTaskStatus = "todo" | "in_progress" | "done";
+
+export interface ProjectTask {
+  id: string;
+  title: string;
+  status: ProjectTaskStatus;
+  /** Roster member id, if assigned. */
+  assigneeId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A project-knowledge file the user attached directly (as opposed to a file already sitting in
+ * the connected working folder, which is listed live from the folder handle instead of stored here). */
+export interface ProjectKnowledgeFile extends ChatAttachment {
+  addedAt: number;
+}
+
+/** A working folder connected via the File System Access API. The handle itself (not JSON-safe,
+ * and not something we want in export files) is persisted separately — see `projectFolders` in db.ts. */
+export interface ProjectWorkingFolder {
+  /** The folder's own name. The File System Access API does not expose the full OS path, so this
+   * is the most specific location string a browser can honestly show. */
+  name: string;
+  connectedAt: number;
+}
+
+export interface ProjectChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  /** Roster member id that authored this message. Unset for user messages. */
+  memberId?: string;
+  content: string;
+  attachments?: ChatAttachment[];
+  error?: { reason: string };
+  createdAt: number;
+}
+
+export interface Project {
+  id: string;
+  identity: AgentIdentity;
+  workingFolder?: ProjectWorkingFolder;
+  roster: ProjectMemberConfig[];
+  tasks: ProjectTask[];
+  knowledgeFiles: ProjectKnowledgeFile[];
+  instructions: string;
+  messages: ProjectChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}

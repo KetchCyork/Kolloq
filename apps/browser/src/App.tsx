@@ -4,6 +4,8 @@ import { ComingSoonView } from "./components/ComingSoonView";
 import { CouncilEmptyState } from "./components/CouncilEmptyState";
 import { CouncilPanel } from "./components/CouncilPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { ProjectPanel } from "./components/ProjectPanel";
+import { ProjectsEmptyState } from "./components/ProjectsEmptyState";
 import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
@@ -16,6 +18,7 @@ export function App() {
     accounts,
     createSession,
     councilSessions,
+    projects,
     activeSessionId,
     preferences,
     currentView,
@@ -64,18 +67,14 @@ export function App() {
   }
 
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
+  const activeProject = projects.find((project) => project.id === activeSessionId);
 
   function renderMain() {
     switch (currentView) {
       case "council":
         return activeCouncilSession ? <CouncilPanel session={activeCouncilSession} /> : <CouncilEmptyState />;
       case "projects":
-        return (
-          <ComingSoonView
-            title="Projects"
-            description="Cowork-style workspaces with a connected folder, files, and assigned agents are coming soon."
-          />
-        );
+        return activeProject ? <ProjectPanel project={activeProject} /> : <ProjectsEmptyState />;
       case "agents":
         return (
           <ComingSoonView title="Agents" description="Create, edit, duplicate, and archive agents from here soon." />
