@@ -31,10 +31,19 @@ so there's no separate frontend build step.
 ## QA / dev builds vs. the canonical `/Applications` install
 
 `/Applications/Open Work.app` (identifier `ai.newvector.cowork`) is the
-**canonical build the board verifies against**. Only write it when you are
-explicitly refreshing that canonical build (e.g. installing a signed release,
-or a `main`-branch build for board verification) — say so in the issue when
-you do, since it replaces whatever was previously installed there.
+**canonical, `main`-only build the board verifies against**. Only write it
+when you are explicitly refreshing that canonical build (e.g. installing a
+signed release, or a `main`-branch build for board verification) — say so in
+the issue when you do, since it replaces whatever was previously installed
+there.
+
+**Per-issue pinned copies in `/Applications` (e.g.
+`/Applications/Open Work (NEW-<id> QA).app`) are prohibited**, not merely
+discouraged — every such bundle still carries the `ai.newvector.cowork`
+family of identifiers, so pinning one there just renames the collision
+instead of removing it. Use `qa-build` below instead. The sole exception is
+`/Applications/Open Work (NEW-42 QA).app`, a pre-convention artifact that
+stays only until NEW-42 leaves `in_review`, at which point QA removes it.
 
 Every other desktop build — local dev, QA verification builds, anything run
 from a worktree — must use:
