@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "dev": "bash scripts/ensure-target-unindexed.sh && tauri dev",
+    "build": "bash scripts/ensure-target-unindexed.sh && tauri build",
+    "qa-build": "bash scripts/qa-build.sh",
     "tauri": "tauri"
   },
   "devDependencies": {
