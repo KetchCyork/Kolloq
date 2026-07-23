@@ -1,11 +1,9 @@
 import { useEffect } from "react";
-import { AccountsManager } from "./components/AccountsManager";
 import { ChatPanel } from "./components/ChatPanel";
 import { ComingSoonView } from "./components/ComingSoonView";
 import { CouncilEmptyState } from "./components/CouncilEmptyState";
 import { CouncilPanel } from "./components/CouncilPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
-import { PreferencesPanel } from "./components/PreferencesPanel";
 import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
@@ -19,12 +17,10 @@ export function App() {
     createSession,
     councilSessions,
     activeSessionId,
-    accountsManagerOpen,
     preferences,
-    preferencesOpen,
-    openPreferences,
-    closePreferences,
     currentView,
+    setCurrentView,
+    setSettingsTab,
   } = useStore();
 
   useEffect(() => {
@@ -36,7 +32,7 @@ export function App() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      // A keybinding recorder in PreferencesPanel is capturing the next keypress — don't also fire shortcuts.
+      // A keybinding recorder in SettingsGeneralPane is capturing the next keypress — don't also fire shortcuts.
       if (document.querySelector(".keybind-btn.recording")) return;
       const { keybindings } = preferences;
       if (matchesBinding(event, keybindings.newAgent)) {
@@ -44,7 +40,12 @@ export function App() {
         createSession();
       } else if (matchesBinding(event, keybindings.togglePreferences)) {
         event.preventDefault();
-        preferencesOpen ? closePreferences() : openPreferences();
+        if (currentView === "settings") {
+          setCurrentView("chat");
+        } else {
+          setSettingsTab("general");
+          setCurrentView("settings");
+        }
       } else if (matchesBinding(event, keybindings.focusComposer)) {
         event.preventDefault();
         document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
@@ -52,7 +53,7 @@ export function App() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [preferences, preferencesOpen, createSession, openPreferences, closePreferences]);
+  }, [preferences, currentView, createSession, setCurrentView, setSettingsTab]);
 
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
@@ -91,8 +92,6 @@ export function App() {
     <div className="app">
       <Sidebar />
       {renderMain()}
-      {accountsManagerOpen && <AccountsManager />}
-      {preferencesOpen && <PreferencesPanel />}
     </div>
   );
 }

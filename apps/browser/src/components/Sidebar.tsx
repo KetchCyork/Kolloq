@@ -59,7 +59,7 @@ function emailInitials(email: string): string {
 }
 
 // Falls back to a placeholder until an Open Work account/sign-in system is wired up (tracked separately).
-const PLACEHOLDER_ACCOUNT_EMAIL = "you@openwork.local";
+export const PLACEHOLDER_ACCOUNT_EMAIL = "you@openwork.local";
 
 export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountEmail?: string }) {
   const {
@@ -75,7 +75,13 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
     openAccountsManager,
     currentView,
     setCurrentView,
+    setSettingsTab,
   } = useStore();
+
+  function openAccountPlan() {
+    setSettingsTab("account");
+    setCurrentView("settings");
+  }
 
   function handleNewCouncil() {
     if (accounts.length < 2) {
@@ -174,11 +180,11 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
         <div className="sidebar-footer-identity">{accountEmail}</div>
         <span
           className="plan-pill"
-          onClick={() => setCurrentView("settings")}
+          onClick={openAccountPlan}
           role="button"
           tabIndex={0}
           onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") setCurrentView("settings");
+            if (event.key === "Enter" || event.key === " ") openAccountPlan();
           }}
         >
           FREE

@@ -143,6 +143,9 @@ export interface LiveTurn {
 /** Top-level sidebar nav areas from the Open Work mockup/spec (§3.2). */
 export type WorkspaceView = "chat" | "projects" | "council" | "agents" | "settings";
 
+/** Left-nav tabs inside the Settings view (spec §7). */
+export type SettingsTabId = "account" | "connections" | "skills" | "plugins" | "integrations" | "usage" | "general";
+
 interface StoreState {
   sessions: AgentSession[];
   councilSessions: CouncilSession[];
@@ -151,15 +154,15 @@ interface StoreState {
   live: Record<string, LiveTurn>;
   councilLive: Record<string, LiveCouncilTurn>;
   ready: boolean;
-  accountsManagerOpen: boolean;
   preferences: Preferences;
-  preferencesOpen: boolean;
   currentView: WorkspaceView;
+  settingsTab: SettingsTabId;
 }
 
 interface StoreApi extends StoreState {
   setActiveSessionId: (id: string) => void;
   setCurrentView: (view: WorkspaceView) => void;
+  setSettingsTab: (tab: SettingsTabId) => void;
   createSession: () => AgentSession;
   updateSession: (id: string, patch: Partial<Pick<AgentSession, "identity" | "providerConfig" | "systemPrompt">>) => void;
   deleteSession: (id: string) => void;
@@ -176,11 +179,12 @@ interface StoreApi extends StoreState {
   createAccount: (input: Omit<Account, "id" | "createdAt">) => Account;
   updateAccount: (id: string, patch: Partial<Omit<Account, "id" | "createdAt">>) => void;
   deleteAccount: (id: string) => void;
+  /** Jumps straight to the Connections tab of Settings — used where an unrelated flow (Council setup, the
+   * model picker) needs the user to add a provider account before it can continue. */
   openAccountsManager: () => void;
-  closeAccountsManager: () => void;
   updatePreferences: (patch: Partial<Preferences>) => void;
+  /** Jumps straight to the General tab of Settings. */
   openPreferences: () => void;
-  closePreferences: () => void;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
@@ -193,10 +197,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
   const [ready, setReady] = useState(false);
-  const [accountsManagerOpen, setAccountsManagerOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>("chat");
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("account");
   const sessionsRef = useRef<AgentSession[]>([]);
   sessionsRef.current = sessions;
   const councilSessionsRef = useRef<CouncilSession[]>([]);
@@ -617,12 +620,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live,
       councilLive,
       ready,
-      accountsManagerOpen,
       preferences,
-      preferencesOpen,
       currentView,
+      settingsTab,
       setActiveSessionId,
       setCurrentView,
+      setSettingsTab,
       createSession,
       updateSession,
       deleteSession: deleteSessionById,
@@ -636,11 +639,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       createAccount,
       updateAccount,
       deleteAccount: deleteAccountById,
-      openAccountsManager: () => setAccountsManagerOpen(true),
-      closeAccountsManager: () => setAccountsManagerOpen(false),
+      openAccountsManager: () => {
+        setSettingsTab("connections");
+        setCurrentView("settings");
+      },
       updatePreferences,
-      openPreferences: () => setPreferencesOpen(true),
-      closePreferences: () => setPreferencesOpen(false),
+      openPreferences: () => {
+        setSettingsTab("general");
+        setCurrentView("settings");
+      },
     }),
     [
       sessions,
@@ -650,10 +657,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live,
       councilLive,
       ready,
-      accountsManagerOpen,
       preferences,
-      preferencesOpen,
       currentView,
+      settingsTab,
       createSession,
       updateSession,
       deleteSessionById,
