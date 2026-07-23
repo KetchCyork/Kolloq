@@ -32,7 +32,7 @@ import {
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
-import { pickWorkingFolder } from "./projectFolder";
+import { pickWorkingFolder, workingFolderName, type WorkingFolderHandle } from "./projectFolder";
 import { resolveRoutedMember } from "./projectRouting";
 import { isOAuthCredentialExpiring, refreshSubscriptionAuth } from "./subscriptionAuth";
 import { capture, setTelemetryEnabled } from "./telemetry";
@@ -665,7 +665,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
    * surfaced) if the user cancels the dialog or the browser doesn't support the File System
    * Access API — the folder bar just stays in its current/disconnected state either way. */
   const connectProjectFolder = useCallback(async (id: string) => {
-    let handle: FileSystemDirectoryHandle;
+    let handle: WorkingFolderHandle;
     try {
       handle = await pickWorkingFolder();
     } catch {
@@ -677,7 +677,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (project.id !== id) return project;
         const updated: Project = {
           ...project,
-          workingFolder: { name: handle.name, connectedAt: nowMs() },
+          workingFolder: { name: workingFolderName(handle), connectedAt: nowMs() },
           updatedAt: nowMs(),
         };
         void putProject(updated);

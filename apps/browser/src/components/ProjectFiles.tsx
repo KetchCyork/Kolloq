@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadProjectFolderHandle } from "../db";
 import { attachmentDataUrl } from "../attachments";
-import { listFolderEntries, verifyFolderPermission, type FolderEntry } from "../projectFolder";
+import { listFolderEntries, verifyFolderPermission, type FolderEntry, type WorkingFolderHandle } from "../projectFolder";
 import { useStore } from "../store";
 import type { Project } from "../types";
 
@@ -21,7 +21,7 @@ export function ProjectFiles({ project }: { project: Project }) {
     if (!project.workingFolder) return;
 
     void (async () => {
-      const handle = (await loadProjectFolderHandle(project.id)) as FileSystemDirectoryHandle | undefined;
+      const handle = (await loadProjectFolderHandle(project.id)) as WorkingFolderHandle | undefined;
       if (!handle || cancelled) return;
       const permission = await verifyFolderPermission(handle, false);
       if (permission !== "granted") {
@@ -38,7 +38,7 @@ export function ProjectFiles({ project }: { project: Project }) {
   }, [project.id, project.workingFolder]);
 
   async function handleReconnect() {
-    const handle = (await loadProjectFolderHandle(project.id)) as FileSystemDirectoryHandle | undefined;
+    const handle = (await loadProjectFolderHandle(project.id)) as WorkingFolderHandle | undefined;
     if (!handle) return;
     const permission = await verifyFolderPermission(handle, true);
     if (permission !== "granted") return;
