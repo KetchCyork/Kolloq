@@ -218,24 +218,36 @@ export interface DecisionBriefSections {
   structured: boolean;
 }
 
+/** Locates a header in the moderator's answer, matching either the plain header text or a
+ * `**Header:**`-style bold wrap (some models bold the headers despite the plain-text
+ * instruction). Prefers the bold form so the match — and the boundary it creates between
+ * sections — includes the surrounding `**`, keeping stray markdown out of section content. */
+function findHeaderMatch(answer: string, header: string): { index: number; length: number } | null {
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boldMatch = new RegExp(`\\*\\*\\s*${escaped}\\s*\\*\\*`).exec(answer);
+  if (boldMatch) return { index: boldMatch.index, length: boldMatch[0].length };
+  const plainIndex = answer.indexOf(header);
+  return plainIndex === -1 ? null : { index: plainIndex, length: header.length };
+}
+
 /** Best-effort split of the moderator's plain-text synthesis into Decision Brief sections. The
  * moderator is asked (see `DECISION_BRIEF_FORMAT` in council.ts) to use these exact headers, but
  * nothing enforces it server-side, so a model that ignores the instruction just falls through to
  * `structured: false` and the caller renders the raw answer instead. */
 export function parseDecisionBrief(answer: string): DecisionBriefSections {
-  const positions = DECISION_BRIEF_HEADERS.map(([key, header]) => {
-    const index = answer.indexOf(header);
-    return { key, header, index };
-  }).filter((entry) => entry.index !== -1);
+  const positions = DECISION_BRIEF_HEADERS.flatMap(([key, header]) => {
+    const match = findHeaderMatch(answer, header);
+    return match ? [{ key, index: match.index, length: match.length }] : [];
+  });
 
   if (positions.length === 0) return { structured: false };
 
   positions.sort((a, b) => a.index - b.index);
   const sections: DecisionBriefSections = { structured: true };
   positions.forEach((entry, i) => {
-    const start = entry.index + entry.header.length;
+    const start = entry.index + entry.length;
     const end = positions[i + 1]?.index ?? answer.length;
-    sections[entry.key as keyof Omit<DecisionBriefSections, "structured">] = answer.slice(start, end).trim();
+    sections[entry.key] = answer.slice(start, end).trim();
   });
   return sections;
 }
