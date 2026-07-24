@@ -1,7 +1,33 @@
+import { execFileSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
+
+/**
+ * Build provenance, inlined so a running app can say what it was built from
+ * instead of the only diagnostic being "compare Vite asset hashes across
+ * worktrees" (see NEW-120, NEW-157). Falls back to "unknown" outside a git
+ * checkout (e.g. a source tarball) rather than failing the build.
+ */
+function readGit(args: string[]): string {
+  try {
+    return execFileSync("git", args, { cwd: fileURLToPath(new URL(".", import.meta.url)) })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+function buildProvenance() {
+  return {
+    sha: readGit(["rev-parse", "--short", "HEAD"]) || "unknown",
+    branch: readGit(["rev-parse", "--abbrev-ref", "HEAD"]) || "unknown",
+    dirty: readGit(["status", "--porcelain"]).length > 0,
+    time: new Date().toISOString(),
+  };
+}
 
 /**
  * Build env vars a *shippable* binary cannot go out without.
@@ -47,6 +73,8 @@ export default defineConfig(({ command, mode }) => {
   const isRelease = ["1", "true"].includes((env.RELEASE_BUILD ?? "").trim().toLowerCase());
   if (command === "build") assertReleaseEnv(env, isRelease);
 
+  const provenance = buildProvenance();
+
   return {
     plugins: [react()],
     optimizeDeps: {
@@ -66,6 +94,12 @@ export default defineConfig(({ command, mode }) => {
         "@tauri-apps/plugin-updater",
         "@tauri-apps/plugin-process",
       ],
+    },
+    define: {
+      __BUILD_SHA__: JSON.stringify(provenance.sha),
+      __BUILD_BRANCH__: JSON.stringify(provenance.branch),
+      __BUILD_DIRTY__: JSON.stringify(provenance.dirty),
+      __BUILD_TIME__: JSON.stringify(provenance.time),
     },
     resolve: {
       alias: {

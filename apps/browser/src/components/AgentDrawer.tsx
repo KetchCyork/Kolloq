@@ -14,7 +14,8 @@ export function AgentDrawer({
   mode: "create" | "edit";
   onClose: () => void;
 }) {
-  const { sessions, accounts, updateSession, deleteSession, sendMessage, live } = useStore();
+  const { sessions, accounts, skills, updateSession, deleteSession, sendMessage, live, setSkillAttached, openSkillsManager } =
+    useStore();
   const [testText, setTestText] = useState("");
   const session = sessions.find((candidate) => candidate.id === agentId);
 
@@ -116,6 +117,34 @@ export function AgentDrawer({
                 value={session.systemPrompt}
                 onChange={(e) => updateSession(session.id, { systemPrompt: e.target.value })}
               />
+            </div>
+
+            <div className="field span-full">
+              <label>Skills</label>
+              {skills.length === 0 ? (
+                <div>
+                  <div className="settings-note">No skills installed yet. Install one, then attach it here.</div>
+                  <div className="template-chip-row">
+                    <button type="button" className="settings-btn" onClick={openSkillsManager}>
+                      Open Settings → Skills
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="template-chip-row">
+                  {skills.map((skill) => (
+                    <label key={skill.id} className="skill-agent-option" title={skill.description || undefined}>
+                      <input
+                        type="checkbox"
+                        checked={skill.attachedAgentIds.includes(session.id)}
+                        onChange={(e) => setSkillAttached(skill.id, session.id, e.target.checked)}
+                      />
+                      {skill.name}
+                      {!skill.enabled && <span className="settings-card-sub"> (off)</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

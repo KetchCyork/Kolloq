@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getAgentStatus } from "../agentStatus";
+import { activeSkillCountForAgent } from "../skills";
 import { useStore } from "../store";
 import type { AgentSession } from "../types";
 import { PROVIDER_LABELS } from "../utils";
@@ -8,7 +9,7 @@ import { AgentDrawer } from "./AgentDrawer";
 type DrawerState = { agentId: string; mode: "create" | "edit" };
 
 export function AgentsView() {
-  const { sessions, accounts, createSession, setCurrentView } = useStore();
+  const { sessions, accounts, skills, createSession, setCurrentView } = useStore();
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
 
   function openCreateDrawer() {
@@ -51,7 +52,7 @@ export function AgentsView() {
                 </div>
                 <div className="agent-card-kv">
                   <span>
-                    Skills <b>0</b>
+                    Skills <b>{activeSkillCountForAgent(skills, session.id)}</b>
                   </span>
                   <span>
                     Tools <b>0</b>

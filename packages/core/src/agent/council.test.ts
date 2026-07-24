@@ -206,4 +206,27 @@ describe("Council", () => {
       reason: "no explicit stance given",
     });
   });
+
+  it("uses an explicit non-debating moderator when provided, instead of members[0]", async () => {
+    const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+    const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+    const moderatorProvider = new StubProvider("Mod", ["Recommendation: do X"]);
+
+    const events: CouncilEvent[] = [];
+    const council = new Council({
+      members: [
+        { name: "A", provider: providerA },
+        { name: "B", provider: providerB },
+      ],
+      moderator: { name: "Moderator", provider: moderatorProvider },
+      onEvent: (event) => events.push(event),
+    });
+
+    const result = await council.run("Should we do X?");
+
+    // The moderator's provider only ever receives one call (the synthesis) — it never debates.
+    expect(result.rounds.flat().map((position) => position.member)).toEqual(["A", "B", "A", "B"]);
+    expect(result.answer).toBe("Recommendation: do X");
+    expect(events.some((event) => event.type === "moderator-synthesis")).toBe(true);
+  });
 });

@@ -78,6 +78,32 @@ export interface AgentSession {
   updatedAt: number;
 }
 
+/** Where a skill came from. Marketplace and URL sources from spec §7 aren't offered yet — there's no
+ * catalog to browse and no CORS-safe fetch path — so installs are a pasted body or a local file. */
+export type SkillSource = "pasted" | "local-file";
+
+/**
+ * An installed skill (spec §4/§7): a SKILL.md-style instruction package installed globally and
+ * attached to individual agents. Attached + enabled skills are folded into the agent's system prompt
+ * at turn time (see `composeAgentSystemPrompt`), so a skill changes behavior without editing personas.
+ */
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  /** The markdown body injected into attached agents' prompts. */
+  instructions: string;
+  source: SkillSource;
+  /** File name for `local-file` installs, shown on the card so the user knows where it came from. */
+  sourceLabel?: string;
+  /** Off keeps the skill installed and attached but out of prompts. */
+  enabled: boolean;
+  /** `AgentSession` ids this skill is attached to. */
+  attachedAgentIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** One seat on an Advisory Council session. Each member is its own account (and therefore its own
  * provider/model), unlike a single-agent session's one `providerConfig`. */
 export interface CouncilMemberConfig {
@@ -139,6 +165,12 @@ export interface CouncilSession {
   identity: AgentIdentity;
   members: CouncilMemberConfig[];
   maxRounds?: number;
+  /** Account that plays the (non-debating) moderator. Defaults to `members[0]`'s account when
+   * unset, matching the council engine's own default — old sessions need no migration. */
+  moderatorAccountId?: string;
+  /** Soft budget cap in USD, purely informational (the client-side cost estimate is only a rough
+   * approximation, and the debate engine has no mid-run hard stop yet). Undefined means no cap. */
+  budgetCap?: number;
   turns: CouncilTurn[];
   createdAt: number;
   updatedAt: number;
