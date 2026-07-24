@@ -153,8 +153,24 @@ binary:
   workflow sets on the build step) and a required var is empty.
 
 A plain `pnpm build` by a contributor without the secret still succeeds —
-it only warns — so only release builds are gated. Locally the value comes
-from the untracked `apps/browser/.env`.
+it only warns — so only release builds are gated.
+
+Locally the value comes from the untracked `apps/browser/.env`, falling
+back to `~/.openwork/.env` (override the directory with `OPENWORK_ENV_DIR`).
+**Provision the machine-level file, not the repo one**, and every working
+copy on that machine builds the same binary:
+
+```sh
+mkdir -p ~/.openwork
+printf 'VITE_GOOGLE_OAUTH_CLIENT_SECRET=%s\n' "$SECRET" > ~/.openwork/.env
+chmod 600 ~/.openwork/.env
+```
+
+`apps/browser/.env` is untracked, so it does not travel to a fresh clone or
+to the throwaway git worktrees builds are often run from — each one silently
+produced a binary with the button greyed out (NEW-131). The machine-level
+file is what stops that from recurring; a repo-local `.env` still wins where
+one exists.
 
 Note: the account gate that reads this secret is not on `main` yet — it
 lives on the design branch (PR #4). Until that merges, Vite has nothing to
