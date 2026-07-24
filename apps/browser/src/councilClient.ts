@@ -7,7 +7,10 @@ import type { Account, CouncilMemberConfig } from "./types";
  * into a live `ChatProvider` first. Mirrors `agentClient.runSessionTurn`'s "build fresh per call"
  * shape — a council session persists only the transcript, not runner/provider state. The council
  * engine identifies members by `CouncilMember.name`; that's set to the member config id here so
- * `councilReducer.applyCouncilEvent` can resolve display labels/cost notes back from it.
+ * `councilReducer.applyCouncilEvent` can resolve display labels/cost notes back from it. `label` is
+ * set separately to the account's human-readable name — the engine embeds `label` (never `name`) in
+ * any prompt/transcript text, so the opaque member id never reaches a moderator prompt or a
+ * user-visible transcript/synthesis.
  */
 export function runCouncilTurn(
   members: CouncilMemberConfig[],
@@ -27,7 +30,7 @@ export function runCouncilTurn(
       authType: account.authType,
       accessToken: account.oauth?.accessToken,
     });
-    return { name: member.id, provider, role: member.role };
+    return { name: member.id, label: `${account.label} · ${account.model}`, provider, role: member.role };
   });
 
   const council = new Council({ members: councilMembers, maxRounds, onEvent });
