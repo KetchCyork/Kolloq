@@ -249,9 +249,12 @@ const HEADER_WRAPPERS = ["**", '"', "_"];
  * wrapped form like `**Header:**` or `"Header:"` (some models decorate the headers despite the
  * plain-text instruction). Prefers a wrapped match when present so the match — and the boundary
  * it creates between sections — includes the surrounding decoration, keeping stray markdown out
- * of section content. */
+ * of section content. Internal whitespace runs in the header (e.g. the space in "contention &
+ * resolution") are matched as `\s+` rather than a literal single space, since small models
+ * sometimes insert extra spaces there — a literal match would silently drop the whole header (and
+ * its section) rather than just leaving decoration behind. */
 function findHeaderMatch(answer: string, header: string): { index: number; length: number } | null {
-  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ +/g, "\\s+");
   for (const wrapper of HEADER_WRAPPERS) {
     const escapedWrapper = wrapper.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const wrappedMatch = new RegExp(`${escapedWrapper}\\s*${escaped}\\s*${escapedWrapper}`).exec(answer);
@@ -261,8 +264,8 @@ function findHeaderMatch(answer: string, header: string): { index: number; lengt
   // so absorb the leading `#`s directly into the match instead of treating them as a wrapper.
   const headingMatch = new RegExp(`#{1,6}\\s*${escaped}`).exec(answer);
   if (headingMatch) return { index: headingMatch.index, length: headingMatch[0].length };
-  const plainIndex = answer.indexOf(header);
-  return plainIndex === -1 ? null : { index: plainIndex, length: header.length };
+  const plainMatch = new RegExp(escaped).exec(answer);
+  return plainMatch ? { index: plainMatch.index, length: plainMatch[0].length } : null;
 }
 
 /** Strips leading/trailing lines that are bare markdown decoration (e.g. a lone `**` or `"`)
