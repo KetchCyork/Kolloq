@@ -12,6 +12,8 @@
     "core:window:allow-show",
     "updater:default",
     "process:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "fs:allow-read-dir",
+    "fs:allow-read-file"
   ]
 }

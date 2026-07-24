@@ -1,6 +1,8 @@
 import type { ChatAttachment } from "@newvector/core";
 import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { filesToAttachments } from "../attachments";
+import { filesToAttachments, type AttachmentBatch } from "../attachments";
+import { isTauriRuntime } from "../credentials";
+import { pickFolderAttachments } from "../desktopAttachments";
 import type { ProviderConfig } from "../types";
 import { ModelPicker } from "./ModelPicker";
 
@@ -28,11 +30,25 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  function applyBatch(batch: AttachmentBatch) {
+    setAttachments((prev) => [...prev, ...batch.attachments]);
+    setPendingError(batch.rejections.length ? batch.rejections.map((r) => `${r.name}: ${r.reason}`).join("; ") : null);
+  }
+
   async function addFiles(files: File[]) {
     if (!files.length) return;
-    const { attachments: added, rejections } = await filesToAttachments(files);
-    setAttachments((prev) => [...prev, ...added]);
-    setPendingError(rejections.length ? rejections.map((r) => `${r.name}: ${r.reason}`).join("; ") : null);
+    applyBatch(await filesToAttachments(files));
+  }
+
+  async function addFolder() {
+    if (isTauriRuntime()) {
+      // webkitdirectory doesn't reliably expose folder contents inside a Tauri webview, so the
+      // desktop build uses a native folder-picker + recursive filesystem read instead.
+      const batch = await pickFolderAttachments();
+      if (batch) applyBatch(batch);
+      return;
+    }
+    folderInputRef.current?.click();
   }
 
   function removeAttachment(id: string) {
@@ -99,7 +115,7 @@ export function Composer({
         <button type="button" title="Attach files or images" onClick={() => fileInputRef.current?.click()}>
           📎
         </button>
-        <button type="button" title="Attach a folder" onClick={() => folderInputRef.current?.click()}>
+        <button type="button" title="Attach a folder" onClick={() => void addFolder()}>
           📁
         </button>
         <ModelPicker providerConfig={providerConfig} onChange={onProviderConfigChange} />
