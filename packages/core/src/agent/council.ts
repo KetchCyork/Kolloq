@@ -32,6 +32,10 @@ export interface DroppedMember {
 
 export interface CouncilOptions {
   members: CouncilMember[];
+  /** Optional distinct, non-debating moderator that only synthesizes the final answer and never
+   * argues a position. Defaults to `members[0]` when omitted, preserving the original behavior
+   * where the first member both debates and synthesizes. */
+  moderator?: CouncilMember;
   /** Hard cap on debate rounds (round 0 counts as the first). Default 4. */
   maxRounds?: number;
   onEvent?: (event: CouncilEvent) => void;
@@ -67,6 +71,13 @@ const DEFAULT_MAX_ROUNDS = 4;
 const CONCUR_PATTERN = /^\s*CONCUR\b:?\s*/i;
 const DISSENT_PATTERN = /^\s*DISSENT\s*:\s*([^\n]*)\n?([\s\S]*)$/i;
 
+/** Asks the moderator for a Decision Brief shape the client can parse into distinct sections
+ * (see `parseDecisionBrief` in the browser app's council reducer) while staying plain text — no
+ * markdown/JSON contract is enforced, so callers must treat parsing as best-effort. */
+const DECISION_BRIEF_FORMAT =
+  'Write the Decision Brief using exactly these section headers, each alone on its own line: "Recommendation:", ' +
+  '"Rationale:", "Key contention & resolution:", "Next steps:". Keep each section concise.';
+
 /**
  * Multi-provider debate: each member answers independently, then revises across rounds after
  * seeing every other member's latest position, until all concur or a hard round cap is hit. A
@@ -76,6 +87,7 @@ export class Council {
   private readonly members: CouncilMember[];
   private readonly maxRounds: number;
   private readonly onEvent?: (event: CouncilEvent) => void;
+  private readonly moderator: CouncilMember;
 
   constructor(options: CouncilOptions) {
     if (options.members.length < MIN_MEMBERS || options.members.length > MAX_MEMBERS) {
@@ -86,6 +98,7 @@ export class Council {
     this.members = options.members;
     this.maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
     this.onEvent = options.onEvent;
+    this.moderator = options.moderator ?? this.members[0]!;
   }
 
   async run(question: string): Promise<CouncilResult> {
@@ -219,7 +232,7 @@ export class Council {
     dropped: DroppedMember[],
     consensusReached: boolean,
   ): Promise<string> {
-    const moderator = this.members[0]!;
+    const moderator = this.moderator;
     const finalPositions = rounds.at(-1) ?? [];
     const dissenting = finalPositions.filter((position) => position.stance === "dissent");
 
@@ -261,6 +274,8 @@ export class Council {
       "",
       outcomeNote,
       dissentNote,
+      "",
+      DECISION_BRIEF_FORMAT,
     ]
       .filter((line) => line !== "")
       .join("\n");
