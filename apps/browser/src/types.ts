@@ -165,6 +165,12 @@ export interface CouncilSession {
   identity: AgentIdentity;
   members: CouncilMemberConfig[];
   maxRounds?: number;
+  /** Account that plays the (non-debating) moderator. Defaults to `members[0]`'s account when
+   * unset, matching the council engine's own default — old sessions need no migration. */
+  moderatorAccountId?: string;
+  /** Soft budget cap in USD, purely informational (the client-side cost estimate is only a rough
+   * approximation, and the debate engine has no mid-run hard stop yet). Undefined means no cap. */
+  budgetCap?: number;
   turns: CouncilTurn[];
   createdAt: number;
   updatedAt: number;

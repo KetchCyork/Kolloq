@@ -2,13 +2,17 @@ import type { CouncilEvent } from "@newvector/core";
 import { describe, expect, it } from "vitest";
 import {
   applyCouncilEvent,
+  computeAlignment,
   computeTotalCostNote,
+  diversityHint,
+  estimateCouncilCostRange,
   initialLiveCouncilTurn,
   MAX_COUNCIL_MEMBERS,
   MIN_COUNCIL_MEMBERS,
+  parseDecisionBrief,
   validateCouncilMembers,
 } from "./councilReducer";
-import type { Account, CouncilMemberConfig } from "./types";
+import type { Account, CouncilMemberConfig, CouncilMemberPosition } from "./types";
 
 function account(overrides: Partial<Account> = {}): Account {
   return {
@@ -142,5 +146,149 @@ describe("computeTotalCostNote", () => {
     const rounds = [[{ memberId: "m1", label: "Local · llama3.1", content: "a".repeat(40), costNote: "" }]];
     const note = computeTotalCostNote(rounds, undefined, members, accounts);
     expect(note).toBe("~10 tok · free (local)");
+  });
+
+  it("prices the answer using the explicit moderator account when given", () => {
+    const withModerator = [
+      account({ id: "a1", provider: "ollama", label: "Local", model: "llama3.1" }),
+      account({ id: "a2", provider: "anthropic", label: "Claude", model: "claude-3-5-sonnet-20241022" }),
+    ];
+    const rounds = [[{ memberId: "m1", label: "Local · llama3.1", content: "a".repeat(40), costNote: "" }]];
+    const note = computeTotalCostNote(rounds, "b".repeat(40), members, withModerator, "a2");
+    // Answer priced against a2 (anthropic, paid) rather than falling back to members[0]'s a1 (free/local).
+    expect(note).not.toContain("free (local)");
+  });
+});
+
+describe("diversityHint", () => {
+  const anthropic = account({ id: "a1", provider: "anthropic" });
+  const openai = account({ id: "a2", provider: "openai" });
+  const anthropic2 = account({ id: "a3", provider: "anthropic" });
+
+  it("returns null with fewer than 2 members", () => {
+    expect(diversityHint([{ id: "m1", accountId: "a1" }], [anthropic])).toBeNull();
+  });
+
+  it("flags a roster that's all the same provider", () => {
+    const members: CouncilMemberConfig[] = [
+      { id: "m1", accountId: "a1" },
+      { id: "m2", accountId: "a3" },
+    ];
+    expect(diversityHint(members, [anthropic, anthropic2])).toMatch(/same provider/);
+  });
+
+  it("praises a diverse roster", () => {
+    const members: CouncilMemberConfig[] = [
+      { id: "m1", accountId: "a1" },
+      { id: "m2", accountId: "a2" },
+    ];
+    expect(diversityHint(members, [anthropic, openai])).toMatch(/Good model diversity — 2 providers/);
+  });
+});
+
+describe("estimateCouncilCostRange", () => {
+  it("reports free for an all-local roster", () => {
+    const accounts = [account({ id: "a1", provider: "ollama" })];
+    const members: CouncilMemberConfig[] = [{ id: "m1", accountId: "a1" }];
+    const estimate = estimateCouncilCostRange(members, accounts, 4);
+    expect(estimate.allFree).toBe(true);
+    expect(estimate.lowUsd).toBe(0);
+    expect(estimate.highUsd).toBe(0);
+  });
+
+  it("scales the high estimate with maxRounds and prices the low estimate at roughly half", () => {
+    const accounts = [account({ id: "a1", provider: "anthropic" })];
+    const members: CouncilMemberConfig[] = [{ id: "m1", accountId: "a1" }];
+    const estimate = estimateCouncilCostRange(members, accounts, 4);
+    expect(estimate.allFree).toBe(false);
+    expect(estimate.highUsd).toBeGreaterThan(estimate.lowUsd);
+    expect(estimate.lowUsd).toBeGreaterThan(0);
+  });
+});
+
+describe("computeAlignment", () => {
+  function position(overrides: Partial<CouncilMemberPosition>): CouncilMemberPosition {
+    return { memberId: "m", label: "M", content: "x", costNote: "", ...overrides };
+  }
+
+  it("returns null before any round has a stance (round 0 is independent answers)", () => {
+    expect(computeAlignment([[position({ memberId: "m1" }), position({ memberId: "m2" })]])).toBeNull();
+  });
+
+  it("returns the percentage of the latest round that concurred", () => {
+    const rounds = [
+      [position({ memberId: "m1" }), position({ memberId: "m2" })],
+      [position({ memberId: "m1", stance: "concur" }), position({ memberId: "m2", stance: "dissent" })],
+    ];
+    expect(computeAlignment(rounds)).toBe(50);
+  });
+
+  it("reads only the latest round, not earlier ones", () => {
+    const rounds = [
+      [position({ memberId: "m1" })],
+      [position({ memberId: "m1", stance: "dissent" })],
+      [position({ memberId: "m1", stance: "concur" })],
+    ];
+    expect(computeAlignment(rounds)).toBe(100);
+  });
+});
+
+describe("parseDecisionBrief", () => {
+  it("splits a well-formed brief into its sections", () => {
+    const answer = [
+      "Recommendation:",
+      "Buy Stripe Billing.",
+      "Rationale:",
+      "Cheaper and faster.",
+      "Key contention & resolution:",
+      "Critic conceded on TCO.",
+      "Next steps:",
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+  });
+
+  it("falls back to unstructured when no recognized headers are present", () => {
+    const sections = parseDecisionBrief("Just go with Stripe, it's cheaper.");
+    expect(sections.structured).toBe(false);
+    expect(sections.recommendation).toBeUndefined();
+  });
+
+  it("tolerates missing sections and out-of-order headers", () => {
+    const answer = "Rationale:\nBecause it's cheaper.\nRecommendation:\nBuy Stripe.";
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.rationale).toBe("Because it's cheaper.");
+    expect(sections.recommendation).toBe("Buy Stripe.");
+    expect(sections.contention).toBeUndefined();
+  });
+
+  it("strips bold markdown wrapping the headers instead of leaking ** into section content", () => {
+    const answer = [
+      "**Recommendation:**",
+      "Buy Stripe Billing.",
+      "**Rationale:**",
+      "Cheaper and faster.",
+      "**Key contention & resolution:**",
+      "Critic conceded on TCO.",
+      "**Next steps:**",
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain("**");
+    }
   });
 });

@@ -192,7 +192,7 @@ interface StoreApi extends StoreState {
   createCouncilSession: (members: Array<Omit<CouncilMemberConfig, "id">>) => CouncilSession;
   updateCouncilSession: (
     id: string,
-    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>,
+    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>,
   ) => void;
   deleteCouncilSession: (id: string) => void;
   askCouncil: (sessionId: string, question: string) => Promise<void>;
@@ -598,7 +598,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateCouncilSession = useCallback(
-    (id: string, patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>) => {
+    (
+      id: string,
+      patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>,
+    ) => {
       setCouncilSessions((prev) =>
         prev.map((session) => {
           if (session.id !== id) return session;
@@ -647,7 +650,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await runCouncilTurn(session.members, accountsForTurn, session.maxRounds, question, onEvent);
+      const result = await runCouncilTurn(
+        session.members,
+        accountsForTurn,
+        session.maxRounds,
+        session.moderatorAccountId,
+        question,
+        onEvent,
+      );
+      // On a moderator error, the "moderator-error" event only carries the error message — the
+      // engine's deterministic fallback synthesis (see Council.fallbackSynthesis) lives on the
+      // resolved result instead, so surface it here rather than leaving the turn's answer empty.
+      if (!liveTurn.answer && result.answer) {
+        liveTurn = { ...liveTurn, answer: result.answer };
+      }
     } catch (error) {
       // Council.run() itself never rejects (member/moderator errors surface as events); this only
       // fires for setup failures, e.g. a member's account was removed after validation passed.
@@ -670,7 +686,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,
-          totalCostNote: computeTotalCostNote(liveTurn.rounds, liveTurn.answer, session.members, accountsRef.current),
+          totalCostNote: computeTotalCostNote(
+            liveTurn.rounds,
+            liveTurn.answer,
+            session.members,
+            accountsRef.current,
+            session.moderatorAccountId,
+          ),
         };
         setCouncilSessions((prev) =>
           prev.map((candidate) => {
