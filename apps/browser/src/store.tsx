@@ -21,6 +21,7 @@ import {
   loadAllCouncilSessions,
   loadAllProjects,
   loadAllSessions,
+  loadAllSkills,
   putAccount,
   putAllCouncilSessions,
   putAllSessions,
@@ -28,12 +29,15 @@ import {
   putProject,
   putProjectFolderHandle,
   putSession,
+  putSkill,
   deleteSession as deleteSessionRecord,
+  deleteSkill as deleteSkillRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
 import { pickWorkingFolder, workingFolderName, type WorkingFolderHandle } from "./projectFolder";
 import { resolveRoutedMember } from "./projectRouting";
+import { composeAgentSystemPrompt, skillsForAgent } from "./skills";
 import { isOAuthCredentialExpiring, refreshSubscriptionAuth } from "./subscriptionAuth";
 import { capture, setTelemetryEnabled } from "./telemetry";
 import type {
@@ -52,6 +56,7 @@ import type {
   ProjectTaskStatus,
   ProviderConfig,
   SessionExportFile,
+  Skill,
   StoredMessage,
 } from "./types";
 import {
@@ -165,6 +170,7 @@ interface StoreState {
   councilSessions: CouncilSession[];
   projects: Project[];
   accounts: Account[];
+  skills: Skill[];
   activeSessionId: string | null;
   live: Record<string, LiveTurn>;
   councilLive: Record<string, LiveCouncilTurn>;
@@ -201,6 +207,14 @@ interface StoreApi extends StoreState {
   updatePreferences: (patch: Partial<Preferences>) => void;
   /** Jumps straight to the General tab of Settings. */
   openPreferences: () => void;
+  createSkill: (input: Omit<Skill, "id" | "createdAt" | "updatedAt">) => Skill;
+  updateSkill: (id: string, patch: Partial<Omit<Skill, "id" | "createdAt">>) => void;
+  deleteSkill: (id: string) => void;
+  /** Attaches/detaches one skill to one agent — the write both the Skills pane's agent picker and the
+   * agent drawer's skill list make, so neither has to rebuild `attachedAgentIds` itself. */
+  setSkillAttached: (skillId: string, agentId: string, attached: boolean) => void;
+  /** Jumps straight to the Skills tab of Settings. */
+  openSkillsManager: () => void;
   createProject: () => Project;
   updateProject: (id: string, patch: Partial<Pick<Project, "identity" | "instructions">>) => void;
   deleteProject: (id: string) => void;
@@ -229,6 +243,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [councilSessions, setCouncilSessions] = useState<CouncilSession[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
@@ -245,6 +260,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   projectsRef.current = projects;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
+  const skillsRef = useRef<Skill[]>([]);
+  skillsRef.current = skills;
   const preferencesRef = useRef<Preferences>(preferences);
   preferencesRef.current = preferences;
   const initStarted = useRef(false);
@@ -267,11 +284,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     initStarted.current = true;
 
     async function init() {
-      const [loadedSessions, loadedAccounts, loadedCouncilSessions, loadedProjects] = await Promise.all([
+      const [loadedSessions, loadedAccounts, loadedCouncilSessions, loadedProjects, loadedSkills] = await Promise.all([
         loadAllSessions(),
         loadAllAccounts(),
         loadAllCouncilSessions(),
         loadAllProjects(),
+        loadAllSkills(),
       ]);
       const [hydratedSessions, hydratedAccounts] = await Promise.all([
         Promise.all(loadedSessions.map(hydrateSession)),
@@ -296,6 +314,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       setCouncilSessions(titled.sessions);
       setProjects(loadedProjects);
+      setSkills(loadedSkills);
       setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
       // No agent sessions to land on but a council exists — open straight to the Advisory Council view instead of an empty Chat.
       if (migration.sessions.length === 0 && titled.sessions.length > 0) {
@@ -388,10 +407,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const createSkill = useCallback((input: Omit<Skill, "id" | "createdAt" | "updatedAt">): Skill => {
+    const skill: Skill = { ...input, id: randomId(), createdAt: nowMs(), updatedAt: nowMs() };
+    setSkills((prev) => [...prev, skill]);
+    void putSkill(skill);
+    return skill;
+  }, []);
+
+  const updateSkill = useCallback((id: string, patch: Partial<Omit<Skill, "id" | "createdAt">>) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.id !== id) return skill;
+        const updated = { ...skill, ...patch, updatedAt: nowMs() };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const deleteSkillById = useCallback((id: string) => {
+    setSkills((prev) => prev.filter((skill) => skill.id !== id));
+    void deleteSkillRecord(id);
+  }, []);
+
+  const setSkillAttached = useCallback((skillId: string, agentId: string, attached: boolean) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.id !== skillId) return skill;
+        const already = skill.attachedAgentIds.includes(agentId);
+        if (already === attached) return skill;
+        const attachedAgentIds = attached
+          ? [...skill.attachedAgentIds, agentId]
+          : skill.attachedAgentIds.filter((candidate) => candidate !== agentId);
+        const updated = { ...skill, attachedAgentIds, updatedAt: nowMs() };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  /** Drops a deleted agent from every skill's attachment list, so the Skills pane never shows a
+   * count that includes agents that no longer exist. */
+  const detachAgentFromSkills = useCallback((agentId: string) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (!skill.attachedAgentIds.includes(agentId)) return skill;
+        const updated = {
+          ...skill,
+          attachedAgentIds: skill.attachedAgentIds.filter((candidate) => candidate !== agentId),
+          updatedAt: nowMs(),
+        };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
   const deleteSessionById = useCallback(
     (id: string) => {
       setSessions((prev) => prev.filter((session) => session.id !== id));
       void deleteSessionRecord(id);
+      detachAgentFromSkills(id);
       if (isTauriRuntime()) void deleteApiKey(id);
       setActiveSessionId((current) => {
         if (current !== id) return current;
@@ -399,7 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return remaining[0]?.id ?? null;
       });
     },
-    [],
+    [detachAgentFromSkills],
   );
 
   const appendMessages = useCallback((sessionId: string, messages: StoredMessage[]) => {
@@ -480,6 +556,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const effectiveSession = {
           ...session,
+          // Attached, enabled skills are folded in per turn rather than baked into `systemPrompt`, so
+          // editing or toggling a skill in Settings takes effect on the next message.
+          systemPrompt: composeAgentSystemPrompt(session.systemPrompt, skillsForAgent(skillsRef.current, session.id)),
           providerConfig: resolveProviderConfig(session.providerConfig, accountsForTurn),
         };
         const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
@@ -991,6 +1070,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       councilSessions,
       projects,
       accounts,
+      skills,
       activeSessionId,
       live,
       councilLive,
@@ -1024,6 +1104,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setSettingsTab("general");
         setCurrentView("settings");
       },
+      createSkill,
+      updateSkill,
+      deleteSkill: deleteSkillById,
+      setSkillAttached,
+      openSkillsManager: () => {
+        setSettingsTab("skills");
+        setCurrentView("settings");
+      },
       createProject,
       updateProject: updateProjectById,
       deleteProject: deleteProjectById,
@@ -1044,6 +1132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       councilSessions,
       projects,
       accounts,
+      skills,
       activeSessionId,
       live,
       councilLive,
@@ -1066,6 +1155,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateAccount,
       deleteAccountById,
       updatePreferences,
+      createSkill,
+      updateSkill,
+      deleteSkillById,
+      setSkillAttached,
       createProject,
       updateProjectById,
       deleteProjectById,
