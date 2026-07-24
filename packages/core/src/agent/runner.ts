@@ -1,4 +1,5 @@
 import type { ChatAttachment, ChatMessage, ChatProvider, ToolCall } from "../providers/types.js";
+import { extractFileArtifact, type FileArtifact } from "../tools/artifacts.js";
 import { ToolRegistry, type ToolSource } from "../tools/registry.js";
 
 export interface AgentRunnerOptions {
@@ -18,6 +19,13 @@ export type AgentEvent =
   | { type: "tool-call"; toolCall: ToolCall }
   | { type: "tool-result"; toolCall: ToolCall; result: unknown }
   | { type: "error"; error: Error };
+
+/** Drops the inline `contentBase64` file bytes from a tool result so they don't reach the model context. */
+function stripInlineBytes(result: unknown): unknown {
+  if (!result || typeof result !== "object" || !("contentBase64" in result)) return result;
+  const { contentBase64: _bytes, ...rest } = result as Record<string, unknown>;
+  return rest;
+}
 
 /** Provider-agnostic agent loop: send a user message, let the model respond, execute any tool calls, repeat. */
 export class AgentRunner {
@@ -125,17 +133,28 @@ export class AgentRunner {
       this.onEvent?.({ type: "tool-call", toolCall });
 
       let content: string;
+      let artifact: FileArtifact | undefined;
       try {
         const result = await this.tools.execute(toolCall);
         this.onEvent?.({ type: "tool-result", toolCall, result });
-        content = typeof result === "string" ? result : JSON.stringify(result);
+        artifact = extractFileArtifact(result) ?? undefined;
+        // Keep the (potentially large) inline file bytes out of the model-facing content; the model
+        // only needs the path/size/type, while the download surface reads the bytes off `artifact`.
+        const modelFacing = artifact ? stripInlineBytes(result) : result;
+        content = typeof modelFacing === "string" ? modelFacing : JSON.stringify(modelFacing);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         this.onEvent?.({ type: "error", error: err });
         content = JSON.stringify({ error: err.message });
       }
 
-      const toolMessage: ChatMessage = { role: "tool", name: toolCall.name, toolCallId: toolCall.id, content };
+      const toolMessage: ChatMessage = {
+        role: "tool",
+        name: toolCall.name,
+        toolCallId: toolCall.id,
+        content,
+        ...(artifact ? { artifact } : {}),
+      };
       this.messages.push(toolMessage);
       toolMessages.push(toolMessage);
     }

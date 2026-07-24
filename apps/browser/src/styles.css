@@ -494,6 +494,40 @@ select {
   word-break: break-word;
 }
 
+.artifact-download {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.artifact-download .artifact-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-download .artifact-size {
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.artifact-download button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.artifact-download button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .status-badge {
   font-size: 10px;
   padding: 1px 6px;

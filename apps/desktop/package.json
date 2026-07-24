@@ -5,9 +5,15 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sidecar:bundle": "node sidecar/build.mjs",
+    "sidecar:smoke": "node sidecar/tool-host.mjs"
+  },
+  "dependencies": {
+    "@newvector/core": "workspace:*"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4"
+    "@tauri-apps/cli": "^2.11.4",
+    "esbuild": "^0.28.1"
   }
 }

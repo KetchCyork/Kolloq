@@ -45,11 +45,16 @@ describe("createOfficeTools", () => {
         { type: "paragraph", text: "Revenue grew this quarter." },
         { type: "bullets", items: ["North: up 10%", "South: flat"] },
       ],
-    })) as { path: string; bytesWritten: number };
+    })) as { path: string; bytesWritten: number; mimeType: string; contentBase64: string };
 
     expect(result.path).toBe("report.docx");
     expect(result.bytesWritten).toBeGreaterThan(0);
-    await expectZipFile(rootDir, "report.docx");
+    expect(result.mimeType).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    const bytes = await expectZipFile(rootDir, "report.docx");
+    // The inline bytes let the browser download the file without disk access; they must match disk.
+    expect(Buffer.from(result.contentBase64, "base64").equals(bytes)).toBe(true);
   });
 
   it("generates a valid multi-sheet .xlsx with header rows", async () => {
