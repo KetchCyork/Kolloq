@@ -313,4 +313,36 @@ describe("parseDecisionBrief", () => {
       if (typeof value === "string") expect(value).not.toContain("**");
     }
   });
+
+  it("strips quote-wrapped headers instead of leaking \" into section content", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing.",
+      '"Rationale:"',
+      "Cheaper and faster.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain('"');
+    }
+  });
+
+  it("drops a stray bare-decoration line left over from an asymmetric wrapper", () => {
+    const answer = [
+      "**Recommendation:",
+      "Buy Stripe Billing.",
+      "**",
+      "**Rationale:",
+      "Cheaper and faster.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+  });
 });
