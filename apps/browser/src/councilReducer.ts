@@ -268,8 +268,9 @@ function findHeaderMatch(answer: string, header: string): { index: number; lengt
 function stripStrayDecorationLines(text: string): string {
   const lines = text.split("\n");
   const isBareDecoration = (line: string) => /^[*_"]+$/.test(line.trim());
-  while (lines.length > 0 && isBareDecoration(lines[0])) lines.shift();
-  while (lines.length > 0 && isBareDecoration(lines[lines.length - 1])) lines.pop();
+  const isSkippable = (line: string) => isBareDecoration(line) || line.trim() === "";
+  while (lines.length > 0 && isSkippable(lines[0])) lines.shift();
+  while (lines.length > 0 && isSkippable(lines[lines.length - 1])) lines.pop();
   return lines.join("\n").trim();
 }
 
