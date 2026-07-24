@@ -4,10 +4,11 @@
  * Telemetry is OFF by default (controlled by Preferences.telemetryEnabled).
  * All captures are no-ops until the user explicitly opts in.
  *
- * When a backend is wired up (PostHog SaaS or self-hosted — pending CEO vendor
- * decision; see NEW-50), replace `noopBackend` with a real implementation that
- * conforms to `TelemetryBackend` and pass it to `initTelemetry`. No other code
- * needs to change.
+ * The CEO deferred the backend vendor decision (NEW-50, 2026-07-24) — no
+ * PostHog/homegrown backend is wired up. If that's revisited, replace
+ * `noopBackend` with a real implementation that conforms to
+ * `TelemetryBackend` and pass it to `initTelemetry`. No other code needs
+ * to change.
  *
  * Events must never include personally identifiable information or API key material.
  */
