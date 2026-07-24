@@ -65,8 +65,10 @@ calls the `node_tool_exec` / `node_read_file` commands (the download read-back p
 `@newvector/core/node` from the workspace `node_modules` — the developer machine has Node.
 
 **In a packaged app** neither Node nor `node_modules` exist on the user's machine, so
-`sidecar/build.mjs` (run automatically by `tauri build`'s `beforeBuildCommand`) produces
-two self-contained artifacts, shipped via `bundle.resources` in `tauri.conf.json`:
+`sidecar/build.mjs` produces two self-contained artifacts, shipped via `bundle.resources`
+in `tauri.conf.json`. Both `beforeBuildCommand` and `beforeDevCommand` run it: because the
+artifacts are declared resources, Tauri's build script fails the *cargo* compile when they're
+missing, so even `tauri dev` needs them staged once on a fresh checkout.
 
 - `sidecar/dist/tool-host.cjs` — the sidecar + `@newvector/core/node` + `docx`/`exceljs`/
   `pptxgenjs` rolled into one file by esbuild. No `node_modules` resolution at runtime.

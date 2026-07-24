@@ -12,8 +12,8 @@ import { nodeContextAvailable, readSandboxFileViaNode } from "./nodeContext";
  *  - `contentBase64` present → the tool shipped the bytes inline (the only path that works in a plain
  *    browser, which has no filesystem access). We decode and download directly.
  *  - Desktop (Tauri) with only a sandbox `path` → read the bytes off disk via the Node execution
- *    context. That wiring is tracked separately; until it lands we surface a clear, honest error
- *    rather than silently doing nothing.
+ *    context (the sidecar). Outside that runtime there is nothing to read from, so we surface a
+ *    clear, honest error rather than silently doing nothing.
  */
 
 /** Human-readable file size, e.g. 1536 -> "1.5 KB". */

@@ -76,9 +76,10 @@ in `@newvector/core` and is unit-tested; run the sidecar directly with
 `pnpm --filter @newvector/desktop sidecar:smoke` piping a JSON request on stdin.
 
 > **Packaging note:** in `tauri dev` the sidecar runs via `node` on PATH against the repo's linked
-> `@newvector/core`. Bundling a self-contained runtime (a pinned Node binary + the built core, or a
-> compiled single-file sidecar) into the packaged app, and the end-to-end verification on a real
-> desktop build, are tracked as follow-up work.
+> `@newvector/core`. A packaged app has neither, so `apps/desktop/sidecar/build.mjs` stages a
+> self-contained pair — an esbuild single-file `tool-host.cjs` plus a checksum-verified official Node
+> binary — and ships them as `bundle.resources`. It runs from both `beforeBuildCommand` and
+> `beforeDevCommand`; see `apps/desktop/README.md` for the runtime resolution order.
 
 ## Tool permissions
 

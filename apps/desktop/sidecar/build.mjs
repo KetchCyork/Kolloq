@@ -15,8 +15,10 @@
  *                                  Node — so copying the local `process.execPath` would ship a runtime
  *                                  that fails on the user's machine. We download instead.
  *
- * Run via `pnpm --filter @newvector/desktop sidecar:bundle`. `tauri build`'s beforeBuildCommand runs
- * it automatically. Both artifacts are git-ignored — they are build outputs, regenerated per build.
+ * Run via `pnpm --filter @newvector/desktop sidecar:bundle`. Tauri's beforeBuildCommand *and*
+ * beforeDevCommand run it automatically — the artifacts are declared `bundle.resources`, so Tauri's
+ * build script fails the cargo compile outright when they're absent, `tauri dev` included.
+ * Both artifacts are git-ignored — they are build outputs, regenerated per build.
  * The download is cached under `sidecar/.node-cache/` so repeat builds don't re-fetch.
  *
  * The runtime is staged for the *host* platform/arch, which is what Tauri builds for (the release
