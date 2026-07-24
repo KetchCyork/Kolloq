@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { estimateCouncilCostRange, formatCouncilCostRange, validateCouncilMembers } from "../councilReducer";
+import {
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  estimateCouncilCostRange,
+  formatCouncilCostRange,
+  validateCouncilMembers,
+} from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilSession } from "../types";
 import { CouncilSetupForm } from "./CouncilSetupForm";
@@ -27,7 +32,7 @@ export function CouncilSetupView({
   const [criteria, setCriteria] = useState("");
 
   const validationError = validateCouncilMembers(session.members, accounts);
-  const maxRounds = session.maxRounds ?? 4;
+  const maxRounds = session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS;
   const costRange = estimateCouncilCostRange(session.members, accounts, maxRounds, session.moderatorAccountId);
 
   function handleConvene() {

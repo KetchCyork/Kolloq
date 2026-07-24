@@ -143,6 +143,8 @@ export interface CouncilTurn {
   rounds: CouncilMemberPosition[][];
   consensusReached: boolean;
   finalRound: number;
+  /** The round cap actually in effect for this turn (the session's cap may change between turns). */
+  maxRounds: number;
   dropped: CouncilDroppedMember[];
   answer: string;
   moderatorError?: string;
@@ -153,6 +155,9 @@ export interface CouncilTurn {
 export interface LiveCouncilTurn {
   question: string;
   rounds: CouncilMemberPosition[][];
+  /** Round index of the most recent `round-start` event, for "round N of maxRounds" progress. */
+  currentRound: number;
+  maxRounds: number;
   dropped: CouncilDroppedMember[];
   consensusReached: boolean;
   answer?: string;

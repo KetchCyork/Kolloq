@@ -17,6 +17,7 @@ export default defineConfig({
           { text: "Providers", link: "/guide/providers" },
           { text: "Built-in tools", link: "/guide/tools" },
           { text: "Multi-agent orchestration", link: "/guide/multi-agent" },
+          { text: "Advisory Council", link: "/guide/advisory-council" },
           { text: "Preferences & keyboard shortcuts", link: "/guide/preferences" },
         ],
       },

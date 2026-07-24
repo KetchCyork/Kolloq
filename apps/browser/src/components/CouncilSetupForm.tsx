@@ -1,4 +1,10 @@
-import { diversityHint, MAX_COUNCIL_MEMBERS, MIN_COUNCIL_MEMBERS, validateCouncilMembers } from "../councilReducer";
+import {
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  diversityHint,
+  MAX_COUNCIL_MEMBERS,
+  MIN_COUNCIL_MEMBERS,
+  validateCouncilMembers,
+} from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilMemberConfig, CouncilSession } from "../types";
 import { randomId } from "../utils";
@@ -120,16 +126,20 @@ export function CouncilSetupForm({ session, onChange }: { session: CouncilSessio
         <div className="field">
           <label>Max rounds</label>
           <select
-            value={String(session.maxRounds ?? 4)}
+            value={String(session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS)}
             onChange={(e) => onChange({ maxRounds: Number(e.target.value) })}
           >
             {MAX_ROUND_OPTIONS.map((rounds) => (
               <option key={rounds} value={rounds}>
                 {rounds}
-                {rounds === 4 ? " (default)" : ""}
+                {rounds === DEFAULT_COUNCIL_MAX_ROUNDS ? " (default)" : ""}
               </option>
             ))}
           </select>
+          <small className="hint">
+            Debate stops after this many rounds even without consensus. Each round is one provider call per
+            member — a higher cap can multiply cost.
+          </small>
         </div>
         <div className="field">
           <label>Budget cap</label>
