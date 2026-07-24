@@ -1,15 +1,15 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f1115;
-  --panel: #161922;
-  --panel-alt: #1d212c;
+  --bg: #12151d;
+  --panel: #1b2029;
+  --panel-alt: #232a37;
   --sidebar: #0e1219;
-  --border: #262b38;
-  --text: #e6e8ef;
-  --text-dim: #8b8fa3;
-  --accent: #6366f1;
-  --accent-soft: #23264a;
+  --border: #2b3242;
+  --text: #e6e9f0;
+  --text-dim: #8a92a6;
+  --accent: #1fc29c;
+  --accent-soft: #14332b;
   --on-accent: #06231b;
   --green: #6fce8f;
   --amber: #d9a94a;
@@ -26,15 +26,15 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f7f7fb;
+  --bg: #f5f6f8;
   --panel: #ffffff;
-  --panel-alt: #f0f1f6;
+  --panel-alt: #eef0f4;
   --sidebar: #eceef2;
-  --border: #dcdfe8;
-  --text: #1b1d23;
-  --text-dim: #6b7080;
-  --accent: #6366f1;
-  --accent-soft: #e8e7fb;
+  --border: #dcdfe6;
+  --text: #1a2744;
+  --text-dim: #5f6b85;
+  --accent: #12a184;
+  --accent-soft: #d8f3ea;
   --on-accent: #ffffff;
   --green: #2e7d4b;
   --amber: #9a6d1c;
@@ -79,6 +79,24 @@ select {
   color: inherit;
 }
 
+/*
+ * Serif headings are one of the mockup's two defining traits (the other is the
+ * teal accent). `.serif` is the opt-in utility the design doc specifies; the
+ * selectors below apply it to the view/section headings that exist today so the
+ * treatment is visible without touching component markup.
+ */
+.serif {
+  font-family: var(--serif);
+}
+
+.settings-pane-header h3,
+.chat-header-name-row .name-input,
+.empty-hero h1,
+.agent-card-name,
+.onboarding-card h1 {
+  font-family: var(--serif);
+}
+
 .app {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -86,7 +104,7 @@ select {
 }
 
 .sidebar {
-  background: var(--panel);
+  background: var(--sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -648,7 +666,7 @@ select {
 }
 
 .composer-drag-over {
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--accent-soft);
   outline: 2px dashed var(--accent);
   outline-offset: -4px;
 }
