@@ -7,12 +7,15 @@ class StubProvider implements ChatProvider {
   readonly model = "stub-model";
   private step = 0;
 
+  readonly requests: ChatRequest[] = [];
+
   constructor(
     readonly id: string,
     private readonly responses: string[],
   ) {}
 
-  async chat(_request: ChatRequest): Promise<ChatResponse> {
+  async chat(request: ChatRequest): Promise<ChatResponse> {
+    this.requests.push(request);
     const content = this.responses[this.step];
     this.step += 1;
     if (content === undefined) throw new Error(`${this.id}: no more scripted responses`);
@@ -56,12 +59,12 @@ describe("Council", () => {
     expect(result.finalRound).toBe(1);
     expect(result.rounds).toHaveLength(2);
     expect(result.rounds[0]).toEqual([
-      { member: "A", content: "Answer A0" },
-      { member: "B", content: "Answer B0" },
+      { member: "A", label: "A", content: "Answer A0" },
+      { member: "B", label: "B", content: "Answer B0" },
     ]);
     expect(result.rounds[1]).toEqual([
-      { member: "A", content: "I agree with B", stance: "concur" },
-      { member: "B", content: "sounds good", stance: "concur" },
+      { member: "A", label: "A", content: "I agree with B", stance: "concur" },
+      { member: "B", label: "B", content: "sounds good", stance: "concur" },
     ]);
     expect(result.dropped).toEqual([]);
     expect(result.answer).toBe("Final synthesized answer");
@@ -92,8 +95,8 @@ describe("Council", () => {
     expect(result.finalRound).toBe(1);
     expect(result.rounds).toHaveLength(2);
     expect(result.rounds[1]).toEqual([
-      { member: "A", content: "Still think X is risky", stance: "dissent", reason: "not convinced" },
-      { member: "B", content: "Y is safer", stance: "dissent", reason: "prefer Y" },
+      { member: "A", label: "A", content: "Still think X is risky", stance: "dissent", reason: "not convinced" },
+      { member: "B", label: "B", content: "Y is safer", stance: "dissent", reason: "prefer Y" },
     ]);
     expect(result.answer).toBe("Best-effort synthesis noting dissent");
   });
@@ -118,11 +121,11 @@ describe("Council", () => {
 
     const result = await council.run("Should we do X?");
 
-    expect(result.dropped).toEqual([{ member: "A", round: 1, error: "A provider error" }]);
+    expect(result.dropped).toEqual([{ member: "A", label: "A", round: 1, error: "A provider error" }]);
     // Round 1 has only B (A dropped); round 2 is B alone concurring, which is a unanimous (of one) consensus.
     expect(result.rounds).toHaveLength(3);
     expect(result.rounds[1]).toEqual([
-      { member: "B", content: "B's dissenting position", stance: "dissent", reason: "still unsure" },
+      { member: "B", label: "B", content: "B's dissenting position", stance: "dissent", reason: "still unsure" },
     ]);
     expect(result.consensusReached).toBe(true);
     expect(result.finalRound).toBe(2);
@@ -175,12 +178,12 @@ describe("Council", () => {
     const result = await council.run("Should we do X?");
 
     expect(result.rounds[0]).toEqual([
-      { member: "A", role: "skeptic", content: "Answer A0" },
-      { member: "B", role: "domain expert", content: "Answer B0" },
+      { member: "A", label: "A", role: "skeptic", content: "Answer A0" },
+      { member: "B", label: "B", role: "domain expert", content: "Answer B0" },
     ]);
     expect(result.rounds[1]).toEqual([
-      { member: "A", role: "skeptic", content: "I agree with B", stance: "concur" },
-      { member: "B", role: "domain expert", content: "sounds good", stance: "concur" },
+      { member: "A", label: "A", role: "skeptic", content: "I agree with B", stance: "concur" },
+      { member: "B", label: "B", role: "domain expert", content: "sounds good", stance: "concur" },
     ]);
   });
 
@@ -201,9 +204,102 @@ describe("Council", () => {
     expect(result.consensusReached).toBe(false);
     expect(result.rounds[1]?.[0]).toEqual({
       member: "A",
+      label: "A",
       content: "I'm not sure, maybe both are fine",
       stance: "dissent",
       reason: "no explicit stance given",
     });
+  });
+
+  it("uses an explicit non-debating moderator when provided, instead of members[0]", async () => {
+    const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+    const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+    const moderatorProvider = new StubProvider("Mod", ["Recommendation: do X"]);
+
+    const events: CouncilEvent[] = [];
+    const council = new Council({
+      members: [
+        { name: "A", provider: providerA },
+        { name: "B", provider: providerB },
+      ],
+      moderator: { name: "Moderator", provider: moderatorProvider },
+      onEvent: (event) => events.push(event),
+    });
+
+    const result = await council.run("Should we do X?");
+
+    // The moderator's provider only ever receives one call (the synthesis) — it never debates.
+    expect(result.rounds.flat().map((position) => position.member)).toEqual(["A", "B", "A", "B"]);
+    expect(result.answer).toBe("Recommendation: do X");
+    expect(events.some((event) => event.type === "moderator-synthesis")).toBe(true);
+  });
+
+  it("never embeds a member's opaque id in prompt/transcript text — only its label", async () => {
+    const idA = "11111111-1111-1111-1111-111111111111";
+    const idB = "22222222-2222-2222-2222-222222222222";
+    const providerA = new StubProvider(idA, [
+      "Answer A0",
+      "DISSENT: not convinced\nStill think X is risky",
+      "Final synthesized answer",
+    ]);
+    const providerB = new StubProvider(idB, ["Answer B0", "DISSENT: prefer Y\nY is safer"]);
+
+    const council = new Council({
+      members: [
+        { name: idA, label: "Skeptic Bot", provider: providerA },
+        { name: idB, label: "Optimist Bot", provider: providerB },
+      ],
+      maxRounds: 2,
+    });
+
+    await council.run("Should we do X?");
+
+    const allRequestText = [...providerA.requests, ...providerB.requests]
+      .flatMap((request) => request.messages.map((message) => message.content))
+      .join("\n");
+
+    expect(allRequestText).not.toContain(idA);
+    expect(allRequestText).not.toContain(idB);
+    expect(allRequestText).toContain("Skeptic Bot");
+    expect(allRequestText).toContain("Optimist Bot");
+  });
+
+  it("reports a dropped member's label separately from its opaque id, and keeps the id out of the moderator prompt", async () => {
+    const idA = "aaaaaaaa-0000-0000-0000-000000000000";
+    const idB = "bbbbbbbb-0000-0000-0000-000000000000";
+    // The stub's own debug id is deliberately unrelated to the council member id: a real provider's
+    // error message (rate limit, auth failure, etc.) never contains the caller's account/member id.
+    const providerA = new StubProvider("provider-a", ["A initial", "__throw__", "A synthesis final answer"]);
+    const providerB = new StubProvider("provider-b", [
+      "B initial",
+      "DISSENT: still unsure\nB's dissenting position",
+      "CONCUR B's final position",
+    ]);
+
+    const events: CouncilEvent[] = [];
+    const council = new Council({
+      members: [
+        { name: idA, label: "Claude · Skeptic", provider: providerA },
+        { name: idB, label: "GPT · Optimist", provider: providerB },
+      ],
+      maxRounds: 3,
+      onEvent: (event) => events.push(event),
+    });
+
+    const result = await council.run("Should we do X?");
+
+    expect(result.dropped).toEqual([
+      { member: idA, label: "Claude · Skeptic", round: 1, error: "provider-a provider error" },
+    ]);
+    const droppedEvent = events.find((event) => event.type === "member-dropped");
+    expect(droppedEvent).toMatchObject({ member: idA, label: "Claude · Skeptic" });
+
+    const moderatorPromptText = providerA.requests
+      .at(-1)!
+      .messages.map((message) => message.content)
+      .join("\n");
+    expect(moderatorPromptText).not.toContain(idA);
+    expect(moderatorPromptText).not.toContain(idB);
+    expect(moderatorPromptText).toContain("Claude · Skeptic");
   });
 });

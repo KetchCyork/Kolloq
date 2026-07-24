@@ -3,11 +3,18 @@ import type { ChatMessage, ChatProvider } from "../providers/types.js";
 /** One seat on the council. Each member is wired to its own provider, unlike `AgentOrchestrator`
  * where every (sub-)agent shares one provider. */
 export interface CouncilMember {
+  /** Opaque identifier used to correlate events/positions back to this member. Never shown to a
+   * human or embedded in a prompt — callers that need a caller-side id (e.g. a database key) should
+   * put it here and use `label` for anything display- or prompt-facing. */
   name: string;
   provider: ChatProvider;
   systemPrompt?: string;
   /** Short label surfaced in prompts/events, e.g. "skeptic" or "domain expert". Purely descriptive. */
   role?: string;
+  /** Human-readable display name used anywhere debate text is composed for a human or an LLM
+   * (transcripts, the moderator's synthesis prompt, fallback summaries). Falls back to `name` when
+   * absent, so callers that don't need `name`/display to differ can omit this. */
+  label?: string;
 }
 
 export type MemberStance = "concur" | "dissent";
@@ -16,6 +23,9 @@ export type MemberStance = "concur" | "dissent";
  * round 0 is each member's independent first answer, before there's anything to concur or dissent from. */
 export interface MemberPosition {
   member: string;
+  /** Mirrors `CouncilMember.label` (or `name` if no label was set) — use this, not `member`, in any
+   * text shown to a human or fed back into a prompt. */
+  label: string;
   content: string;
   stance?: MemberStance;
   reason?: string;
@@ -25,6 +35,8 @@ export interface MemberPosition {
 
 export interface DroppedMember {
   member: string;
+  /** Mirrors `CouncilMember.label` (or `name` if no label was set). */
+  label: string;
   /** Round in which the member's provider errored and it was dropped from the rest of the debate. */
   round: number;
   error: string;
@@ -32,6 +44,10 @@ export interface DroppedMember {
 
 export interface CouncilOptions {
   members: CouncilMember[];
+  /** Optional distinct, non-debating moderator that only synthesizes the final answer and never
+   * argues a position. Defaults to `members[0]` when omitted, preserving the original behavior
+   * where the first member both debates and synthesizes. */
+  moderator?: CouncilMember;
   /** Hard cap on debate rounds (round 0 counts as the first). Default 4. */
   maxRounds?: number;
   onEvent?: (event: CouncilEvent) => void;
@@ -40,7 +56,7 @@ export interface CouncilOptions {
 export type CouncilEvent =
   | { type: "round-start"; round: number }
   | { type: "member-position"; round: number; position: MemberPosition }
-  | { type: "member-dropped"; round: number; member: string; error: string }
+  | { type: "member-dropped"; round: number; member: string; label: string; error: string }
   | { type: "consensus"; round: number }
   | { type: "moderator-synthesis"; content: string }
   | { type: "moderator-error"; error: string };
@@ -67,6 +83,13 @@ const DEFAULT_MAX_ROUNDS = 4;
 const CONCUR_PATTERN = /^\s*CONCUR\b:?\s*/i;
 const DISSENT_PATTERN = /^\s*DISSENT\s*:\s*([^\n]*)\n?([\s\S]*)$/i;
 
+/** Asks the moderator for a Decision Brief shape the client can parse into distinct sections
+ * (see `parseDecisionBrief` in the browser app's council reducer) while staying plain text — no
+ * markdown/JSON contract is enforced, so callers must treat parsing as best-effort. */
+const DECISION_BRIEF_FORMAT =
+  'Write the Decision Brief using exactly these section headers, each alone on its own line: "Recommendation:", ' +
+  '"Rationale:", "Key contention & resolution:", "Next steps:". Keep each section concise.';
+
 /**
  * Multi-provider debate: each member answers independently, then revises across rounds after
  * seeing every other member's latest position, until all concur or a hard round cap is hit. A
@@ -76,6 +99,7 @@ export class Council {
   private readonly members: CouncilMember[];
   private readonly maxRounds: number;
   private readonly onEvent?: (event: CouncilEvent) => void;
+  private readonly moderator: CouncilMember;
 
   constructor(options: CouncilOptions) {
     if (options.members.length < MIN_MEMBERS || options.members.length > MAX_MEMBERS) {
@@ -86,6 +110,7 @@ export class Council {
     this.members = options.members;
     this.maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
     this.onEvent = options.onEvent;
+    this.moderator = options.moderator ?? this.members[0]!;
   }
 
   async run(question: string): Promise<CouncilResult> {
@@ -113,8 +138,9 @@ export class Council {
           this.onEvent?.({ type: "member-position", round, position });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          dropped.push({ member: member.name, round, error: message });
-          this.onEvent?.({ type: "member-dropped", round, member: member.name, error: message });
+          const label = member.label ?? member.name;
+          dropped.push({ member: member.name, label, round, error: message });
+          this.onEvent?.({ type: "member-dropped", round, member: member.name, label, error: message });
         }
       }
 
@@ -145,7 +171,7 @@ export class Council {
 
   private async askInitial(member: CouncilMember, question: string): Promise<MemberPosition> {
     const response = await member.provider.chat({ messages: this.buildMessages(member, question) });
-    return { member: member.name, role: member.role, content: response.message.content };
+    return { member: member.name, label: member.label ?? member.name, role: member.role, content: response.message.content };
   }
 
   private async askRevision(
@@ -154,7 +180,7 @@ export class Council {
     previousPositions: MemberPosition[],
   ): Promise<MemberPosition> {
     const labeled = previousPositions
-      .map((position) => `${position.member}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
+      .map((position) => `${position.label}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
       .join("\n\n");
     const prompt = [
       `Question: ${question}`,
@@ -183,10 +209,11 @@ export class Council {
   }
 
   private parseStance(member: CouncilMember, content: string): MemberPosition {
+    const label = member.label ?? member.name;
     const concurMatch = CONCUR_PATTERN.exec(content);
     if (concurMatch) {
       const rest = content.slice(concurMatch[0].length).trim();
-      return { member: member.name, role: member.role, content: rest || content.trim(), stance: "concur" };
+      return { member: member.name, label, role: member.role, content: rest || content.trim(), stance: "concur" };
     }
 
     const dissentMatch = DISSENT_PATTERN.exec(content);
@@ -195,6 +222,7 @@ export class Council {
       const rest = dissentMatch[2]?.trim();
       return {
         member: member.name,
+        label,
         role: member.role,
         content: rest || content.trim(),
         stance: "dissent",
@@ -206,6 +234,7 @@ export class Council {
     // be mistaken for unanimous concurrence and end the debate early.
     return {
       member: member.name,
+      label,
       role: member.role,
       content: content.trim(),
       stance: "dissent",
@@ -219,7 +248,7 @@ export class Council {
     dropped: DroppedMember[],
     consensusReached: boolean,
   ): Promise<string> {
-    const moderator = this.members[0]!;
+    const moderator = this.moderator;
     const finalPositions = rounds.at(-1) ?? [];
     const dissenting = finalPositions.filter((position) => position.stance === "dissent");
 
@@ -228,7 +257,7 @@ export class Council {
         const lines = positions.map((position) => {
           const role = position.role ? ` (${position.role})` : "";
           const stance = position.stance ? ` [${position.stance}${position.reason ? `: ${position.reason}` : ""}]` : "";
-          return `- ${position.member}${role}${stance}: ${position.content}`;
+          return `- ${position.label}${role}${stance}: ${position.content}`;
         });
         return `Round ${round}:\n${lines.join("\n")}`;
       })
@@ -236,7 +265,7 @@ export class Council {
 
     const droppedNote = dropped.length
       ? `\nMembers dropped from the debate after a provider error: ${dropped
-          .map((member) => `${member.member} (round ${member.round}: ${member.error})`)
+          .map((member) => `${member.label} (round ${member.round}: ${member.error})`)
           .join(", ")}.`
       : "";
 
@@ -247,7 +276,7 @@ export class Council {
 
     const dissentNote = dissenting.length
       ? `\nUnresolved dissent:\n${dissenting
-          .map((position) => `- ${position.member}: ${position.reason ?? "no reason given"}`)
+          .map((position) => `- ${position.label}: ${position.reason ?? "no reason given"}`)
           .join("\n")}`
       : "";
 
@@ -261,6 +290,8 @@ export class Council {
       "",
       outcomeNote,
       dissentNote,
+      "",
+      DECISION_BRIEF_FORMAT,
     ]
       .filter((line) => line !== "")
       .join("\n");
@@ -289,18 +320,18 @@ export class Council {
 
     const droppedNote = dropped.length
       ? ` Members dropped from the debate after a provider error: ${dropped
-          .map((member) => `${member.member} (round ${member.round})`)
+          .map((member) => `${member.label} (round ${member.round})`)
           .join(", ")}.`
       : "";
 
     const dissentNote = dissenting.length
       ? `\nUnresolved dissent:\n${dissenting
-          .map((position) => `- ${position.member}: ${position.reason ?? "no reason given"}`)
+          .map((position) => `- ${position.label}: ${position.reason ?? "no reason given"}`)
           .join("\n")}`
       : "";
 
     const positionLines = finalPositions
-      .map((position) => `- ${position.member}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
+      .map((position) => `- ${position.label}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
       .join("\n");
 
     return [`${consensusNote}${droppedNote}`, dissentNote, "", "Final positions:", positionLines]

@@ -1,8 +1,15 @@
-import type { AgentEvent, ChatAttachment, CouncilEvent, ToolCall } from "@newvector/core";
+import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { getToolCount, runSessionTurn } from "./agentClient";
+import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
+import { filesToAttachments } from "./attachments";
 import { runCouncilTurn } from "./councilClient";
-import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
+import {
+  applyCouncilEvent,
+  computeTotalCostNote,
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  initialLiveCouncilTurn,
+  validateCouncilMembers,
+} from "./councilReducer";
 import {
   accountCredentialKey,
   accountOAuthKey,
@@ -14,18 +21,29 @@ import {
 import {
   deleteAccount as deleteAccountRecord,
   deleteCouncilSession as deleteCouncilSessionRecord,
+  deleteProject as deleteProjectRecord,
+  deleteProjectFolderHandle,
   loadAllAccounts,
   loadAllCouncilSessions,
+  loadAllProjects,
   loadAllSessions,
+  loadAllSkills,
   putAccount,
   putAllCouncilSessions,
   putAllSessions,
   putCouncilSession,
+  putProject,
+  putProjectFolderHandle,
   putSession,
+  putSkill,
   deleteSession as deleteSessionRecord,
+  deleteSkill as deleteSkillRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
+import { pickWorkingFolder, workingFolderName, type WorkingFolderHandle } from "./projectFolder";
+import { resolveRoutedMember } from "./projectRouting";
+import { composeAgentSystemPrompt, skillsForAgent } from "./skills";
 import { isOAuthCredentialExpiring, refreshSubscriptionAuth } from "./subscriptionAuth";
 import { capture, setTelemetryEnabled } from "./telemetry";
 import type {
@@ -36,8 +54,15 @@ import type {
   CouncilTurn,
   LiveCouncilTurn,
   OAuthCredential,
+  Project,
+  ProjectChatMessage,
+  ProjectKnowledgeFile,
+  ProjectMemberConfig,
+  ProjectTask,
+  ProjectTaskStatus,
   ProviderConfig,
   SessionExportFile,
+  Skill,
   StoredMessage,
 } from "./types";
 import {
@@ -149,10 +174,13 @@ export type SettingsTabId = "account" | "connections" | "skills" | "plugins" | "
 interface StoreState {
   sessions: AgentSession[];
   councilSessions: CouncilSession[];
+  projects: Project[];
   accounts: Account[];
+  skills: Skill[];
   activeSessionId: string | null;
   live: Record<string, LiveTurn>;
   councilLive: Record<string, LiveCouncilTurn>;
+  projectLive: Record<string, LiveTurn>;
   ready: boolean;
   preferences: Preferences;
   currentView: WorkspaceView;
@@ -170,7 +198,7 @@ interface StoreApi extends StoreState {
   createCouncilSession: (members: Array<Omit<CouncilMemberConfig, "id">>) => CouncilSession;
   updateCouncilSession: (
     id: string,
-    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>,
+    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>,
   ) => void;
   deleteCouncilSession: (id: string) => void;
   askCouncil: (sessionId: string, question: string) => Promise<void>;
@@ -185,6 +213,33 @@ interface StoreApi extends StoreState {
   updatePreferences: (patch: Partial<Preferences>) => void;
   /** Jumps straight to the General tab of Settings. */
   openPreferences: () => void;
+  createSkill: (input: Omit<Skill, "id" | "createdAt" | "updatedAt">) => Skill;
+  updateSkill: (id: string, patch: Partial<Omit<Skill, "id" | "createdAt">>) => void;
+  deleteSkill: (id: string) => void;
+  /** Attaches/detaches one skill to one agent — the write both the Skills pane's agent picker and the
+   * agent drawer's skill list make, so neither has to rebuild `attachedAgentIds` itself. */
+  setSkillAttached: (skillId: string, agentId: string, attached: boolean) => void;
+  /** Jumps straight to the Skills tab of Settings. */
+  openSkillsManager: () => void;
+  createProject: () => Project;
+  updateProject: (id: string, patch: Partial<Pick<Project, "identity" | "instructions">>) => void;
+  deleteProject: (id: string) => void;
+  connectProjectFolder: (id: string) => Promise<void>;
+  disconnectProjectFolder: (id: string) => void;
+  addProjectMember: (projectId: string, input: Omit<ProjectMemberConfig, "id">) => void;
+  updateProjectMember: (projectId: string, memberId: string, patch: Partial<Omit<ProjectMemberConfig, "id">>) => void;
+  removeProjectMember: (projectId: string, memberId: string) => void;
+  addProjectTask: (projectId: string, title: string, assigneeId?: string) => void;
+  updateProjectTaskStatus: (projectId: string, taskId: string, status: ProjectTaskStatus) => void;
+  deleteProjectTask: (projectId: string, taskId: string) => void;
+  addProjectKnowledgeFiles: (projectId: string, files: File[]) => Promise<void>;
+  removeProjectKnowledgeFile: (projectId: string, fileId: string) => void;
+  sendProjectMessage: (
+    projectId: string,
+    text: string,
+    pickedMemberId: string,
+    attachments?: ChatAttachment[],
+  ) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreApi | null>(null);
@@ -192,10 +247,13 @@ const StoreContext = createContext<StoreApi | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [councilSessions, setCouncilSessions] = useState<CouncilSession[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
+  const [projectLive, setProjectLive] = useState<Record<string, LiveTurn>>({});
   const [ready, setReady] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences());
   const [currentView, setCurrentView] = useState<WorkspaceView>("chat");
@@ -204,8 +262,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   sessionsRef.current = sessions;
   const councilSessionsRef = useRef<CouncilSession[]>([]);
   councilSessionsRef.current = councilSessions;
+  const projectsRef = useRef<Project[]>([]);
+  projectsRef.current = projects;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
+  const skillsRef = useRef<Skill[]>([]);
+  skillsRef.current = skills;
   const preferencesRef = useRef<Preferences>(preferences);
   preferencesRef.current = preferences;
   const initStarted = useRef(false);
@@ -228,10 +290,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     initStarted.current = true;
 
     async function init() {
-      const [loadedSessions, loadedAccounts, loadedCouncilSessions] = await Promise.all([
+      const [loadedSessions, loadedAccounts, loadedCouncilSessions, loadedProjects, loadedSkills] = await Promise.all([
         loadAllSessions(),
         loadAllAccounts(),
         loadAllCouncilSessions(),
+        loadAllProjects(),
+        loadAllSkills(),
       ]);
       const [hydratedSessions, hydratedAccounts] = await Promise.all([
         Promise.all(loadedSessions.map(hydrateSession)),
@@ -255,6 +319,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         titled.sessions.filter((session) => changedCouncilIds.has(session.id)).map(putCouncilSession),
       );
       setCouncilSessions(titled.sessions);
+      setProjects(loadedProjects);
+      setSkills(loadedSkills);
       setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
       // No agent sessions to land on but a council exists — open straight to the Advisory Council view instead of an empty Chat.
       if (migration.sessions.length === 0 && titled.sessions.length > 0) {
@@ -347,10 +413,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const createSkill = useCallback((input: Omit<Skill, "id" | "createdAt" | "updatedAt">): Skill => {
+    const skill: Skill = { ...input, id: randomId(), createdAt: nowMs(), updatedAt: nowMs() };
+    setSkills((prev) => [...prev, skill]);
+    void putSkill(skill);
+    return skill;
+  }, []);
+
+  const updateSkill = useCallback((id: string, patch: Partial<Omit<Skill, "id" | "createdAt">>) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.id !== id) return skill;
+        const updated = { ...skill, ...patch, updatedAt: nowMs() };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const deleteSkillById = useCallback((id: string) => {
+    setSkills((prev) => prev.filter((skill) => skill.id !== id));
+    void deleteSkillRecord(id);
+  }, []);
+
+  const setSkillAttached = useCallback((skillId: string, agentId: string, attached: boolean) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.id !== skillId) return skill;
+        const already = skill.attachedAgentIds.includes(agentId);
+        if (already === attached) return skill;
+        const attachedAgentIds = attached
+          ? [...skill.attachedAgentIds, agentId]
+          : skill.attachedAgentIds.filter((candidate) => candidate !== agentId);
+        const updated = { ...skill, attachedAgentIds, updatedAt: nowMs() };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  /** Drops a deleted agent from every skill's attachment list, so the Skills pane never shows a
+   * count that includes agents that no longer exist. */
+  const detachAgentFromSkills = useCallback((agentId: string) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (!skill.attachedAgentIds.includes(agentId)) return skill;
+        const updated = {
+          ...skill,
+          attachedAgentIds: skill.attachedAgentIds.filter((candidate) => candidate !== agentId),
+          updatedAt: nowMs(),
+        };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
   const deleteSessionById = useCallback(
     (id: string) => {
       setSessions((prev) => prev.filter((session) => session.id !== id));
       void deleteSessionRecord(id);
+      detachAgentFromSkills(id);
       if (isTauriRuntime()) void deleteApiKey(id);
       setActiveSessionId((current) => {
         if (current !== id) return current;
@@ -358,7 +481,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return remaining[0]?.id ?? null;
       });
     },
-    [],
+    [detachAgentFromSkills],
   );
 
   const appendMessages = useCallback((sessionId: string, messages: StoredMessage[]) => {
@@ -387,7 +510,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       appendMessages(sessionId, [userMessage]);
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
-      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
+      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount(sessionId) });
 
       const onEvent = (event: AgentEvent) => {
         if (event.type === "tool-call") {
@@ -439,6 +562,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const effectiveSession = {
           ...session,
+          // Attached, enabled skills are folded in per turn rather than baked into `systemPrompt`, so
+          // editing or toggling a skill in Settings takes effect on the next message.
+          systemPrompt: composeAgentSystemPrompt(session.systemPrompt, skillsForAgent(skillsRef.current, session.id)),
           providerConfig: resolveProviderConfig(session.providerConfig, accountsForTurn),
         };
         const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
@@ -478,7 +604,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateCouncilSession = useCallback(
-    (id: string, patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>) => {
+    (
+      id: string,
+      patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>,
+    ) => {
       setCouncilSessions((prev) =>
         prev.map((session) => {
           if (session.id !== id) return session;
@@ -518,7 +647,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
+    const maxRounds = session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS;
+    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question, maxRounds);
     setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
 
     const onEvent = (event: CouncilEvent) => {
@@ -527,7 +657,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await runCouncilTurn(session.members, accountsForTurn, session.maxRounds, question, onEvent);
+      const result = await runCouncilTurn(
+        session.members,
+        accountsForTurn,
+        maxRounds,
+        session.moderatorAccountId,
+        question,
+        onEvent,
+      );
+      // On a moderator error, the "moderator-error" event only carries the error message — the
+      // engine's deterministic fallback synthesis (see Council.fallbackSynthesis) lives on the
+      // resolved result instead, so surface it here rather than leaving the turn's answer empty.
+      if (!liveTurn.answer && result.answer) {
+        liveTurn = { ...liveTurn, answer: result.answer };
+      }
     } catch (error) {
       // Council.run() itself never rejects (member/moderator errors surface as events); this only
       // fires for setup failures, e.g. a member's account was removed after validation passed.
@@ -547,10 +690,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rounds: liveTurn.rounds,
           consensusReached: liveTurn.consensusReached,
           finalRound: Math.max(0, liveTurn.rounds.length - 1),
+          maxRounds,
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,
-          totalCostNote: computeTotalCostNote(liveTurn.rounds, liveTurn.answer, session.members, accountsRef.current),
+          totalCostNote: computeTotalCostNote(
+            liveTurn.rounds,
+            liveTurn.answer,
+            session.members,
+            accountsRef.current,
+            session.moderatorAccountId,
+          ),
         };
         setCouncilSessions((prev) =>
           prev.map((candidate) => {
@@ -572,6 +722,339 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  const createProject = useCallback((): Project => {
+    const identity = randomIdentity(
+      sessionsRef.current.length + councilSessionsRef.current.length + projectsRef.current.length,
+    );
+    const project: Project = {
+      id: randomId(),
+      identity,
+      roster: [],
+      tasks: [],
+      knowledgeFiles: [],
+      instructions: "",
+      messages: [],
+      createdAt: nowMs(),
+      updatedAt: nowMs(),
+    };
+    setProjects((prev) => [...prev, project]);
+    setActiveSessionId(project.id);
+    setCurrentView("projects");
+    void putProject(project);
+    return project;
+  }, []);
+
+  const updateProjectById = useCallback(
+    (id: string, patch: Partial<Pick<Project, "identity" | "instructions">>) => {
+      setProjects((prev) =>
+        prev.map((project) => {
+          if (project.id !== id) return project;
+          const updated = { ...project, ...patch, updatedAt: nowMs() };
+          void putProject(updated);
+          return updated;
+        }),
+      );
+    },
+    [],
+  );
+
+  const deleteProjectById = useCallback((id: string) => {
+    setProjects((prev) => prev.filter((project) => project.id !== id));
+    void deleteProjectRecord(id);
+    void deleteProjectFolderHandle(id);
+    setActiveSessionId((current) => {
+      if (current !== id) return current;
+      const remainingProjects = projectsRef.current.filter((project) => project.id !== id);
+      return sessionsRef.current[0]?.id ?? councilSessionsRef.current[0]?.id ?? remainingProjects[0]?.id ?? null;
+    });
+  }, []);
+
+  /** Opens the native folder picker and connects the chosen folder. No-ops (no thrown error
+   * surfaced) if the user cancels the dialog or the browser doesn't support the File System
+   * Access API — the folder bar just stays in its current/disconnected state either way. */
+  const connectProjectFolder = useCallback(async (id: string) => {
+    let handle: WorkingFolderHandle;
+    try {
+      handle = await pickWorkingFolder();
+    } catch {
+      return;
+    }
+    await putProjectFolderHandle(id, handle);
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== id) return project;
+        const updated: Project = {
+          ...project,
+          workingFolder: { name: workingFolderName(handle), connectedAt: nowMs() },
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const disconnectProjectFolder = useCallback((id: string) => {
+    void deleteProjectFolderHandle(id);
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== id) return project;
+        const { workingFolder: _folder, ...rest } = project;
+        const updated: Project = { ...rest, updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const addProjectMember = useCallback((projectId: string, input: Omit<ProjectMemberConfig, "id">) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = { ...project, roster: [...project.roster, { ...input, id: randomId() }], updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const updateProjectMember = useCallback(
+    (projectId: string, memberId: string, patch: Partial<Omit<ProjectMemberConfig, "id">>) => {
+      setProjects((prev) =>
+        prev.map((project) => {
+          if (project.id !== projectId) return project;
+          const updated = {
+            ...project,
+            roster: project.roster.map((member) => (member.id === memberId ? { ...member, ...patch } : member)),
+            updatedAt: nowMs(),
+          };
+          void putProject(updated);
+          return updated;
+        }),
+      );
+    },
+    [],
+  );
+
+  const removeProjectMember = useCallback((projectId: string, memberId: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          roster: project.roster.filter((member) => member.id !== memberId),
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const addProjectTask = useCallback((projectId: string, title: string, assigneeId?: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const task: ProjectTask = {
+          id: randomId(),
+          title,
+          status: "todo",
+          assigneeId,
+          createdAt: nowMs(),
+          updatedAt: nowMs(),
+        };
+        const updated = { ...project, tasks: [...project.tasks, task], updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const updateProjectTaskStatus = useCallback((projectId: string, taskId: string, status: ProjectTaskStatus) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          tasks: project.tasks.map((task) => (task.id === taskId ? { ...task, status, updatedAt: nowMs() } : task)),
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const deleteProjectTask = useCallback((projectId: string, taskId: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = { ...project, tasks: project.tasks.filter((task) => task.id !== taskId), updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const addProjectKnowledgeFiles = useCallback(async (projectId: string, files: File[]) => {
+    const { attachments } = await filesToAttachments(files);
+    if (attachments.length === 0) return;
+    const knowledgeFiles: ProjectKnowledgeFile[] = attachments.map((attachment) => ({ ...attachment, addedAt: nowMs() }));
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          knowledgeFiles: [...project.knowledgeFiles, ...knowledgeFiles],
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const removeProjectKnowledgeFile = useCallback((projectId: string, fileId: string) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = {
+          ...project,
+          knowledgeFiles: project.knowledgeFiles.filter((file) => file.id !== fileId),
+          updatedAt: nowMs(),
+        };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const appendProjectMessages = useCallback((projectId: string, messages: ProjectChatMessage[]) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const updated = { ...project, messages: [...project.messages, ...messages], updatedAt: nowMs() };
+        void putProject(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const sendProjectMessage = useCallback(
+    async (projectId: string, text: string, pickedMemberId: string, attachments?: ChatAttachment[]) => {
+      const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+      if (!project) return;
+
+      const userMessage: ProjectChatMessage = {
+        id: randomId(),
+        createdAt: nowMs(),
+        role: "user",
+        content: text,
+        ...(attachments?.length ? { attachments } : {}),
+      };
+      appendProjectMessages(projectId, [userMessage]);
+
+      const member = resolveRoutedMember(text, project.roster, pickedMemberId);
+      if (!member) {
+        appendProjectMessages(projectId, [
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            content: "⚠️ Add an agent to the roster before starting a project chat.",
+          },
+        ]);
+        return;
+      }
+
+      let accountsForTurn = accountsRef.current;
+      const account = accountsForTurn.find((candidate) => candidate.id === member.accountId);
+      if (!account) {
+        appendProjectMessages(projectId, [
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: `⚠️ ${member.identity.name}'s connection was removed. Reconnect it in Accounts.`,
+          },
+        ]);
+        return;
+      }
+
+      setProjectLive((prev) => ({ ...prev, [projectId]: { text: "", toolCalls: [] } }));
+
+      let turnError: Error | undefined;
+      const onEvent = (event: AgentEvent) => {
+        if (event.type === "error") turnError = event.error;
+        setProjectLive((prev) => {
+          const turn = prev[projectId] ?? { text: "", toolCalls: [] };
+          if (event.type === "text-delta") {
+            return { ...prev, [projectId]: { ...turn, text: turn.text + event.delta } };
+          }
+          if (event.type === "error") {
+            return { ...prev, [projectId]: { ...turn, error: event.error.message } };
+          }
+          return prev;
+        });
+      };
+
+      try {
+        const fresh = await refreshAccountIfNeeded(account);
+        if (fresh !== account) {
+          accountsForTurn = accountsForTurn.map((candidate) => (candidate.id === account.id ? fresh : candidate));
+        }
+        const providerConfig = resolveProviderConfig(
+          { provider: account.provider, model: account.model, accountId: account.id },
+          accountsForTurn,
+        );
+        const systemPrompt = [project.instructions, member.role ? `Your role on this project: ${member.role}.` : ""]
+          .filter(Boolean)
+          .join("\n\n");
+        const priorMessages: ChatMessage[] = project.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+        }));
+        const turn = await runProjectTurn(providerConfig, systemPrompt, priorMessages, text, attachments, onEvent);
+        const meaningful = turn.filter((message) => message.content && message.content.trim().length > 0);
+        if (meaningful.length > 0) {
+          const storedTurn: ProjectChatMessage[] = meaningful.map((message) => ({
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: message.content,
+          }));
+          appendProjectMessages(projectId, storedTurn);
+        } else if (turnError) {
+          appendProjectMessages(projectId, [
+            {
+              id: randomId(),
+              createdAt: nowMs(),
+              role: "assistant",
+              memberId: member.id,
+              content: "",
+              error: { reason: turnError.message },
+            },
+          ]);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        appendProjectMessages(projectId, [
+          { id: randomId(), createdAt: nowMs(), role: "assistant", memberId: member.id, content: "", error: { reason: message } },
+        ]);
+      } finally {
+        setProjectLive((prev) => {
+          const next = { ...prev };
+          delete next[projectId];
+          return next;
+        });
+      }
+    },
+    [appendProjectMessages, refreshAccountIfNeeded],
+  );
 
   const exportSessions = useCallback((): SessionExportFile => {
     return {
@@ -615,10 +1098,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       sessions,
       councilSessions,
+      projects,
       accounts,
+      skills,
       activeSessionId,
       live,
       councilLive,
+      projectLive,
       ready,
       preferences,
       currentView,
@@ -648,14 +1134,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setSettingsTab("general");
         setCurrentView("settings");
       },
+      createSkill,
+      updateSkill,
+      deleteSkill: deleteSkillById,
+      setSkillAttached,
+      openSkillsManager: () => {
+        setSettingsTab("skills");
+        setCurrentView("settings");
+      },
+      createProject,
+      updateProject: updateProjectById,
+      deleteProject: deleteProjectById,
+      connectProjectFolder,
+      disconnectProjectFolder,
+      addProjectMember,
+      updateProjectMember,
+      removeProjectMember,
+      addProjectTask,
+      updateProjectTaskStatus,
+      deleteProjectTask,
+      addProjectKnowledgeFiles,
+      removeProjectKnowledgeFile,
+      sendProjectMessage,
     }),
     [
       sessions,
       councilSessions,
+      projects,
       accounts,
+      skills,
       activeSessionId,
       live,
       councilLive,
+      projectLive,
       ready,
       preferences,
       currentView,
@@ -674,6 +1185,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateAccount,
       deleteAccountById,
       updatePreferences,
+      createSkill,
+      updateSkill,
+      deleteSkillById,
+      setSkillAttached,
+      createProject,
+      updateProjectById,
+      deleteProjectById,
+      connectProjectFolder,
+      disconnectProjectFolder,
+      addProjectMember,
+      updateProjectMember,
+      removeProjectMember,
+      addProjectTask,
+      updateProjectTaskStatus,
+      deleteProjectTask,
+      addProjectKnowledgeFiles,
+      removeProjectKnowledgeFile,
+      sendProjectMessage,
     ],
   );
 

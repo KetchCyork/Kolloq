@@ -1,7 +1,9 @@
 mod keychain;
 mod menu;
+mod node;
 mod oauth;
 mod tray;
+mod working_folder;
 
 use tauri::{Emitter, WindowEvent};
 
@@ -16,7 +18,11 @@ pub fn run() {
             keychain::set_credential,
             keychain::get_credential,
             keychain::delete_credential,
+            node::node_tool_exec,
+            node::node_read_file,
             oauth::oauth_token_request,
+            working_folder::list_working_folder_entries,
+            oauth::google_oauth_capture,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;

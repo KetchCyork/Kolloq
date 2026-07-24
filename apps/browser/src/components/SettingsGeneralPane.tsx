@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BUILD_INFO, formatBuildLabel } from "../buildInfo";
 import {
   formatKeyBinding,
   keyBindingFromEvent,
@@ -10,6 +11,11 @@ import {
 import { useStore } from "../store";
 import type { ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+
+const BUILD_TIME_LABEL = (() => {
+  const parsed = new Date(BUILD_INFO.time);
+  return Number.isNaN(parsed.getTime()) ? BUILD_INFO.time : parsed.toLocaleString();
+})();
 
 const THEME_OPTIONS: { value: ThemePreference; label: string; hint: string }[] = [
   { value: "dark", label: "🌙 Dark", hint: "Default" },
@@ -129,6 +135,23 @@ export function SettingsGeneralPane() {
               </button>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <h3>About</h3>
+        <div className="settings-card-sub">
+          What this install was built from — check this before assuming a change didn't ship.
+        </div>
+        <div className="settings-panel">
+          <div className="field">
+            <label>Build</label>
+            <div className="settings-static-value">{formatBuildLabel(BUILD_INFO)}</div>
+          </div>
+          <div className="field">
+            <label>Built</label>
+            <div className="settings-static-value">{BUILD_TIME_LABEL}</div>
+          </div>
         </div>
       </div>
     </div>

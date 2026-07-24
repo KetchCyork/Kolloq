@@ -1,21 +1,30 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { AgentsView } from "./components/AgentsView";
 import { ChatPanel } from "./components/ChatPanel";
 import { ComingSoonView } from "./components/ComingSoonView";
 import { CouncilEmptyState } from "./components/CouncilEmptyState";
 import { CouncilPanel } from "./components/CouncilPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { ProjectPanel } from "./components/ProjectPanel";
+import { ProjectsEmptyState } from "./components/ProjectsEmptyState";
 import { SettingsView } from "./components/SettingsView";
+import { SignInScreen } from "./components/SignInScreen";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
+import { loadAppSession, signOut, type AppSession } from "./openWorkAccount";
 import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
+  // Open Work account gate (spec §8.1) — separate from the LLM provider connections in `store.tsx`.
+  const [appSession, setAppSession] = useState<AppSession | null>(() => loadAppSession());
+
   const {
     ready,
     accounts,
     createSession,
     councilSessions,
+    projects,
     activeSessionId,
     preferences,
     currentView,
@@ -55,6 +64,10 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [preferences, currentView, createSession, setCurrentView, setSettingsTab]);
 
+  if (!appSession) {
+    return <SignInScreen onSignedIn={setAppSession} />;
+  }
+
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
   }
@@ -64,24 +77,24 @@ export function App() {
   }
 
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
+  const activeProject = projects.find((project) => project.id === activeSessionId);
+  const accountEmail = appSession.email;
+
+  function handleSignOut() {
+    signOut();
+    setAppSession(null);
+  }
 
   function renderMain() {
     switch (currentView) {
       case "council":
         return activeCouncilSession ? <CouncilPanel session={activeCouncilSession} /> : <CouncilEmptyState />;
       case "projects":
-        return (
-          <ComingSoonView
-            title="Projects"
-            description="Cowork-style workspaces with a connected folder, files, and assigned agents are coming soon."
-          />
-        );
+        return activeProject ? <ProjectPanel project={activeProject} /> : <ProjectsEmptyState />;
       case "agents":
-        return (
-          <ComingSoonView title="Agents" description="Create, edit, duplicate, and archive agents from here soon." />
-        );
+        return <AgentsView />;
       case "settings":
-        return <SettingsView />;
+        return <SettingsView accountEmail={accountEmail} onSignOut={handleSignOut} />;
       case "chat":
       default:
         return <ChatPanel />;
@@ -90,7 +103,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar />
+      <Sidebar accountEmail={accountEmail} />
       {renderMain()}
     </div>
   );

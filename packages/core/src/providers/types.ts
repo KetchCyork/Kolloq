@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { FileArtifact } from "../tools/artifacts.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -31,6 +32,12 @@ export interface ChatMessage {
   toolCallId?: string;
   /** Set on tool-result messages: the tool that produced the result. */
   name?: string;
+  /**
+   * Set on tool-result messages when the tool produced a downloadable file. Carries the bytes for the
+   * download surface (browser/desktop) but is deliberately kept out of `content` so the file bytes
+   * don't bloat what's re-sent to the model on every subsequent turn.
+   */
+  artifact?: FileArtifact;
 }
 
 export interface ToolDefinition<Args = any, Result = any> {
