@@ -195,12 +195,36 @@ remaining repository secrets are required:
 | `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 above | Chosen at export time in Keychain Access | ⏳ pending — CEO to set via `gh secret set` locally (not shared in chat) |
 | `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Christopher York (3B9Z7S9DWL)` | Read from local Keychain (`security find-identity -v -p codesigning`) | ✅ set (2026-07-22) |
 | `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ✅ set (2026-07-22) |
-| `WINDOWS_CERTIFICATE` / `_PASSWORD` | Windows code signing (.pfx) | Code-signing CA (e.g. DigiCert, ~$300+/yr) or Azure Trusted Signing | ⏳ pending |
+| `AZURE_TENANT_ID` | Windows code signing — Azure AD tenant | Azure Portal, Trusted Signing account "NewVentureAI" | ✅ set (2026-07-24) |
+| `AZURE_TRUSTED_SIGNING_ACCOUNT` | Windows code signing — Trusted Signing account name | Azure Portal | ✅ set (2026-07-24), value `NewVentureAI` |
+| `AZURE_TRUSTED_SIGNING_ENDPOINT` | Windows code signing — account's region endpoint | Azure Portal | ✅ set (2026-07-24), value `https://eus.codesigning.azure.net/` |
+| `AZURE_TRUSTED_SIGNING_CERT_PROFILE` | Windows code signing — certificate **profile name** (the short identifier chosen when creating the profile, *not* the certificate Subject/DN) | Azure Portal → Trusted Signing account → Certificate Profiles | ⏳ pending — CEO sent the cert Subject (`CN=Christopher York, O=..., L=Flowery Branch, S=ga, C=US`) instead of the profile name; need the actual profile name |
+| `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Windows code signing — service principal auth for CI (Trusted Signing has no interactive login) | Azure Portal → Microsoft Entra ID → App registrations → new registration, then assign it the "Trusted Signing Certificate Profile Signer" role on the Trusted Signing account, then Certificates & secrets → new client secret | ⏳ pending |
 
-CEO approved budget for the Apple Developer Program and a Windows
-code-signing cert and is doing the account sign-up personally (identity
-verification/payment can't be delegated to an agent). Once those accounts
-exist, hand the resulting certificate/credential values to this agent (or
-add the secrets directly via `gh secret set <NAME> --repo
-KetchCyork/Open-Work`) and the release workflow will start producing fully
-signed installers with no further code changes.
+Windows signing uses [Azure Trusted Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/) rather than a
+downloadable `.pfx`: a 2023 CA/Browser Forum rule moved publicly-trusted
+code-signing keys to HSM-backed storage, and a physical USB token doesn't
+work on GitHub-hosted Windows runners. The release workflow installs
+[`trusted-signing-cli`](https://github.com/Levminer/trusted-signing-cli) on
+the Windows runner and points Tauri's bundler at it via a
+`bundle.windows.signCommand` config override — see
+`.github/workflows/desktop-release.yml` for the exact invocation. It signs
+only once every secret above is present; a partial set falls back to an
+unsigned Windows build rather than breaking the release.
+
+CEO approved budget for the Apple Developer Program and the Azure Trusted
+Signing account and is doing the account sign-up / identity verification
+personally (can't be delegated to an agent). Apple is fully wired. For
+Windows, the account-level values are set; still needed from the CEO:
+
+1. The Trusted Signing **certificate profile name** (Azure Portal →
+   Trusted Signing account → Certificate Profiles — a short name like
+   `my-cert-profile`, not the Subject/DN already provided).
+2. An App Registration (service principal) with the "Trusted Signing
+   Certificate Profile Signer" role on the Trusted Signing account, and its
+   client ID + client secret.
+
+Once those exist, hand the values to this agent (or add the secrets
+directly via `gh secret set <NAME> --repo KetchCyork/Open-Work`) and the
+release workflow will start producing fully signed Windows installers with
+no further code changes.

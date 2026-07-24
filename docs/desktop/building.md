@@ -36,9 +36,17 @@ Set these in your GitHub repository → Settings → Secrets:
 | `APPLE_ID`                   | Apple ID email for notarization                  |
 | `APPLE_TEAM_ID`              | Apple Developer team ID                          |
 | `APPLE_PASSWORD`             | App-specific password for notarization           |
-| `WINDOWS_CERTIFICATE`        | Base64-encoded PFX certificate                   |
-| `WINDOWS_CERTIFICATE_PASSWORD` | Password for the PFX file                      |
+| `AZURE_TENANT_ID`            | Azure AD tenant ID                               |
+| `AZURE_CLIENT_ID`            | Service principal client ID (Trusted Signing auth) |
+| `AZURE_CLIENT_SECRET`        | Service principal client secret                  |
+| `AZURE_TRUSTED_SIGNING_ACCOUNT` | Trusted Signing account name                  |
+| `AZURE_TRUSTED_SIGNING_ENDPOINT` | Trusted Signing account's region endpoint URL |
+| `AZURE_TRUSTED_SIGNING_CERT_PROFILE` | Trusted Signing certificate profile name (not the cert Subject/DN) |
 | `TAURI_SIGNING_PRIVATE_KEY`  | Tauri updater signing key (private)              |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the updater signing key    |
+
+Windows signing uses [Azure Trusted Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/)
+instead of a `.pfx` certificate — see `apps/desktop/README.md` for why and
+for the exact secret sourcing.
 
 > **Note:** Do not start signing setup until local end-to-end testing is confirmed clean on all three platforms. Tracked in NEW-43.
