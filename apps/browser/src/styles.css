@@ -2131,3 +2131,31 @@ select {
   gap: 8px;
 }
 
+
+/* Skills: agent-attachment checkboxes (Settings → Skills and the agent drawer) sit in a
+   .template-chip-row, so each option is a compact inline chip rather than a stacked form row. */
+.skill-agent-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.skill-agent-option input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.skill-card-toggle {
+  margin-left: auto;
+}
+
+.skill-file-input {
+  display: none;
+}

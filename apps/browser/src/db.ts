@@ -1,10 +1,10 @@
-import type { Account, AgentSession, CouncilSession, Project } from "./types";
+import type { Account, AgentSession, CouncilSession, Project, Skill } from "./types";
 
 const DB_NAME = "newvector-cowork";
 // v3 -> v4 adds the projects store and its sibling projectFolders store (below); existing
 // stores and their contents are untouched, so upgrading databases keep every session working
-// exactly as before.
-const DB_VERSION = 4;
+// exactly as before. v4 -> v5 adds the skills store, same additive pattern.
+const DB_VERSION = 5;
 const STORE = "sessions";
 const ACCOUNTS_STORE = "accounts";
 const COUNCIL_STORE = "councilSessions";
@@ -12,6 +12,7 @@ const PROJECTS_STORE = "projects";
 // Directory handles aren't JSON-safe (they can't go through SessionExportFile), so they're kept
 // out of the `projects` record and stored in their own object store, keyed by project id.
 const PROJECT_FOLDERS_STORE = "projectFolders";
+const SKILLS_STORE = "skills";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,9 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(PROJECT_FOLDERS_STORE)) {
         db.createObjectStore(PROJECT_FOLDERS_STORE, { keyPath: "projectId" });
+      }
+      if (!db.objectStoreNames.contains(SKILLS_STORE)) {
+        db.createObjectStore(SKILLS_STORE, { keyPath: "id" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -138,6 +142,19 @@ export async function putProject(project: Project): Promise<void> {
 export async function deleteProject(id: string): Promise<void> {
   await withNamedStore(PROJECTS_STORE, "readwrite", (store) => store.delete(id));
   await withNamedStore(PROJECT_FOLDERS_STORE, "readwrite", (store) => store.delete(id));
+}
+
+export async function loadAllSkills(): Promise<Skill[]> {
+  const skills = await withNamedStore<Skill[]>(SKILLS_STORE, "readonly", (store) => store.getAll());
+  return skills.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function putSkill(skill: Skill): Promise<void> {
+  await withNamedStore(SKILLS_STORE, "readwrite", (store) => store.put(skill));
+}
+
+export async function deleteSkill(id: string): Promise<void> {
+  await withNamedStore(SKILLS_STORE, "readwrite", (store) => store.delete(id));
 }
 
 /** `handle` is a `WorkingFolderHandle` (see projectFolder.ts) — typed as `unknown` here so db.ts
