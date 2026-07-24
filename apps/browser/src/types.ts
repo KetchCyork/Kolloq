@@ -63,9 +63,18 @@ export interface AgentIdentity {
   emoji: string;
 }
 
+/** Set on an assistant message that represents a failed provider turn rather than a real reply, so
+ * the UI can render it as a distinct error state instead of a normal chat bubble. */
+export interface StoredMessageError {
+  reason: string;
+  raw: string;
+  isConfigIssue: boolean;
+}
+
 export interface StoredMessage extends ChatMessage {
   id: string;
   createdAt: number;
+  error?: StoredMessageError;
 }
 
 export interface AgentSession {

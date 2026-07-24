@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
+import { classifyProviderError, type AgentEvent, type ChatAttachment, type ChatMessage, type CouncilEvent, type ToolCall } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
@@ -430,6 +430,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
       capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount(sessionId) });
 
+      // Captures the most recent stream/provider error so a failed turn (which the runner now
+      // returns as an empty message list rather than throwing) surfaces a classified error card
+      // instead of silently appending nothing.
+      let turnError: Error | undefined;
+
       const onEvent = (event: AgentEvent) => {
         if (event.type === "tool-call") {
           capture({ type: "tool_call", toolName: event.toolCall.name });
@@ -438,6 +443,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // AgentRunner emits this both for stream/provider failures and for tool execution
           // failures; there's no discriminator on the event, so this is a best-effort label.
           capture({ type: "provider_error", provider: session.providerConfig.provider });
+          turnError = event.error;
         }
         setLive((prev) => {
           const turn = prev[sessionId] ?? { text: "", toolCalls: [] };
@@ -483,13 +489,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           providerConfig: resolveProviderConfig(session.providerConfig, accountsForTurn),
         };
         const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
-        const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
-        appendMessages(sessionId, storedTurn);
+        if (turn.length === 0 && turnError) {
+          const classified = classifyProviderError(turnError);
+          appendMessages(sessionId, [
+            { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: classified },
+          ]);
+        } else {
+          const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
+          appendMessages(sessionId, storedTurn);
+        }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const classified = classifyProviderError(error);
         capture({ type: "provider_error", provider: session.providerConfig.provider });
         appendMessages(sessionId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${message}` },
+          { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: classified },
         ]);
       } finally {
         setLive((prev) => {

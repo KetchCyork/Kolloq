@@ -1,6 +1,7 @@
 import type { FileArtifact } from "@newvector/core";
 import { attachmentDataUrl } from "../attachments";
 import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatBytes } from "../fileArtifact";
+import { useStore } from "../store";
 import type { StoredMessage } from "../types";
 import { formatTime } from "../utils";
 
@@ -28,6 +29,33 @@ function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; ses
 }
 
 export function MessageItem({ message, sessionId }: { message: StoredMessage; sessionId: string }) {
+  const { openAccountsManager } = useStore();
+
+  if (message.error) {
+    return (
+      <div className="message role-assistant">
+        <div>
+          <div className="bubble message-error-bubble">
+            <div className="message-error-head">
+              <span aria-hidden="true">⚠️</span>
+              <span>Turn failed</span>
+            </div>
+            <div className="message-error-reason">{message.error.reason}</div>
+            {message.error.raw !== message.error.reason && (
+              <div className="message-error-raw">{message.error.raw}</div>
+            )}
+            {message.error.isConfigIssue && (
+              <button type="button" className="settings-btn message-error-action" onClick={openAccountsManager}>
+                Manage Accounts →
+              </button>
+            )}
+          </div>
+          <div className="message-meta">{formatTime(message.createdAt)}</div>
+        </div>
+      </div>
+    );
+  }
+
   if (message.role === "tool") {
     return (
       <div className="message role-tool">

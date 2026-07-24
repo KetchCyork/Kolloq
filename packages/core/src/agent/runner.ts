@@ -55,10 +55,17 @@ export class AgentRunner {
     const turnMessages: ChatMessage[] = [];
 
     for (let step = 0; step < this.maxSteps; step++) {
-      const response = await this.provider.chat({
-        messages: this.messages,
-        tools: this.tools.list(),
-      });
+      let response;
+      try {
+        response = await this.provider.chat({
+          messages: this.messages,
+          tools: this.tools.list(),
+        });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.onEvent?.({ type: "error", error: err });
+        return turnMessages;
+      }
 
       const toolCalls = this.recordAssistantMessage(response.message, turnMessages);
       if (!toolCalls.length) {
