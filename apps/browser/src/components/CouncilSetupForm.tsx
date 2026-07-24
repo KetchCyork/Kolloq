@@ -1,7 +1,9 @@
 import {
   DEFAULT_COUNCIL_MAX_ROUNDS,
   diversityHint,
+  MAX_COUNCIL_MAX_ROUNDS,
   MAX_COUNCIL_MEMBERS,
+  MIN_COUNCIL_MAX_ROUNDS,
   MIN_COUNCIL_MEMBERS,
   validateCouncilMembers,
 } from "../councilReducer";
@@ -10,7 +12,6 @@ import type { CouncilMemberConfig, CouncilSession } from "../types";
 import { randomId } from "../utils";
 
 const SEAT_COLORS = ["var(--a1)", "var(--a2)", "var(--a3)", "var(--a4)", "var(--a5)"];
-const MAX_ROUND_OPTIONS = [2, 4, 6, 8];
 const BUDGET_CAP_OPTIONS = [5, 10, 25, 50];
 
 type SessionPatch = Partial<Pick<CouncilSession, "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>;
@@ -125,20 +126,21 @@ export function CouncilSetupForm({ session, onChange }: { session: CouncilSessio
         </div>
         <div className="field">
           <label>Max rounds</label>
-          <select
-            value={String(session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS)}
-            onChange={(e) => onChange({ maxRounds: Number(e.target.value) })}
-          >
-            {MAX_ROUND_OPTIONS.map((rounds) => (
-              <option key={rounds} value={rounds}>
-                {rounds}
-                {rounds === DEFAULT_COUNCIL_MAX_ROUNDS ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+          <input
+            type="number"
+            min={MIN_COUNCIL_MAX_ROUNDS}
+            max={MAX_COUNCIL_MAX_ROUNDS}
+            value={session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next)) return;
+              const clamped = Math.min(MAX_COUNCIL_MAX_ROUNDS, Math.max(MIN_COUNCIL_MAX_ROUNDS, Math.round(next)));
+              onChange({ maxRounds: clamped });
+            }}
+          />
           <small className="hint">
-            Debate stops after this many rounds even without consensus. Each round is one provider call per
-            member — a higher cap can multiply cost.
+            Debate stops after this many rounds even without consensus ({MIN_COUNCIL_MAX_ROUNDS}–
+            {MAX_COUNCIL_MAX_ROUNDS}). Each round is one provider call per member — a higher cap can multiply cost.
           </small>
         </div>
         <div className="field">
