@@ -1,4 +1,4 @@
-import { computeAlignment, computeTotalCostNote } from "../councilReducer";
+import { computeAlignment, computeTotalCostNote, DEFAULT_COUNCIL_MAX_ROUNDS } from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilSession, LiveCouncilTurn } from "../types";
 import { colorForSeat, CouncilRoundList } from "./CouncilRoundList";
@@ -15,7 +15,7 @@ const CONTROLS_TOOLTIP =
 export function CouncilLiveView({ session, live }: { session: CouncilSession; live: LiveCouncilTurn }) {
   const { accounts } = useStore();
   const currentRound = Math.max(0, live.rounds.length - 1);
-  const maxRounds = session.maxRounds ?? 4;
+  const maxRounds = live.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
   const alignment = computeAlignment(live.rounds);
   const costNote = computeTotalCostNote(live.rounds, live.answer, session.members, accounts, session.moderatorAccountId);
 

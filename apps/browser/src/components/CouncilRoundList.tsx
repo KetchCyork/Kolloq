@@ -46,6 +46,9 @@ export function CouncilRoundList({
               </div>
             </div>
           ))}
+          {positions.length === 0 && (
+            <div className="council-dropped">⚠ Every member dropped out before responding this round.</div>
+          )}
           {dropped
             .filter((member) => member.round === roundIndex)
             .map((member) => (

@@ -3,7 +3,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
 import { runCouncilTurn } from "./councilClient";
-import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
+import {
+  applyCouncilEvent,
+  computeTotalCostNote,
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  initialLiveCouncilTurn,
+  validateCouncilMembers,
+} from "./councilReducer";
 import {
   accountCredentialKey,
   accountOAuthKey,
@@ -641,7 +647,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
+    const maxRounds = session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS;
+    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question, maxRounds);
     setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
 
     const onEvent = (event: CouncilEvent) => {
@@ -653,7 +660,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const result = await runCouncilTurn(
         session.members,
         accountsForTurn,
-        session.maxRounds,
+        maxRounds,
         session.moderatorAccountId,
         question,
         onEvent,
@@ -683,6 +690,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rounds: liveTurn.rounds,
           consensusReached: liveTurn.consensusReached,
           finalRound: Math.max(0, liveTurn.rounds.length - 1),
+          maxRounds,
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,

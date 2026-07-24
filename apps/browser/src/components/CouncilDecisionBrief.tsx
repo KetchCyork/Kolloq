@@ -1,5 +1,25 @@
-import { parseDecisionBrief } from "../councilReducer";
+import { classifyCouncilOutcome, DEFAULT_COUNCIL_MAX_ROUNDS, parseDecisionBrief } from "../councilReducer";
 import type { CouncilSession, CouncilTurn } from "../types";
+
+/** One-line summary of why a finished debate stopped, distinguishing a real consensus from the
+ * round cap being hit or every member dropping out — all three otherwise look like "no consensus". */
+function outcomeLabel(turn: CouncilTurn): string {
+  const outcome = classifyCouncilOutcome({
+    consensusReached: turn.consensusReached,
+    lastRoundPositionCount: turn.rounds.at(-1)?.length ?? 0,
+  });
+  // Turns recorded before the cap became configurable have no `maxRounds`, so fall back rather
+  // than printing "after undefined rounds".
+  const cap = turn.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
+  switch (outcome) {
+    case "consensus":
+      return "Consensus reached";
+    case "all-dropped":
+      return "No answer from any member — best-effort synthesis";
+    case "cap-hit":
+      return `No consensus after ${cap} round${cap === 1 ? "" : "s"} (round cap) — best-effort synthesis`;
+  }
+}
 
 function buildMarkdown(turn: CouncilTurn): string {
   const sections = parseDecisionBrief(turn.answer);
@@ -57,16 +77,12 @@ export function CouncilDecisionBrief({
   const sections = parseDecisionBrief(turn.answer);
   const finalPositions = turn.rounds.at(-1) ?? [];
   const dissenting = finalPositions.filter((position) => position.stance === "dissent");
-  const outcomeLabel = turn.moderatorError
-    ? "Moderator error — fallback summary"
-    : turn.consensusReached
-      ? "Consensus reached"
-      : "No consensus — best-effort synthesis";
+  const label = turn.moderatorError ? "Moderator error — fallback summary" : outcomeLabel(turn);
 
   return (
     <div className="council-brief">
       <span className={`badge ${turn.consensusReached ? "green" : "amber"}`}>
-        {outcomeLabel} · Round {turn.finalRound} of {session.maxRounds ?? 4} · {turn.totalCostNote}
+        {label} · Round {turn.finalRound} of {turn.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS} · {turn.totalCostNote}
       </span>
       <h3 className="serif">{turn.question}</h3>
       <div className="council-brief-meta">

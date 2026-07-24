@@ -12,6 +12,12 @@ import type {
 export const MIN_COUNCIL_MEMBERS = 2;
 export const MAX_COUNCIL_MEMBERS = 5;
 
+/** Mirrors `Council`'s own default (`packages/core/src/agent/council.ts`) so the UI can show a
+ * round cap even for sessions saved before `maxRounds` was configurable. */
+export const DEFAULT_COUNCIL_MAX_ROUNDS = 4;
+export const MIN_COUNCIL_MAX_ROUNDS = 2;
+export const MAX_COUNCIL_MAX_ROUNDS = 8;
+
 const TYPICAL_RESPONSE_CHARS = 300 * 4; // ~300 tokens, a typical debate-round reply
 const TYPICAL_SYNTHESIS_CHARS = 400 * 4; // ~400 tokens, a typical moderator synthesis
 
@@ -110,8 +116,8 @@ function providerForMember(
   return accounts.find((account) => account.id === config.accountId)?.provider;
 }
 
-export function initialLiveCouncilTurn(question: string): LiveCouncilTurn {
-  return { question, rounds: [], dropped: [], consensusReached: false, finished: false };
+export function initialLiveCouncilTurn(question: string, maxRounds: number): LiveCouncilTurn {
+  return { question, rounds: [], currentRound: 0, maxRounds, dropped: [], consensusReached: false, finished: false };
 }
 
 /**
@@ -129,7 +135,7 @@ export function applyCouncilEvent(
     case "round-start": {
       const rounds = [...turn.rounds];
       rounds[event.round] = rounds[event.round] ?? [];
-      return { ...turn, rounds };
+      return { ...turn, rounds, currentRound: event.round };
     }
     case "member-position": {
       const memberId = event.position.member;
@@ -166,6 +172,23 @@ export function applyCouncilEvent(
     default:
       return turn;
   }
+}
+
+export type CouncilOutcome = "consensus" | "cap-hit" | "all-dropped";
+
+/**
+ * Classifies why a finished turn's debate stopped, so the UI can tell a real "no consensus" apart
+ * from the round cap simply being reached. `Council.run()`'s loop only ever ends one of three ways:
+ * unanimous concurrence, the round cap, or every remaining member dropping out mid-round — so once
+ * consensus and "last round had zero positions" are ruled out, the round cap is the only case left.
+ */
+export function classifyCouncilOutcome(params: {
+  consensusReached: boolean;
+  lastRoundPositionCount: number;
+}): CouncilOutcome {
+  if (params.consensusReached) return "consensus";
+  if (params.lastRoundPositionCount === 0) return "all-dropped";
+  return "cap-hit";
 }
 
 /** Sums per-position cost estimates (re-derived from stored content, not stored twice) plus the

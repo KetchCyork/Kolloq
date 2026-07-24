@@ -18,8 +18,11 @@ function providerForAccount(account: Account) {
  * into a live `ChatProvider` first. Mirrors `agentClient.runSessionTurn`'s "build fresh per call"
  * shape — a council session persists only the transcript, not runner/provider state. The council
  * engine identifies members by `CouncilMember.name`; that's set to the member config id here so
- * `councilReducer.applyCouncilEvent` can resolve display labels/cost notes back from it. The
- * moderator never debates — it's built and passed separately (see `moderatorAccountId`).
+ * `councilReducer.applyCouncilEvent` can resolve display labels/cost notes back from it. `label` is
+ * set separately to the account's human-readable name — the engine embeds `label` (never `name`) in
+ * any prompt/transcript text, so the opaque member id never reaches a moderator prompt or a
+ * user-visible transcript/synthesis. The moderator never debates — it's built and passed
+ * separately (see `moderatorAccountId`).
  */
 export function runCouncilTurn(
   members: CouncilMemberConfig[],
@@ -32,7 +35,12 @@ export function runCouncilTurn(
   const councilMembers: CouncilMember[] = members.map((member) => {
     const account = accounts.find((candidate) => candidate.id === member.accountId);
     if (!account) throw new Error(`Council member references an unknown account: ${member.accountId}`);
-    return { name: member.id, provider: providerForAccount(account), role: member.role };
+    return {
+      name: member.id,
+      label: `${account.label} · ${account.model}`,
+      provider: providerForAccount(account),
+      role: member.role,
+    };
   });
 
   // No explicit moderator account (or it no longer exists): fall back to members[0]'s account,
