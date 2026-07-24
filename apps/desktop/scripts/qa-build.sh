@@ -57,7 +57,7 @@ JSON
 echo "==> Building QA bundle for branch '${BRANCH}'"
 echo "    identifier:  ${IDENTIFIER}"
 echo "    productName: ${PRODUCT_NAME}"
-pnpm exec tauri build --config "$OVERRIDE_FILE" -b app "${DEBUG_FLAG[@]}"
+pnpm exec tauri build --config "$OVERRIDE_FILE" -b app "${DEBUG_FLAG[@]+"${DEBUG_FLAG[@]}"}"
 
 BUNDLE_SRC="src-tauri/target/${BUNDLE_SUBDIR}/bundle/macos/${PRODUCT_NAME}.app"
 if [[ ! -d "$BUNDLE_SRC" ]]; then
