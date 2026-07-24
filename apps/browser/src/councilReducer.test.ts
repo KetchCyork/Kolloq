@@ -368,4 +368,27 @@ describe("parseDecisionBrief", () => {
       if (typeof value === "string") expect(value).not.toContain("**");
     }
   });
+
+  it("strips markdown H2 heading prefixes instead of leaking ## into section content", () => {
+    const answer = [
+      "## Recommendation:",
+      "Buy Stripe Billing.",
+      "## Rationale:",
+      "Cheaper and faster.",
+      "## Key contention & resolution:",
+      "Critic conceded on TCO.",
+      "## Next steps:",
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain("#");
+    }
+  });
 });

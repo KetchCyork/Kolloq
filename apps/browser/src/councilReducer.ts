@@ -257,6 +257,10 @@ function findHeaderMatch(answer: string, header: string): { index: number; lengt
     const wrappedMatch = new RegExp(`${escapedWrapper}\\s*${escaped}\\s*${escapedWrapper}`).exec(answer);
     if (wrappedMatch) return { index: wrappedMatch.index, length: wrappedMatch[0].length };
   }
+  // ATX heading prefixes (`## Header:`) have no closing delimiter to pair with HEADER_WRAPPERS,
+  // so absorb the leading `#`s directly into the match instead of treating them as a wrapper.
+  const headingMatch = new RegExp(`#{1,6}\\s*${escaped}`).exec(answer);
+  if (headingMatch) return { index: headingMatch.index, length: headingMatch[0].length };
   const plainIndex = answer.indexOf(header);
   return plainIndex === -1 ? null : { index: plainIndex, length: header.length };
 }
@@ -267,7 +271,7 @@ function findHeaderMatch(answer: string, header: string): { index: number; lengt
  * `_` the model left dangling at the end of the answer. */
 function stripStrayDecorationLines(text: string): string {
   const lines = text.split("\n");
-  const isBareDecoration = (line: string) => /^[*_"]+$/.test(line.trim());
+  const isBareDecoration = (line: string) => /^[*_"#]+$/.test(line.trim());
   const isSkippable = (line: string) => isBareDecoration(line) || line.trim() === "";
   while (lines.length > 0 && isSkippable(lines[0])) lines.shift();
   while (lines.length > 0 && isSkippable(lines[lines.length - 1])) lines.pop();
