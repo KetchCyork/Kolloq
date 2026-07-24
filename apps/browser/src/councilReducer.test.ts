@@ -80,8 +80,8 @@ describe("applyCouncilEvent", () => {
     let turn = initialLiveCouncilTurn("Should we do X?");
     const events: CouncilEvent[] = [
       { type: "round-start", round: 0 },
-      { type: "member-position", round: 0, position: { member: "m1", role: "skeptic", content: "Answer A0" } },
-      { type: "member-position", round: 0, position: { member: "m2", content: "Answer B0" } },
+      { type: "member-position", round: 0, position: { member: "m1", label: "m1", role: "skeptic", content: "Answer A0" } },
+      { type: "member-position", round: 0, position: { member: "m2", label: "m2", content: "Answer B0" } },
     ];
     for (const event of events) turn = applyCouncilEvent(turn, event, members, accounts);
 
@@ -96,7 +96,12 @@ describe("applyCouncilEvent", () => {
   it("records a dropped member with its resolved label", () => {
     let turn = initialLiveCouncilTurn("Q");
     turn = applyCouncilEvent(turn, { type: "round-start", round: 1 }, members, accounts);
-    turn = applyCouncilEvent(turn, { type: "member-dropped", round: 1, member: "m1", error: "boom" }, members, accounts);
+    turn = applyCouncilEvent(
+      turn,
+      { type: "member-dropped", round: 1, member: "m1", label: "Claude · claude-3-5-sonnet-20241022", error: "boom" },
+      members,
+      accounts,
+    );
 
     expect(turn.dropped).toEqual([{ memberId: "m1", label: "Claude · claude-3-5-sonnet-20241022", round: 1, error: "boom" }]);
   });
@@ -120,7 +125,7 @@ describe("applyCouncilEvent", () => {
     turn = applyCouncilEvent(turn, { type: "round-start", round: 0 }, members, accounts);
     turn = applyCouncilEvent(
       turn,
-      { type: "member-position", round: 0, position: { member: "m1", content: "A0" } },
+      { type: "member-position", round: 0, position: { member: "m1", label: "m1", content: "A0" } },
       members,
       accounts,
     );
