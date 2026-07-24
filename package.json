@@ -1,5 +1,5 @@
 {
-  "name": "new-vector-cowork",
+  "name": "open-work",
   "private": true,
   "version": "0.0.0",
   "engines": {
@@ -11,6 +11,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
+    "check:app-name": "node scripts/check-app-name.mjs",
     "cli": "pnpm --filter @newvector/core cli"
   }
 }

@@ -2,7 +2,7 @@ import type { AgentEvent, ChatAttachment, ChatMessage } from "@newvector/core";
 import { AgentRunner, createOfficeProxyTools, createProvider, defineTool, ToolRegistry } from "@newvector/core";
 import { z } from "zod";
 import { createTauriNodeExec, nodeContextAvailable } from "./nodeContext";
-import type { AgentSession, StoredMessage } from "./types";
+import type { AgentSession, ProviderConfig, StoredMessage } from "./types";
 
 /**
  * Builds the tools a session's agent can call. `get_time` is always available. Under the desktop
@@ -54,6 +54,8 @@ export function runSessionTurn(
     model: session.providerConfig.model,
     apiKey: session.providerConfig.apiKey,
     baseURL: session.providerConfig.baseURL,
+    authType: session.providerConfig.authType,
+    accessToken: session.providerConfig.accessToken,
   });
 
   const runner = new AgentRunner({
@@ -61,6 +63,39 @@ export function runSessionTurn(
     tools: buildTools(session.id),
     systemPrompt: session.systemPrompt || undefined,
     initialMessages: priorMessages.map(toChatMessage),
+    onEvent,
+  });
+
+  return runner.runStream(userInput, attachments);
+}
+
+/**
+ * Runs one turn for a project chat message, answered by whichever roster member was routed the
+ * message. Unlike `runSessionTurn` this takes provider config directly rather than a whole
+ * `AgentSession` (a project turn is answered by one of several roster members, not a single fixed
+ * session) and skips the tool registry — project chat is plain conversation for v1, no tool use.
+ */
+export function runProjectTurn(
+  providerConfig: ProviderConfig,
+  systemPrompt: string,
+  priorMessages: ChatMessage[],
+  userInput: string,
+  attachments: ChatAttachment[] | undefined,
+  onEvent: (event: AgentEvent) => void,
+): Promise<ChatMessage[]> {
+  const provider = createProvider({
+    provider: providerConfig.provider,
+    model: providerConfig.model,
+    apiKey: providerConfig.apiKey,
+    baseURL: providerConfig.baseURL,
+    authType: providerConfig.authType,
+    accessToken: providerConfig.accessToken,
+  });
+
+  const runner = new AgentRunner({
+    provider,
+    systemPrompt: systemPrompt || undefined,
+    initialMessages: priorMessages,
     onEvent,
   });
 

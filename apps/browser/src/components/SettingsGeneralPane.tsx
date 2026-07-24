@@ -11,16 +11,16 @@ import { useStore } from "../store";
 import type { ProviderName } from "../types";
 import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
 
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "dark", label: "Dark" },
-  { value: "light", label: "Light" },
-  { value: "system", label: "Match system" },
+const THEME_OPTIONS: { value: ThemePreference; label: string; hint: string }[] = [
+  { value: "dark", label: "🌙 Dark", hint: "Default" },
+  { value: "light", label: "☀️ Light", hint: "Bright surfaces, navy text" },
+  { value: "system", label: "💻 Match system", hint: "Follows OS appearance" },
 ];
 
 const KEYBIND_ACTIONS = Object.keys(KEYBIND_ACTION_LABELS) as KeybindAction[];
 
-export function PreferencesPanel() {
-  const { preferences, updatePreferences, closePreferences } = useStore();
+export function SettingsGeneralPane() {
+  const { preferences, updatePreferences } = useStore();
   const [recording, setRecording] = useState<KeybindAction | null>(null);
 
   function recordBinding(action: KeybindAction, event: React.KeyboardEvent) {
@@ -36,31 +36,30 @@ export function PreferencesPanel() {
   }
 
   return (
-    <div className="modal-overlay" onClick={closePreferences}>
-      <div className="modal preferences-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Preferences</h2>
-          <button className="icon-btn" onClick={closePreferences} title="Close">
-            ×
-          </button>
-        </div>
+    <div className="settings-pane-inner">
+      <h3>General</h3>
 
-        <div className="settings-panel">
-          <div className="field">
-            <label htmlFor="pref-theme">Theme</label>
-            <select
-              id="pref-theme"
-              value={preferences.theme}
-              onChange={(e) => updatePreferences({ theme: e.target.value as ThemePreference })}
+      <div className="settings-card">
+        <h3>Appearance</h3>
+        <div className="settings-card-sub">Choose how Open Work looks. "Match system" follows your OS setting.</div>
+        <div className="settings-theme-row">
+          {THEME_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`settings-theme-opt${preferences.theme === opt.value ? " active" : ""}`}
+              onClick={() => updatePreferences({ theme: opt.value })}
             >
-              {THEME_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              <b>{opt.label}</b>
+              {opt.hint}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      <div className="settings-card">
+        <h3>Defaults</h3>
+        <div className="settings-panel">
           <div className="field">
             <label htmlFor="pref-provider">Default provider</label>
             <select
@@ -88,15 +87,17 @@ export function PreferencesPanel() {
             />
           </div>
         </div>
+      </div>
 
-        <div className="settings-section-label">Privacy</div>
+      <div className="settings-card">
+        <h3>Privacy</h3>
         <div className="settings-panel">
           <div className="field span-full telemetry-row">
             <div className="telemetry-text">
               <span className="telemetry-label">Usage telemetry</span>
               <span className="telemetry-hint">
-                Send anonymous usage events (session counts, provider usage, errors). No prompts, messages,
-                or API keys are ever included. Off by default.
+                Send anonymous usage events (session counts, provider usage, errors). No prompts, messages, or API
+                keys are ever included. Off by default.
               </span>
             </div>
             <label className="toggle-switch" aria-label="Enable usage telemetry">
@@ -109,8 +110,10 @@ export function PreferencesPanel() {
             </label>
           </div>
         </div>
+      </div>
 
-        <div className="settings-section-label">Keyboard shortcuts</div>
+      <div className="settings-card">
+        <h3>Keyboard shortcuts</h3>
         <div className="settings-panel keybindings-list">
           {KEYBIND_ACTIONS.map((action) => (
             <div className="field span-full keybind-row" key={action}>

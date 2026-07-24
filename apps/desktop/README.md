@@ -131,6 +131,35 @@ push (`desktop-v*`) or manual dispatch, using `tauri-apps/tauri-action`, and
 publishes a draft GitHub Release with installers + `latest.json` for the
 updater.
 
+### Build-time app secrets
+
+Separate from code signing, some app features need a secret **at build
+time**: Vite inlines `VITE_`-prefixed vars into the web bundle, so a var
+that is missing from the build job's environment is baked in as empty and
+the feature ships silently disabled.
+
+| Secret | Purpose | Source | Status |
+| --- | --- | --- | --- |
+| `VITE_GOOGLE_OAUTH_CLIENT_SECRET` | "Continue with Google" on the account gate; without it `googleSignInConfigured()` is false and the button ships disabled | Google Cloud Console → APIs & Services → Credentials → the OAuth client in project `openwork-503111` | ✅ set (2026-07-22) |
+
+Two guards make a missing value a loud failure instead of a degraded
+binary:
+
+- the workflow's **`Preflight - required build secrets`** step fails the
+  run before the draft release is created, and
+- `apps/browser/vite.config.ts` throws when `RELEASE_BUILD=1` (which the
+  workflow sets on the build step) and a required var is empty.
+
+A plain `pnpm build` by a contributor without the secret still succeeds —
+it only warns — so only release builds are gated. Locally the value comes
+from the untracked `apps/browser/.env`.
+
+Note: the account gate that reads this secret is not on `main` yet — it
+lives on the design branch (PR #4). Until that merges, Vite has nothing to
+inline the value into, so the plumbing above is pre-positioned rather than
+load-bearing. It becomes load-bearing the moment the gate lands, which is
+the point: the first release after that cannot ship the button disabled.
+
 **Without the Apple/Windows secrets configured, the workflow still runs and
 produces installers that are updater-signed but not OS-code-signed** —
 unsigned macOS/Windows binaries trigger Gatekeeper/SmartScreen warnings and
@@ -140,9 +169,10 @@ remaining repository secrets are required:
 | Secret | Purpose | Source | Status |
 | --- | --- | --- | --- |
 | `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` | Updater artifact signing | `tauri signer generate` (free, local) | ✅ set (2026-07-18) |
-| `APPLE_CERTIFICATE` / `_PASSWORD` | macOS code signing (.p12) | Apple Developer Program ($99/yr) | ⏳ pending — CEO signing up |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: New Vector AI (TEAMID)` | Apple Developer Program | ⏳ pending |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ⏳ pending |
+| `APPLE_CERTIFICATE` | macOS code signing (.p12, base64) | Apple Developer Program ($99/yr), exported from Keychain Access | ✅ set (2026-07-22) |
+| `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 above | Chosen at export time in Keychain Access | ⏳ pending — CEO to set via `gh secret set` locally (not shared in chat) |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Christopher York (3B9Z7S9DWL)` | Read from local Keychain (`security find-identity -v -p codesigning`) | ✅ set (2026-07-22) |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ✅ set (2026-07-22) |
 | `WINDOWS_CERTIFICATE` / `_PASSWORD` | Windows code signing (.pfx) | Code-signing CA (e.g. DigiCert, ~$300+/yr) or Azure Trusted Signing | ⏳ pending |
 
 CEO approved budget for the Apple Developer Program and a Windows

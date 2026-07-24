@@ -53,7 +53,7 @@ All three phases were built in local execution sandboxes and consolidated onto
 - Fresh `git clone` + `pnpm install` succeeds.
 - `packages/core`: `pnpm build` (tsc) and `pnpm test` (vitest, 5/5 passing) succeed.
 - `apps/browser`: `pnpm dev` serves on `http://localhost:5173` (HTTP 200, title
-  "New Vector Cowork"); `pnpm build` (vite build) succeeds.
+  "Open Work"); `pnpm build` (vite build) succeeds.
 - `apps/desktop`: `pnpm build` (`tauri build`) compiles the Rust shell and produces
   a signed-locally `.app` and `.dmg` bundle (requires a Rust toolchain — not bundled
   with the repo, install via https://rustup.rs).

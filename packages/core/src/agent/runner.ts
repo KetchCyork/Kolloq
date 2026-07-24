@@ -80,6 +80,7 @@ export class AgentRunner {
     for (let step = 0; step < this.maxSteps; step++) {
       let content = "";
       const toolCalls: ToolCall[] = [];
+      let streamError: Error | undefined;
 
       for await (const event of this.provider.stream({ messages: this.messages, tools: this.tools.list() })) {
         switch (event.type) {
@@ -92,10 +93,18 @@ export class AgentRunner {
             break;
           case "error":
             this.onEvent?.({ type: "error", error: event.error });
+            streamError = event.error;
             break;
           default:
             break;
         }
+      }
+
+      // A provider that reports failure as a stream event (rather than a rejected promise) must
+      // still fail the turn — otherwise it silently resolves as an empty assistant message and the
+      // caller has no signal to show the user anything went wrong.
+      if (streamError) {
+        throw streamError;
       }
 
       const message: ChatMessage = { role: "assistant", content, ...(toolCalls.length ? { toolCalls } : {}) };

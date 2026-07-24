@@ -1,7 +1,9 @@
 mod keychain;
 mod menu;
 mod node;
+mod oauth;
 mod tray;
+mod working_folder;
 
 use tauri::{Emitter, WindowEvent};
 
@@ -10,12 +12,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             keychain::set_credential,
             keychain::get_credential,
             keychain::delete_credential,
             node::node_tool_exec,
             node::node_read_file,
+            oauth::oauth_token_request,
+            working_folder::list_working_folder_entries,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;
@@ -44,5 +49,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running the New Vector Cowork desktop app");
+        .expect("error while running the Open Work desktop app");
 }
