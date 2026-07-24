@@ -28,6 +28,26 @@ pnpm --filter @newvector/desktop build    # tauri build — produces an unsigned
 you (see `build.beforeDevCommand`/`beforeBuildCommand` in `tauri.conf.json`),
 so there's no separate frontend build step.
 
+## Build provenance and installing to /Applications
+
+This machine routinely has several worktrees checked out on different
+branches, so "the app in `/Applications` doesn't have my change" is
+ambiguous between "it never shipped" and "the installed copy is stale" (see
+NEW-120). Two things make that diagnosable:
+
+- **Every build knows what it was built from.** `apps/browser/vite.config.ts`
+  inlines the git short SHA, branch, dirty flag, and build timestamp at
+  build/dev time; Settings → General → **About** renders them. Read that
+  before assuming a change didn't ship.
+- **`pnpm desktop:install`** is the one command that rebuilds the desktop
+  bundle and installs it to `/Applications/Open Work.app`
+  (`apps/desktop/scripts/install.sh`). It refuses (exits non-zero) if the
+  checkout is dirty, on a branch other than `main`, or behind
+  `origin/main` — `/Applications` is the single shared canonical install
+  across every worktree on this machine, so only a clean `main` build
+  belongs there. Pass `--force` to override any of those checks (each still
+  prints a loud warning).
+
 ## OS keychain credential storage
 
 Provider API keys are secrets. In the plain browser build there's no secure

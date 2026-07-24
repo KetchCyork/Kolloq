@@ -407,6 +407,13 @@ select {
   grid-column: 1 / -1;
 }
 
+.settings-static-value {
+  padding: 7px 0;
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
 .field-hint {
   font-size: 11px;
   color: var(--text-dim, #888);
