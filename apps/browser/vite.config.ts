@@ -77,6 +77,24 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [react()],
+    optimizeDeps: {
+      // Every `@tauri-apps/*` module is reached *only* through a runtime `await import(...)`
+      // (see credentials.ts, openWorkGoogleAuth.ts, projectFolder.ts, desktopIntegration.ts,
+      // subscriptionAuth.ts). Vite's dep scanner only walks statically-reachable imports at
+      // startup, so it never pre-bundles these. The first time one is invoked at runtime — e.g.
+      // clicking "Continue with Google", whose first act is `import("@tauri-apps/api/core")` —
+      // Vite discovers the new dep, re-runs the optimizer, and invalidates the in-flight hashed
+      // chunk, so the import rejects with "Failed to fetch dynamically imported module:
+      // .../@tauri-apps_api_core.js?v=<hash>" (NEW-195). Listing them here forces pre-bundling
+      // at server start so the hash is stable and the dynamic import resolves on the first click.
+      include: [
+        "@tauri-apps/api/core",
+        "@tauri-apps/api/event",
+        "@tauri-apps/plugin-dialog",
+        "@tauri-apps/plugin-updater",
+        "@tauri-apps/plugin-process",
+      ],
+    },
     define: {
       __BUILD_SHA__: JSON.stringify(provenance.sha),
       __BUILD_BRANCH__: JSON.stringify(provenance.branch),
