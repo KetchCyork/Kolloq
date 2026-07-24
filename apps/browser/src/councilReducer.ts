@@ -241,16 +241,44 @@ export interface DecisionBriefSections {
   structured: boolean;
 }
 
+/** Symmetric markdown/quote wrappers models use around headers instead of the requested plain
+ * text, e.g. `**Recommendation:**` or `"Recommendation:"`. */
+const HEADER_WRAPPERS = ["**", '"', "_"];
+
 /** Locates a header in the moderator's answer, matching either the plain header text or a
- * `**Header:**`-style bold wrap (some models bold the headers despite the plain-text
- * instruction). Prefers the bold form so the match — and the boundary it creates between
- * sections — includes the surrounding `**`, keeping stray markdown out of section content. */
+ * wrapped form like `**Header:**` or `"Header:"` (some models decorate the headers despite the
+ * plain-text instruction). Prefers a wrapped match when present so the match — and the boundary
+ * it creates between sections — includes the surrounding decoration, keeping stray markdown out
+ * of section content. Internal whitespace runs in the header (e.g. the space in "contention &
+ * resolution") are matched as `\s+` rather than a literal single space, since small models
+ * sometimes insert extra spaces there — a literal match would silently drop the whole header (and
+ * its section) rather than just leaving decoration behind. */
 function findHeaderMatch(answer: string, header: string): { index: number; length: number } | null {
-  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const boldMatch = new RegExp(`\\*\\*\\s*${escaped}\\s*\\*\\*`).exec(answer);
-  if (boldMatch) return { index: boldMatch.index, length: boldMatch[0].length };
-  const plainIndex = answer.indexOf(header);
-  return plainIndex === -1 ? null : { index: plainIndex, length: header.length };
+  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ +/g, "\\s+");
+  for (const wrapper of HEADER_WRAPPERS) {
+    const escapedWrapper = wrapper.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const wrappedMatch = new RegExp(`${escapedWrapper}\\s*${escaped}\\s*${escapedWrapper}`).exec(answer);
+    if (wrappedMatch) return { index: wrappedMatch.index, length: wrappedMatch[0].length };
+  }
+  // ATX heading prefixes (`## Header:`) have no closing delimiter to pair with HEADER_WRAPPERS,
+  // so absorb the leading `#`s directly into the match instead of treating them as a wrapper.
+  const headingMatch = new RegExp(`#{1,6}\\s*${escaped}`).exec(answer);
+  if (headingMatch) return { index: headingMatch.index, length: headingMatch[0].length };
+  const plainMatch = new RegExp(escaped).exec(answer);
+  return plainMatch ? { index: plainMatch.index, length: plainMatch[0].length } : null;
+}
+
+/** Strips leading/trailing lines that are bare markdown decoration (e.g. a lone `**` or `"`)
+ * left over when a header's wrapper isn't symmetric enough for `findHeaderMatch` to consume both
+ * sides — for example a stray closing `**` carried over from the previous section, or a trailing
+ * `_` the model left dangling at the end of the answer. */
+function stripStrayDecorationLines(text: string): string {
+  const lines = text.split("\n");
+  const isBareDecoration = (line: string) => /^[*_"#]+$/.test(line.trim());
+  const isSkippable = (line: string) => isBareDecoration(line) || line.trim() === "";
+  while (lines.length > 0 && isSkippable(lines[0])) lines.shift();
+  while (lines.length > 0 && isSkippable(lines[lines.length - 1])) lines.pop();
+  return lines.join("\n").trim();
 }
 
 /** Best-effort split of the moderator's plain-text synthesis into Decision Brief sections. The
@@ -270,7 +298,7 @@ export function parseDecisionBrief(answer: string): DecisionBriefSections {
   positions.forEach((entry, i) => {
     const start = entry.index + entry.length;
     const end = positions[i + 1]?.index ?? answer.length;
-    sections[entry.key] = answer.slice(start, end).trim();
+    sections[entry.key] = stripStrayDecorationLines(answer.slice(start, end));
   });
   return sections;
 }

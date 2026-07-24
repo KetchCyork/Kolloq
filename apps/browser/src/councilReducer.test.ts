@@ -313,4 +313,105 @@ describe("parseDecisionBrief", () => {
       if (typeof value === "string") expect(value).not.toContain("**");
     }
   });
+
+  it("strips quote-wrapped headers instead of leaking \" into section content", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing.",
+      '"Rationale:"',
+      "Cheaper and faster.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain('"');
+    }
+  });
+
+  it("drops a stray bare-decoration line left over from an asymmetric wrapper", () => {
+    const answer = [
+      "**Recommendation:",
+      "Buy Stripe Billing.",
+      "**",
+      "**Rationale:",
+      "Cheaper and faster.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+  });
+
+  it("drops a stray decoration line even when a blank line pads it from the next header", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing over building in-house.",
+      "",
+      "**Rationale:",
+      "Cheaper and faster to ship; team lacks billing-domain expertise.",
+      "**",
+      "",
+      "_Key contention & resolution:_",
+      "One member argued for in-house control; resolved in favor of speed to market.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.rationale).toBe(
+      "Cheaper and faster to ship; team lacks billing-domain expertise.",
+    );
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain("**");
+    }
+  });
+
+  it("strips markdown H2 heading prefixes instead of leaking ## into section content", () => {
+    const answer = [
+      "## Recommendation:",
+      "Buy Stripe Billing.",
+      "## Rationale:",
+      "Cheaper and faster.",
+      "## Key contention & resolution:",
+      "Critic conceded on TCO.",
+      "## Next steps:",
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain("#");
+    }
+  });
+
+  it("matches a header even when the model inserts extra internal whitespace", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing.",
+      '"Rationale:"',
+      "Cheaper and faster.",
+      '"Key contention  & resolution:"',
+      "Critic conceded on TCO.",
+      '"Next steps:"',
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain('"');
+    }
+  });
 });
