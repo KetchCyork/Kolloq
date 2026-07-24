@@ -2,6 +2,7 @@ mod keychain;
 mod menu;
 mod node;
 mod oauth;
+mod provider;
 mod tray;
 mod working_folder;
 
@@ -20,6 +21,7 @@ pub fn run() {
             node::node_tool_exec,
             node::node_read_file,
             oauth::oauth_token_request,
+            provider::provider_fetch,
             working_folder::list_working_folder_entries,
         ])
         .setup(|app| {

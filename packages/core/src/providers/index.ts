@@ -24,6 +24,13 @@ export interface CreateProviderOptions {
   authType?: "api_key" | "subscription";
   /** OAuth access token used when `authType` is `"subscription"`. */
   accessToken?: string;
+  /**
+   * Custom `fetch` for outbound provider requests. Only the OpenAI factory currently reads this
+   * (see NEW-184: `api.openai.com`'s chat endpoint doesn't send CORS headers for the app's origin,
+   * unlike Anthropic/Google/OpenRouter, so it needs the desktop shell's Rust-backed relay `fetch`).
+   * Left `undefined` in the plain browser build to use the global `fetch`.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 /** Single entry point for constructing a `ChatProvider` from a provider name + config. */

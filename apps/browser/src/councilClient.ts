@@ -1,5 +1,6 @@
 import type { CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
 import { Council, createProvider } from "@newvector/core";
+import { getProviderFetch } from "./providerFetch";
 import type { Account, CouncilMemberConfig } from "./types";
 
 /**
@@ -26,6 +27,8 @@ export function runCouncilTurn(
       baseURL: account.baseURL,
       authType: account.authType,
       accessToken: account.oauth?.accessToken,
+      // Desktop shell: route OpenAI inference through Rust so it isn't CORS-blocked by the webview.
+      fetchImpl: getProviderFetch(),
     });
     return { name: member.id, provider, role: member.role };
   });
