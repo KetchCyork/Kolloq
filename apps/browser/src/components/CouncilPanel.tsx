@@ -98,6 +98,8 @@ export function CouncilPanel({ session }: { session: CouncilSession }) {
           <CouncilSetupForm
             members={session.members}
             onChange={(members) => updateCouncilSession(session.id, { members })}
+            maxRounds={session.maxRounds}
+            onMaxRoundsChange={(maxRounds) => updateCouncilSession(session.id, { maxRounds })}
           />
         </div>
       )}

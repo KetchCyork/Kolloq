@@ -12,6 +12,7 @@ A Claude Code–style AI agent harness that runs on any LLM — Anthropic, OpenA
 - **CLI** — headless `agent-cli` for scripted use and pipelines
 - **Built-in tools** — web search, filesystem, shell execution, code interpreter (Node-only shell); plugin system for custom tools
 - **Multi-agent orchestration** — delegate subtasks to named sub-agents from a parent session
+- **Advisory Council** — put 2–5 agents (each on its own provider/account) into a multi-round debate that a moderator synthesizes into one answer
 - **Preferences** — theme (dark/light/system), default provider/model, rebindable keyboard shortcuts
 
 ---

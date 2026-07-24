@@ -3,7 +3,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
 import { runCouncilTurn } from "./councilClient";
-import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
+import {
+  applyCouncilEvent,
+  computeTotalCostNote,
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  initialLiveCouncilTurn,
+  validateCouncilMembers,
+} from "./councilReducer";
 import {
   accountCredentialKey,
   accountOAuthKey,
@@ -559,7 +565,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
+    const maxRounds = session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS;
+    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question, maxRounds);
     setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
 
     const onEvent = (event: CouncilEvent) => {
@@ -568,7 +575,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await runCouncilTurn(session.members, accountsForTurn, session.maxRounds, question, onEvent);
+      await runCouncilTurn(session.members, accountsForTurn, maxRounds, question, onEvent);
     } catch (error) {
       // Council.run() itself never rejects (member/moderator errors surface as events); this only
       // fires for setup failures, e.g. a member's account was removed after validation passed.
@@ -588,6 +595,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           rounds: liveTurn.rounds,
           consensusReached: liveTurn.consensusReached,
           finalRound: Math.max(0, liveTurn.rounds.length - 1),
+          maxRounds,
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,

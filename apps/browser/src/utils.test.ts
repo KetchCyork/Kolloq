@@ -29,6 +29,7 @@ function turn(question: string, consensusReached = true): CouncilTurn {
     rounds: [],
     consensusReached,
     finalRound: 0,
+    maxRounds: 4,
     dropped: [],
     answer: "",
     totalCostNote: "",

@@ -1449,6 +1449,29 @@ select {
   font-size: 13px;
 }
 
+.council-max-rounds-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.council-max-rounds-input {
+  width: 56px;
+}
+
+.council-max-rounds-hint {
+  flex-basis: 100%;
+  font-size: 11px;
+}
+
+.council-round-progress {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 .council-turn {
   display: flex;
   flex-direction: column;
