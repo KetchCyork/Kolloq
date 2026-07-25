@@ -1,3 +1,4 @@
+import { alertDialog } from "../dialogs";
 import { useStore, type WorkspaceView } from "../store";
 import type { AgentSession, CouncilSession, Project } from "../types";
 import { councilListSubtitle, councilListTitle } from "../utils";
@@ -91,7 +92,7 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
 
   function handleNewCouncil() {
     if (accounts.length < 2) {
-      window.alert("A council needs at least 2 accounts, each on its own provider/model. Add another account first.");
+      void alertDialog("A council needs at least 2 accounts, each on its own provider/model. Add another account first.");
       openAccountsManager();
       return;
     }

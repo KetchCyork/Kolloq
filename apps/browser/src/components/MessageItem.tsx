@@ -1,5 +1,6 @@
 import type { FileArtifact } from "@newvector/core";
 import { attachmentDataUrl } from "../attachments";
+import { alertDialog } from "../dialogs";
 import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatBytes } from "../fileArtifact";
 import type { StoredMessage } from "../types";
 import { formatTime } from "../utils";
@@ -10,7 +11,7 @@ function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; ses
     try {
       await downloadFileArtifact(artifact, sessionId);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
+      await alertDialog(error instanceof Error ? error.message : String(error));
     }
   }
   return (

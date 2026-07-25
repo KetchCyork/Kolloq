@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { confirmDialog } from "../dialogs";
 import { parseSkillFile } from "../skills";
 import { useStore } from "../store";
 import type { Skill, SkillSource } from "../types";
@@ -116,8 +117,8 @@ export function SettingsSkillsPane() {
     cancelForm();
   }
 
-  function remove(skill: Skill) {
-    if (window.confirm(`Delete skill "${skill.name}"? Agents using it lose those instructions.`)) {
+  async function remove(skill: Skill) {
+    if (await confirmDialog({ message: `Delete skill "${skill.name}"? Agents using it lose those instructions.`, confirmLabel: "Delete", danger: true })) {
       deleteSkill(skill.id);
       if (editingId === skill.id) cancelForm();
     }
