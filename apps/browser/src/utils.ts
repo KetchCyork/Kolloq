@@ -3,7 +3,7 @@ import type { AgentIdentity, CouncilSession, ProviderName } from "./types";
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "google", "ollama", "openrouter"];
 
 export const PROVIDER_DEFAULT_MODELS: Record<ProviderName, string> = {
-  anthropic: "claude-3-5-sonnet-20241022",
+  anthropic: "claude-sonnet-5",
   openai: "gpt-4o-mini",
   google: "gemini-1.5-flash",
   ollama: "llama3.1",
@@ -17,6 +17,23 @@ export const PROVIDER_LABELS: Record<ProviderName, string> = {
   ollama: "Ollama (local)",
   openrouter: "OpenRouter",
 };
+
+/**
+ * Reconcile a selected model id against a provider's live model catalog so we never persist a model
+ * the account can't actually reach. A hand-typed guess or a hardcoded default the provider has since
+ * retired 404s on the very first chat, and the user can't tell whether their key or their model
+ * string is wrong — so the live list is the source of truth for what's selectable.
+ *
+ * Returns `current` when it's still offered; otherwise the `preferred` default when the provider
+ * still offers it; otherwise the first model in the live list. An empty list means we couldn't
+ * reach the provider yet, so we leave the selection untouched rather than blanking it.
+ */
+export function reconcileModelSelection(current: string, models: string[], preferred: string): string {
+  if (models.length === 0) return current;
+  if (models.includes(current)) return current;
+  if (models.includes(preferred)) return preferred;
+  return models[0];
+}
 
 const IDENTITY_COLORS = ["#6366f1", "#0891b2", "#c026d3", "#d97706", "#059669", "#dc2626", "#4f46e5"];
 const IDENTITY_EMOJIS = ["\u{1F916}", "\u{1F9E0}", "\u{1F9ED}", "\u{1F52E}", "\u{1F680}", "\u{1F98A}", "\u{1F41D}"];
