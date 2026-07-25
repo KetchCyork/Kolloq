@@ -397,6 +397,39 @@ describe("Council", () => {
       expect(events.some((event) => event.type === "force-vote")).toBe(true);
       expect(result.answer).toBe("Forced synthesis noting only A answered");
     });
+
+    it("wakes a paused debate and forces the vote, rather than hanging until a separate resume()", async () => {
+      const providerA = new StubProvider("A", ["Forced synthesis with no positions"]);
+      const providerB = new StubProvider("B", ["Answer B0 should never be requested"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        onEvent: (event) => events.push(event),
+      });
+
+      const controller = new CouncilController();
+      controller.pause();
+      const resultPromise = council.run("Should we do X?", controller);
+
+      // Let the run loop reach the pre-round-0 checkpoint and start waiting on resume().
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(events.some((event) => event.type === "paused")).toBe(true);
+
+      controller.forceVote();
+      const result = await resultPromise;
+
+      expect(result.forcedVote).toBe(true);
+      expect(result.rounds).toEqual([]);
+      // Only the moderator's (A's) synthesis call — no member was ever asked for a position.
+      expect(providerA.requests).toHaveLength(1);
+      expect(providerB.requests).toHaveLength(0);
+      expect(events.some((event) => event.type === "force-vote")).toBe(true);
+      expect(result.answer).toBe("Forced synthesis with no positions");
+    });
   });
 
   it("halts the debate once accumulated cost meets the budget cap, and still synthesizes", async () => {

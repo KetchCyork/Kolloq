@@ -132,9 +132,12 @@ export class CouncilController {
   }
 
   /** Requests that the debate stop asking further members — as soon as the current checkpoint is
-   * reached — and move straight to the moderator's synthesis using whatever positions exist so far. */
+   * reached — and move straight to the moderator's synthesis using whatever positions exist so far.
+   * Also resumes a paused debate, since a paused checkpoint is stuck waiting on `resume()` and would
+   * otherwise never reach the point where the force-vote request is consumed. */
   forceVote(): void {
     this.forceVoteRequested = true;
+    if (this.paused) this.resume();
   }
 
   /** @internal Resolves immediately unless paused, in which case it resolves on the next `resume()`. */
