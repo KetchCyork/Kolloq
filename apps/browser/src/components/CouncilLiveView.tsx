@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import { computeAlignment, computeTotalCostNote, DEFAULT_COUNCIL_MAX_ROUNDS } from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilSession, LiveCouncilTurn } from "../types";
@@ -10,9 +11,14 @@ const FORCE_VOTE_TOOLTIP = "Stop the debate now and have the moderator synthesiz
  * Inject message, and Force vote drive the `Council` engine's mid-debate control hook
  * (`CouncilController` in packages/core/src/agent/council.ts) via the store — disabled only once
  * the turn has finished, since there's nothing left to control.
+ *
+ * Inject/Force-vote use an inline panel rather than window.prompt/window.confirm: the desktop
+ * shell's WebKit view has no UI delegate for native dialogs, so they silently no-op there (NEW-81 QA).
  */
 export function CouncilLiveView({ session, live }: { session: CouncilSession; live: LiveCouncilTurn }) {
   const { accounts, pauseCouncilTurn, resumeCouncilTurn, injectCouncilMessage, forceCouncilVote } = useStore();
+  const [injectDraft, setInjectDraft] = useState<string | null>(null);
+  const [confirmingForceVote, setConfirmingForceVote] = useState(false);
   const currentRound = Math.max(0, live.rounds.length - 1);
   const maxRounds = live.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
   const alignment = computeAlignment(live.rounds);
@@ -39,16 +45,16 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
               ? "Starting…"
               : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
 
-  function handleInject() {
-    const message = window.prompt("Inject a message or additional context for the next round:");
-    const trimmed = message?.trim();
+  function handleInjectSubmit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = injectDraft?.trim();
     if (trimmed) injectCouncilMessage(session.id, trimmed);
+    setInjectDraft(null);
   }
 
-  function handleForceVote() {
-    if (window.confirm("Stop the debate now and have the moderator synthesize from the positions gathered so far?")) {
-      forceCouncilVote(session.id);
-    }
+  function handleForceVoteConfirm() {
+    forceCouncilVote(session.id);
+    setConfirmingForceVote(false);
   }
 
   return (
@@ -70,7 +76,15 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
         >
           {live.paused ? "▶ Resume" : "⏸ Pause"}
         </button>
-        <button type="button" className="settings-btn" disabled={live.finished || live.forcedVote} onClick={handleInject}>
+        <button
+          type="button"
+          className="settings-btn"
+          disabled={live.finished || live.forcedVote}
+          onClick={() => {
+            setConfirmingForceVote(false);
+            setInjectDraft((d) => (d === null ? "" : null));
+          }}
+        >
           💬 Inject message
         </button>
         <button
@@ -78,11 +92,44 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
           className="settings-btn"
           disabled={live.finished || live.forcedVote}
           title={FORCE_VOTE_TOOLTIP}
-          onClick={handleForceVote}
+          onClick={() => {
+            setInjectDraft(null);
+            setConfirmingForceVote((c) => !c);
+          }}
         >
           🗳 Force vote
         </button>
       </div>
+
+      {injectDraft !== null && !(live.finished || live.forcedVote) && (
+        <form className="council-inline-panel" onSubmit={handleInjectSubmit}>
+          <input
+            autoFocus
+            type="text"
+            value={injectDraft}
+            onChange={(event) => setInjectDraft(event.target.value)}
+            placeholder="Inject a message or additional context for the next round…"
+          />
+          <button type="submit" className="settings-btn" disabled={!injectDraft.trim()}>
+            Send
+          </button>
+          <button type="button" className="settings-btn" onClick={() => setInjectDraft(null)}>
+            Cancel
+          </button>
+        </form>
+      )}
+
+      {confirmingForceVote && !(live.finished || live.forcedVote) && (
+        <div className="council-inline-panel">
+          <span>{FORCE_VOTE_TOOLTIP}</span>
+          <button type="button" className="settings-btn" onClick={handleForceVoteConfirm}>
+            Confirm force vote
+          </button>
+          <button type="button" className="settings-btn" onClick={() => setConfirmingForceVote(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       <div className="council-layout">
         <div className="council-main">
