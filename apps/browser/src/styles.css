@@ -908,6 +908,83 @@ select {
   margin: 0;
 }
 
+/* In-app confirm/alert/prompt dialogs (see dialogs.tsx). Sits above every other overlay
+   so a confirm fired from inside a modal/drawer stacks on top. */
+.dialog-overlay {
+  z-index: 300;
+}
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.dialog-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dialog-input {
+  margin-top: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+
+.dialog-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+.dialog-btn-ghost:hover {
+  background: var(--border);
+}
+
+.dialog-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.dialog-btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.dialog-btn-danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
 .accounts-list {
   padding: 12px 20px 0;
   display: flex;

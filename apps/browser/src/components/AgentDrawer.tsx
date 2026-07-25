@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AGENT_TEMPLATES } from "../agentTemplates";
 import { getAgentStatus } from "../agentStatus";
+import { confirmDialog } from "../dialogs";
 import { useStore } from "../store";
 import { MessageList } from "./MessageList";
 import { ModelPicker } from "./ModelPicker";
@@ -46,8 +47,8 @@ export function AgentDrawer({
     setTestText("");
   }
 
-  function remove() {
-    if (window.confirm(`Delete "${session!.identity.name}"? This cannot be undone.`)) {
+  async function remove() {
+    if (await confirmDialog({ message: `Delete "${session!.identity.name}"? This cannot be undone.`, confirmLabel: "Delete", danger: true })) {
       deleteSession(session!.id);
     }
   }

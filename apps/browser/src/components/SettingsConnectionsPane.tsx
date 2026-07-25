@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isTauriRuntime } from "../credentials";
+import { confirmDialog } from "../dialogs";
 import { DEFAULT_OLLAMA_BASE_URL, useOllamaModels } from "../ollamaDiscovery";
 import { useStore } from "../store";
 import type { Account, ProviderName } from "../types";
@@ -111,8 +112,8 @@ export function SettingsConnectionsPane() {
     cancelForm();
   }
 
-  function remove(account: Account) {
-    if (window.confirm(`Delete connection "${account.label}"? Sessions using it will need a new account picked.`)) {
+  async function remove(account: Account) {
+    if (await confirmDialog({ message: `Delete connection "${account.label}"? Sessions using it will need a new account picked.`, confirmLabel: "Delete", danger: true })) {
       deleteAccount(account.id);
       if (editingId === account.id) cancelForm();
     }

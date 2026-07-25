@@ -1,4 +1,5 @@
 import { isTauriRuntime } from "./credentials";
+import { alertDialog, confirmDialog } from "./dialogs";
 
 /**
  * Wires the native menu (File > New Session, Help > Check for Updates) and
@@ -27,12 +28,13 @@ export async function setupDesktopIntegration(handlers: { onNewSession: () => vo
 async function checkForUpdate(updater: typeof import("@tauri-apps/plugin-updater")): Promise<void> {
   const update = await updater.check();
   if (!update) {
-    window.alert("You're on the latest version.");
+    await alertDialog("You're on the latest version.");
     return;
   }
-  const shouldInstall = window.confirm(
-    `Open Work ${update.version} is available. Download and install now?`,
-  );
+  const shouldInstall = await confirmDialog({
+    message: `Open Work ${update.version} is available. Download and install now?`,
+    confirmLabel: "Install",
+  });
   if (!shouldInstall) return;
 
   await update.downloadAndInstall();
