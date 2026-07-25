@@ -117,7 +117,17 @@ function providerForMember(
 }
 
 export function initialLiveCouncilTurn(question: string, maxRounds: number): LiveCouncilTurn {
-  return { question, rounds: [], currentRound: 0, maxRounds, dropped: [], consensusReached: false, finished: false };
+  return {
+    question,
+    rounds: [],
+    currentRound: 0,
+    maxRounds,
+    dropped: [],
+    consensusReached: false,
+    finished: false,
+    paused: false,
+    forcedVote: false,
+  };
 }
 
 /**
@@ -169,6 +179,14 @@ export function applyCouncilEvent(
       return { ...turn, answer: event.content, finished: true };
     case "moderator-error":
       return { ...turn, moderatorError: event.error, finished: true };
+    case "paused":
+      return { ...turn, paused: true };
+    case "resumed":
+      return { ...turn, paused: false };
+    case "injected":
+      return { ...turn, lastInjectedMessage: event.message };
+    case "force-vote":
+      return { ...turn, forcedVote: true };
     default:
       return turn;
   }

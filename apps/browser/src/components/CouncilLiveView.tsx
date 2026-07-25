@@ -3,17 +3,16 @@ import { useStore } from "../store";
 import type { CouncilSession, LiveCouncilTurn } from "../types";
 import { colorForSeat, CouncilRoundList } from "./CouncilRoundList";
 
-const CONTROLS_TOOLTIP =
-  "Not yet available — the council engine runs a debate turn to completion and doesn't support mid-run control yet.";
+const FORCE_VOTE_TOOLTIP = "Stop the debate now and have the moderator synthesize from the positions gathered so far.";
 
 /**
  * Live split-view: color-coded transcript (left) + alignment/session status (right rail). Pause,
- * Inject message, and Force vote are shown per the mockup/product spec but disabled — the
- * `Council` engine (packages/core/src/agent/council.ts) runs a turn start-to-finish with no
- * mid-debate control hook yet, so wiring them for real is follow-up backend work, not a UI gap.
+ * Inject message, and Force vote drive the `Council` engine's mid-debate control hook
+ * (`CouncilController` in packages/core/src/agent/council.ts) via the store — disabled only once
+ * the turn has finished, since there's nothing left to control.
  */
 export function CouncilLiveView({ session, live }: { session: CouncilSession; live: LiveCouncilTurn }) {
-  const { accounts } = useStore();
+  const { accounts, pauseCouncilTurn, resumeCouncilTurn, injectCouncilMessage, forceCouncilVote } = useStore();
   const currentRound = Math.max(0, live.rounds.length - 1);
   const maxRounds = live.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
   const alignment = computeAlignment(live.rounds);
@@ -30,9 +29,25 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
     ? "Moderator error"
     : live.finished
       ? "Drafting Decision Brief…"
-      : live.rounds.length === 0
-        ? "Starting…"
-        : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
+      : live.paused
+        ? "Paused"
+        : live.forcedVote
+          ? "Forcing vote…"
+          : live.rounds.length === 0
+            ? "Starting…"
+            : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
+
+  function handleInject() {
+    const message = window.prompt("Inject a message or additional context for the next round:");
+    const trimmed = message?.trim();
+    if (trimmed) injectCouncilMessage(session.id, trimmed);
+  }
+
+  function handleForceVote() {
+    if (window.confirm("Stop the debate now and have the moderator synthesize from the positions gathered so far?")) {
+      forceCouncilVote(session.id);
+    }
+  }
 
   return (
     <div className="main">
@@ -45,13 +60,24 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
           <div className="chat-header-sub">{live.question}</div>
         </div>
         <span className="badge amber">{statusLabel}</span>
-        <button type="button" className="settings-btn" disabled title={CONTROLS_TOOLTIP}>
-          ⏸ Pause
+        <button
+          type="button"
+          className="settings-btn"
+          disabled={live.finished || live.forcedVote}
+          onClick={() => (live.paused ? resumeCouncilTurn(session.id) : pauseCouncilTurn(session.id))}
+        >
+          {live.paused ? "▶ Resume" : "⏸ Pause"}
         </button>
-        <button type="button" className="settings-btn" disabled title={CONTROLS_TOOLTIP}>
+        <button type="button" className="settings-btn" disabled={live.finished || live.forcedVote} onClick={handleInject}>
           💬 Inject message
         </button>
-        <button type="button" className="settings-btn" disabled title={CONTROLS_TOOLTIP}>
+        <button
+          type="button"
+          className="settings-btn"
+          disabled={live.finished || live.forcedVote}
+          title={FORCE_VOTE_TOOLTIP}
+          onClick={handleForceVote}
+        >
           🗳 Force vote
         </button>
       </div>
@@ -59,6 +85,9 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
       <div className="council-layout">
         <div className="council-main">
           <CouncilRoundList rounds={live.rounds} dropped={live.dropped} members={session.members} />
+          {live.lastInjectedMessage && !live.finished && (
+            <div className="council-live-status">💬 Injected for the next round: “{live.lastInjectedMessage}”</div>
+          )}
           {live.moderatorError && (
             <div className="council-answer no-consensus">
               <div className="council-answer-label">Moderator error: {live.moderatorError}</div>

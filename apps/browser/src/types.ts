@@ -163,6 +163,14 @@ export interface LiveCouncilTurn {
   answer?: string;
   moderatorError?: string;
   finished: boolean;
+  /** True between a `paused` event and the following `resumed` event (see `CouncilController`). */
+  paused: boolean;
+  /** True once a `force-vote` event has landed — the debate is wrapping up early instead of running
+   * further rounds. */
+  forcedVote: boolean;
+  /** The most recently applied `injected` event's message, shown as a brief acknowledgment — cleared
+   * isn't necessary since a later injection (or none) simply replaces/keeps it for the rest of the turn. */
+  lastInjectedMessage?: string;
 }
 
 export interface CouncilSession {

@@ -1,4 +1,4 @@
-import type { CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
+import type { CouncilController, CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
 import { Council, createProvider } from "@newvector/core";
 import type { Account, CouncilMemberConfig } from "./types";
 
@@ -31,6 +31,7 @@ export function runCouncilTurn(
   moderatorAccountId: string | undefined,
   question: string,
   onEvent: (event: CouncilEvent) => void,
+  controller?: CouncilController,
 ): Promise<CouncilResult> {
   const councilMembers: CouncilMember[] = members.map((member) => {
     const account = accounts.find((candidate) => candidate.id === member.accountId);
@@ -53,5 +54,5 @@ export function runCouncilTurn(
   const moderator: CouncilMember = { name: "moderator", provider: providerForAccount(moderatorAccount) };
 
   const council = new Council({ members: councilMembers, moderator, maxRounds, onEvent });
-  return council.run(question);
+  return council.run(question, controller);
 }
