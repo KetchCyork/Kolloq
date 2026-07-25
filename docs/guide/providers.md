@@ -6,7 +6,7 @@ Open Work supports five provider backends. All share the same `AgentRunner` inte
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-pnpm cli -- --provider anthropic --model claude-3-5-sonnet-20241022 "Hello"
+pnpm cli -- --provider anthropic --model claude-sonnet-5 "Hello"
 ```
 
 Get a key at [console.anthropic.com](https://console.anthropic.com) → API Keys.

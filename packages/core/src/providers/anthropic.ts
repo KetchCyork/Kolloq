@@ -12,7 +12,7 @@ export interface AnthropicProviderConfig {
 }
 
 export function createAnthropicProvider(config: AnthropicProviderConfig = {}): ChatProvider {
-  const model = config.model ?? "claude-3-5-sonnet-20241022";
+  const model = config.model ?? "claude-sonnet-5";
   const useSubscription = config.authType === "subscription" && !!config.accessToken;
   const anthropic = useSubscription
     ? createSubscriptionAnthropic(config.accessToken as string, config.baseURL)

@@ -3,7 +3,7 @@ import type { AgentIdentity, CouncilSession, ProviderName } from "./types";
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "google", "ollama", "openrouter"];
 
 export const PROVIDER_DEFAULT_MODELS: Record<ProviderName, string> = {
-  anthropic: "claude-3-5-sonnet-20241022",
+  anthropic: "claude-sonnet-5",
   openai: "gpt-4o-mini",
   google: "gemini-1.5-flash",
   ollama: "llama3.1",
