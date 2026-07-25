@@ -33,6 +33,7 @@ function turn(question: string, consensusReached = true): CouncilTurn {
     dropped: [],
     answer: "",
     totalCostNote: "",
+    forcedVote: false,
   };
 }
 

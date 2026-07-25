@@ -174,6 +174,23 @@ describe("classifyCouncilOutcome", () => {
   it("returns cap-hit when the debate ended without consensus but members still responded", () => {
     expect(classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 2 })).toBe("cap-hit");
   });
+
+  it("returns forced-vote when a human ended the debate early, distinct from cap-hit", () => {
+    const capHit = classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 2 });
+    const forcedVote = classifyCouncilOutcome({
+      consensusReached: false,
+      lastRoundPositionCount: 2,
+      forcedVote: true,
+    });
+    expect(forcedVote).toBe("forced-vote");
+    expect(forcedVote).not.toBe(capHit);
+  });
+
+  it("prefers forced-vote over all-dropped when the aborted round has zero positions", () => {
+    expect(
+      classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 0, forcedVote: true }),
+    ).toBe("forced-vote");
+  });
 });
 
 describe("computeTotalCostNote", () => {

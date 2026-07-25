@@ -192,19 +192,23 @@ export function applyCouncilEvent(
   }
 }
 
-export type CouncilOutcome = "consensus" | "cap-hit" | "all-dropped";
+export type CouncilOutcome = "consensus" | "cap-hit" | "all-dropped" | "forced-vote";
 
 /**
  * Classifies why a finished turn's debate stopped, so the UI can tell a real "no consensus" apart
- * from the round cap simply being reached. `Council.run()`'s loop only ever ends one of three ways:
- * unanimous concurrence, the round cap, or every remaining member dropping out mid-round — so once
- * consensus and "last round had zero positions" are ruled out, the round cap is the only case left.
+ * from the round cap simply being reached. `Council.run()`'s loop only ever ends one of four ways:
+ * unanimous concurrence, a human forcing an early vote, every remaining member dropping out
+ * mid-round, or the round cap — so once those are ruled out in order, the round cap is the only
+ * case left. `forcedVote` is checked before `all-dropped` since a forced vote can itself land with
+ * zero positions in the last (aborted) round, and the human's action is the more relevant fact.
  */
 export function classifyCouncilOutcome(params: {
   consensusReached: boolean;
   lastRoundPositionCount: number;
+  forcedVote?: boolean;
 }): CouncilOutcome {
   if (params.consensusReached) return "consensus";
+  if (params.forcedVote) return "forced-vote";
   if (params.lastRoundPositionCount === 0) return "all-dropped";
   return "cap-hit";
 }

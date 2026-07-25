@@ -149,6 +149,9 @@ export interface CouncilTurn {
   answer: string;
   moderatorError?: string;
   totalCostNote: string;
+  /** True when a human ended the debate early via Force vote, rather than it reaching consensus or
+   * exhausting `maxRounds` on its own. */
+  forcedVote: boolean;
 }
 
 /** In-progress (not yet persisted) transcript for a turn that's currently debating. */
