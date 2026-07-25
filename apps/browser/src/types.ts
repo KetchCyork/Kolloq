@@ -66,6 +66,9 @@ export interface AgentIdentity {
 export interface StoredMessage extends ChatMessage {
   id: string;
   createdAt: number;
+  /** Set when this turn failed outright (provider/network error) instead of producing a real reply —
+   * rendered as a distinct error card rather than a normal assistant bubble. */
+  error?: { reason: string; isConfigIssue: boolean };
 }
 
 export interface AgentSession {
@@ -241,7 +244,7 @@ export interface ProjectChatMessage {
   memberId?: string;
   content: string;
   attachments?: ChatAttachment[];
-  error?: { reason: string };
+  error?: { reason: string; isConfigIssue: boolean };
   createdAt: number;
 }
 

@@ -1,4 +1,5 @@
 import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
+import { classifyProviderError } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
@@ -571,10 +572,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
         appendMessages(sessionId, storedTurn);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
         capture({ type: "provider_error", provider: session.providerConfig.provider });
+        const { reason, isConfigIssue } = classifyProviderError(error);
         appendMessages(sessionId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${message}` },
+          { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: { reason, isConfigIssue } },
         ]);
       } finally {
         setLive((prev) => {
@@ -1031,6 +1032,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }));
           appendProjectMessages(projectId, storedTurn);
         } else if (turnError) {
+          const { reason, isConfigIssue } = classifyProviderError(turnError);
           appendProjectMessages(projectId, [
             {
               id: randomId(),
@@ -1038,14 +1040,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               role: "assistant",
               memberId: member.id,
               content: "",
-              error: { reason: turnError.message },
+              error: { reason, isConfigIssue },
             },
           ]);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const { reason, isConfigIssue } = classifyProviderError(error);
         appendProjectMessages(projectId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", memberId: member.id, content: "", error: { reason: message } },
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: "",
+            error: { reason, isConfigIssue },
+          },
         ]);
       } finally {
         setProjectLive((prev) => {
