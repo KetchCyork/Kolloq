@@ -13,8 +13,9 @@ function outcomeLabel(
   maxRounds: number | undefined,
   forcedVote: boolean,
   finalRound: number,
+  budgetExceeded: boolean,
 ): string {
-  const outcome = classifyCouncilOutcome({ consensusReached, lastRoundPositionCount, forcedVote });
+  const outcome = classifyCouncilOutcome({ consensusReached, lastRoundPositionCount, forcedVote, budgetExceeded });
   const cap = maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
   switch (outcome) {
     case "consensus":
@@ -23,6 +24,8 @@ function outcomeLabel(
       return "No answer from any member — best-effort synthesis";
     case "forced-vote":
       return `Vote forced after round ${finalRound} — best-effort synthesis`;
+    case "budget-cap-hit":
+      return "Budget cap reached — best-effort synthesis";
     case "cap-hit":
       return `No consensus after ${cap} round${cap === 1 ? "" : "s"} (round cap) — best-effort synthesis`;
   }
@@ -52,6 +55,7 @@ export function CouncilTranscript({ session }: { session: CouncilSession }) {
                 turn.maxRounds,
                 turn.forcedVote,
                 turn.finalRound,
+                turn.budgetExceeded,
               )}
               {turn.moderatorError ? " · moderator error, fallback summary shown" : ""}
             </div>

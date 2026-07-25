@@ -5,6 +5,7 @@ import {
   councilListSubtitle,
   councilListTitle,
   randomIdentity,
+  reconcileModelSelection,
   renameLegacyCouncilIdentities,
   shortCouncilTitle,
   titleUntitledCouncils,
@@ -28,6 +29,7 @@ function turn(question: string, consensusReached = true): CouncilTurn {
     createdAt: 0,
     rounds: [],
     consensusReached,
+    budgetExceeded: false,
     finalRound: 0,
     maxRounds: 4,
     dropped: [],
@@ -144,5 +146,28 @@ describe("councilListSubtitle", () => {
     const idle = { ...council("a", "Council 1", 0), members: seats(1) };
     expect(councilListSubtitle(idle, false)).toBe("1 agent · Not started");
     expect(councilListSubtitle(idle, true)).toBe("1 agent · Debating…");
+  });
+});
+
+describe("reconcileModelSelection", () => {
+  const live = ["claude-sonnet-5", "claude-opus-4-1", "claude-haiku-4-5"];
+
+  it("keeps the current selection when the provider still offers it", () => {
+    expect(reconcileModelSelection("claude-opus-4-1", live, "claude-sonnet-5")).toBe("claude-opus-4-1");
+  });
+
+  it("falls back to the preferred default when the current selection is retired", () => {
+    // The exact NEW-126 bug: a retired hardcoded default must not survive onto a real account.
+    expect(reconcileModelSelection("claude-3-5-sonnet-20241022", live, "claude-sonnet-5")).toBe("claude-sonnet-5");
+  });
+
+  it("falls back to the first live model when neither the selection nor the preferred default is offered", () => {
+    expect(reconcileModelSelection("gpt-4o-mini", live, "claude-3-5-sonnet-20241022")).toBe("claude-sonnet-5");
+  });
+
+  it("leaves the selection untouched when the catalog is empty (provider unreachable)", () => {
+    expect(reconcileModelSelection("claude-3-5-sonnet-20241022", [], "claude-sonnet-5")).toBe(
+      "claude-3-5-sonnet-20241022",
+    );
   });
 });

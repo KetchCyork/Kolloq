@@ -20,7 +20,7 @@ The orchestrator tool is registered automatically when a session has orchestrati
     "agentName": "Researcher",
     "task": "Find the top 3 papers on transformer attention published in 2024",
     "provider": "anthropic",
-    "model": "claude-3-5-sonnet-20241022"
+    "model": "claude-sonnet-5"
   }
 }
 ```

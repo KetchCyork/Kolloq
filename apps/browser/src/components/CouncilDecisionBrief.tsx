@@ -8,6 +8,7 @@ function outcomeLabel(turn: CouncilTurn): string {
     consensusReached: turn.consensusReached,
     lastRoundPositionCount: turn.rounds.at(-1)?.length ?? 0,
     forcedVote: turn.forcedVote,
+    budgetExceeded: turn.budgetExceeded,
   });
   // Turns recorded before the cap became configurable have no `maxRounds`, so fall back rather
   // than printing "after undefined rounds".
@@ -19,6 +20,8 @@ function outcomeLabel(turn: CouncilTurn): string {
       return "No answer from any member — best-effort synthesis";
     case "forced-vote":
       return `Vote forced after round ${turn.finalRound} — best-effort synthesis`;
+    case "budget-cap-hit":
+      return "Budget cap reached — best-effort synthesis";
     case "cap-hit":
       return `No consensus after ${cap} round${cap === 1 ? "" : "s"} (round cap) — best-effort synthesis`;
   }

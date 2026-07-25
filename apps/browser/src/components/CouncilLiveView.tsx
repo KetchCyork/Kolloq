@@ -33,9 +33,11 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
         ? "Paused"
         : live.forcedVote
           ? "Forcing vote…"
-          : live.rounds.length === 0
-            ? "Starting…"
-            : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
+          : live.budgetExceeded
+            ? "Budget cap reached — drafting Decision Brief…"
+            : live.rounds.length === 0
+              ? "Starting…"
+              : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
 
   function handleInject() {
     const message = window.prompt("Inject a message or additional context for the next round:");

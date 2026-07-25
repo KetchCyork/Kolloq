@@ -678,6 +678,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         question,
         onEvent,
         controller,
+        session.budgetCap,
       );
       // On a moderator error, the "moderator-error" event only carries the error message — the
       // engine's deterministic fallback synthesis (see Council.fallbackSynthesis) lives on the
@@ -704,6 +705,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: nowMs(),
           rounds: liveTurn.rounds,
           consensusReached: liveTurn.consensusReached,
+          budgetExceeded: liveTurn.budgetExceeded,
           finalRound: Math.max(0, liveTurn.rounds.length - 1),
           maxRounds,
           dropped: liveTurn.dropped,
