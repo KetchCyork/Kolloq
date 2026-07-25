@@ -21,15 +21,48 @@ export function createAnthropicProvider(config: AnthropicProviderConfig = {}): C
 }
 
 /**
+ * Newer Anthropic models (Claude Sonnet 5, Opus 5/4.8/4.7, Fable 5, ...) reject the
+ * `temperature`/`top_p`/`top_k` sampling params outright with HTTP 400
+ * (`` `temperature` is deprecated for this model ``). The Vercel AI SDK v4 core forces a
+ * `temperature` onto every request — its `prepareCallSettings` defaults an unset temperature to
+ * `0` (see the `ai@4` "TODO v5 remove default 0 for temperature") — so even though this app never
+ * chooses a sampling value, a spurious `temperature: 0` reaches the API and blocks chat entirely
+ * for those models (NEW-127). This app exposes no way to pick a sampling value, so the safe fix is
+ * to strip the deprecated params from every outgoing Anthropic request body: affected models stop
+ * 400ing, and older models that still accept the params simply fall back to their own default
+ * sampling. Returns the body unchanged when it isn't JSON we can rewrite. Exported for testing.
+ */
+export function stripDeprecatedSamplingParams(body: RequestInit["body"]): RequestInit["body"] {
+  if (typeof body !== "string" || body.length === 0) return body;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body; // not JSON (e.g. a stream/blob) — leave it untouched
+  }
+  if (typeof parsed !== "object" || parsed === null) return body;
+
+  const record = parsed as Record<string, unknown>;
+  if (!("temperature" in record) && !("top_p" in record) && !("top_k" in record)) return body;
+
+  delete record.temperature;
+  delete record.top_p;
+  delete record.top_k;
+  return JSON.stringify(record);
+}
+
+/**
  * There is no backend proxy for provider calls in this app: every request, including this one,
  * fires directly from renderer/browser JS. Anthropic's API rejects browser-origin requests
  * unless this header is present, so its CORS preflight fails and the call dies silently with no
- * visible error. Exported for unit testing.
+ * visible error. Also strips deprecated sampling params (see `stripDeprecatedSamplingParams`).
+ * Exported for unit testing.
  */
 export const browserAccessFetch: typeof fetch = (input, init) => {
   const headers = new Headers(init?.headers);
   headers.set("anthropic-dangerous-direct-browser-access", "true");
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers, body: stripDeprecatedSamplingParams(init?.body) });
 };
 
 /**
@@ -48,7 +81,7 @@ function createSubscriptionAnthropic(accessToken: string, baseURL?: string) {
     headers.set("authorization", `Bearer ${accessToken}`);
     headers.set("anthropic-beta", "oauth-2025-04-20");
     headers.set("anthropic-dangerous-direct-browser-access", "true");
-    return fetch(input, { ...init, headers });
+    return fetch(input, { ...init, headers, body: stripDeprecatedSamplingParams(init?.body) });
   };
   return createAnthropic({ apiKey: "oauth-subscription-placeholder", baseURL, fetch: oauthFetch });
 }
