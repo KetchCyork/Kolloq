@@ -11,7 +11,7 @@ import { createProvider } from "@newvector/core";
 
 const provider = createProvider({
   provider: "anthropic",
-  model: "claude-3-5-sonnet-20241022",
+  model: "claude-sonnet-5",
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 ```
