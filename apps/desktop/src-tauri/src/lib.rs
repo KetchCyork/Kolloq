@@ -2,6 +2,7 @@ mod keychain;
 mod menu;
 mod node;
 mod oauth;
+mod provider;
 mod tray;
 mod working_folder;
 
@@ -23,6 +24,7 @@ pub fn run() {
             oauth::oauth_token_request,
             working_folder::list_working_folder_entries,
             oauth::google_oauth_capture,
+            provider::provider_fetch,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;

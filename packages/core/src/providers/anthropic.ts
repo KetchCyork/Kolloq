@@ -9,14 +9,16 @@ export interface AnthropicProviderConfig {
   authType?: "api_key" | "subscription";
   /** OAuth subscription bearer token (Claude Pro/Max). Used when `authType` is `"subscription"`. */
   accessToken?: string;
+  /** Custom `fetch` (desktop shell routes through Rust to bypass webview CORS). */
+  fetchImpl?: typeof fetch;
 }
 
 export function createAnthropicProvider(config: AnthropicProviderConfig = {}): ChatProvider {
   const model = config.model ?? "claude-sonnet-5";
   const useSubscription = config.authType === "subscription" && !!config.accessToken;
   const anthropic = useSubscription
-    ? createSubscriptionAnthropic(config.accessToken as string, config.baseURL)
-    : createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL, fetch: browserAccessFetch });
+    ? createSubscriptionAnthropic(config.accessToken as string, config.baseURL, config.fetchImpl)
+    : createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL, fetch: withBrowserAccessHeader(config.fetchImpl) });
   return new AiSdkChatProvider("anthropic", model, anthropic(model));
 }
 
@@ -54,16 +56,21 @@ export function stripDeprecatedSamplingParams(body: RequestInit["body"]): Reques
 
 /**
  * There is no backend proxy for provider calls in this app: every request, including this one,
- * fires directly from renderer/browser JS. Anthropic's API rejects browser-origin requests
+ * fires directly from renderer/browser JS (or, in the desktop shell, from `fetchImpl` — the
+ * Tauri-backed relay that bypasses webview CORS). Anthropic's API rejects browser-origin requests
  * unless this header is present, so its CORS preflight fails and the call dies silently with no
  * visible error. Also strips deprecated sampling params (see `stripDeprecatedSamplingParams`).
- * Exported for unit testing.
  */
-export const browserAccessFetch: typeof fetch = (input, init) => {
-  const headers = new Headers(init?.headers);
-  headers.set("anthropic-dangerous-direct-browser-access", "true");
-  return fetch(input, { ...init, headers, body: stripDeprecatedSamplingParams(init?.body) });
-};
+function withBrowserAccessHeader(fetchImpl?: typeof fetch): typeof fetch {
+  return (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set("anthropic-dangerous-direct-browser-access", "true");
+    return (fetchImpl ?? fetch)(input, { ...init, headers, body: stripDeprecatedSamplingParams(init?.body) });
+  };
+}
+
+/** Default (global-`fetch`-backed) browser-access wrapper. Exported for unit testing. */
+export const browserAccessFetch: typeof fetch = withBrowserAccessHeader();
 
 /**
  * Anthropic's subscription OAuth mode authenticates with a bearer token plus the
@@ -74,14 +81,17 @@ export const browserAccessFetch: typeof fetch = (input, init) => {
  * NOTE: the exact bearer/beta contract is Anthropic's published OAuth flow and still needs
  * live end-to-end verification against a real Claude Pro/Max account (see NEW-67).
  */
-function createSubscriptionAnthropic(accessToken: string, baseURL?: string) {
+function createSubscriptionAnthropic(accessToken: string, baseURL?: string, fetchImpl?: typeof fetch) {
+  // Wrap the platform fetch (Tauri-backed in the desktop shell) so the token exchange also bypasses
+  // webview CORS — calling the global `fetch` here would be blocked just like a plain API-key call.
+  const baseFetch = fetchImpl ?? fetch;
   const oauthFetch: typeof fetch = async (input, init) => {
     const headers = new Headers(init?.headers);
     headers.delete("x-api-key");
     headers.set("authorization", `Bearer ${accessToken}`);
     headers.set("anthropic-beta", "oauth-2025-04-20");
     headers.set("anthropic-dangerous-direct-browser-access", "true");
-    return fetch(input, { ...init, headers, body: stripDeprecatedSamplingParams(init?.body) });
+    return baseFetch(input, { ...init, headers, body: stripDeprecatedSamplingParams(init?.body) });
   };
   return createAnthropic({ apiKey: "oauth-subscription-placeholder", baseURL, fetch: oauthFetch });
 }

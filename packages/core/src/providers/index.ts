@@ -12,6 +12,7 @@ export { createAnthropicProvider, listAnthropicModels } from "./anthropic.js";
 export { createGoogleProvider, listGoogleModels } from "./google.js";
 export { createOllamaProvider, listOllamaModels } from "./ollama.js";
 export { createOpenRouterProvider, listOpenRouterModels } from "./openrouter.js";
+export { classifyProviderError, type ProviderErrorReason } from "./errorReason.js";
 
 export type ProviderName = "openai" | "anthropic" | "google" | "ollama" | "openrouter";
 
@@ -24,6 +25,12 @@ export interface CreateProviderOptions {
   authType?: "api_key" | "subscription";
   /** OAuth access token used when `authType` is `"subscription"`. */
   accessToken?: string;
+  /**
+   * Custom `fetch` for outbound provider requests. The desktop shell passes a Tauri-backed `fetch`
+   * that relays through Rust to bypass webview CORS (provider APIs don't send CORS headers for the
+   * app origin). Left `undefined` in the plain browser build to use the global `fetch`.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 /** Single entry point for constructing a `ChatProvider` from a provider name + config. */
