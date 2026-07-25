@@ -28,6 +28,7 @@ function turn(question: string, consensusReached = true): CouncilTurn {
     createdAt: 0,
     rounds: [],
     consensusReached,
+    budgetExceeded: false,
     finalRound: 0,
     maxRounds: 4,
     dropped: [],

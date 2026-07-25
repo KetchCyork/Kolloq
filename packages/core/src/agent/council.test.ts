@@ -302,4 +302,63 @@ describe("Council", () => {
     expect(moderatorPromptText).not.toContain(idB);
     expect(moderatorPromptText).toContain("Claude · Skeptic");
   });
+
+  it("halts the debate once accumulated cost meets the budget cap, and still synthesizes", async () => {
+    const providerA = new StubProvider("A", [
+      "Answer A0",
+      "DISSENT: not convinced\nStill dissenting round 1",
+      "Best-effort synthesis under budget",
+    ]);
+    const providerB = new StubProvider("B", ["Answer B0", "DISSENT: prefer Y\nStill dissenting round 1"]);
+
+    const events: CouncilEvent[] = [];
+    // Each round produces 2 positions; a flat $1-per-position estimator crosses a $3 cap partway
+    // through round 1 (round 0: $2 total, round 1: $4 total >= $3), well short of the 5-round cap.
+    const council = new Council({
+      members: [
+        { name: "A", provider: providerA },
+        { name: "B", provider: providerB },
+      ],
+      maxRounds: 5,
+      budgetCap: 3,
+      estimateCost: () => 1,
+      onEvent: (event) => events.push(event),
+    });
+
+    const result = await council.run("Should we do X?");
+
+    expect(result.budgetExceeded).toBe(true);
+    expect(result.consensusReached).toBe(false);
+    expect(result.finalRound).toBe(1);
+    expect(result.rounds).toHaveLength(2);
+    expect(result.answer).toBe("Best-effort synthesis under budget");
+
+    const budgetEvent = events.find((event) => event.type === "budget-exceeded");
+    expect(budgetEvent).toMatchObject({ type: "budget-exceeded", round: 1, spent: 4, cap: 3 });
+    expect(events.some((event) => event.type === "moderator-synthesis")).toBe(true);
+  });
+
+  it("ignores budgetCap when no estimateCost callback is supplied", async () => {
+    const providerA = new StubProvider("A", [
+      "Answer A0",
+      "DISSENT: not convinced\nStill dissenting",
+      "Best-effort synthesis",
+    ]);
+    const providerB = new StubProvider("B", ["Answer B0", "DISSENT: prefer Y\nStill dissenting"]);
+
+    const council = new Council({
+      members: [
+        { name: "A", provider: providerA },
+        { name: "B", provider: providerB },
+      ],
+      maxRounds: 2,
+      budgetCap: 0,
+    });
+
+    const result = await council.run("Should we do X?");
+
+    expect(result.budgetExceeded).toBe(false);
+    expect(result.finalRound).toBe(1);
+    expect(result.rounds).toHaveLength(2);
+  });
 });
