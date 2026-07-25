@@ -117,7 +117,16 @@ function providerForMember(
 }
 
 export function initialLiveCouncilTurn(question: string, maxRounds: number): LiveCouncilTurn {
-  return { question, rounds: [], currentRound: 0, maxRounds, dropped: [], consensusReached: false, finished: false };
+  return {
+    question,
+    rounds: [],
+    currentRound: 0,
+    maxRounds,
+    dropped: [],
+    consensusReached: false,
+    budgetExceeded: false,
+    finished: false,
+  };
 }
 
 /**
@@ -165,6 +174,8 @@ export function applyCouncilEvent(
     }
     case "consensus":
       return { ...turn, consensusReached: true };
+    case "budget-exceeded":
+      return { ...turn, budgetExceeded: true };
     case "moderator-synthesis":
       return { ...turn, answer: event.content, finished: true };
     case "moderator-error":
@@ -174,20 +185,23 @@ export function applyCouncilEvent(
   }
 }
 
-export type CouncilOutcome = "consensus" | "cap-hit" | "all-dropped";
+export type CouncilOutcome = "consensus" | "budget-cap-hit" | "cap-hit" | "all-dropped";
 
 /**
  * Classifies why a finished turn's debate stopped, so the UI can tell a real "no consensus" apart
- * from the round cap simply being reached. `Council.run()`'s loop only ever ends one of three ways:
- * unanimous concurrence, the round cap, or every remaining member dropping out mid-round — so once
- * consensus and "last round had zero positions" are ruled out, the round cap is the only case left.
+ * from the round cap or budget cap simply being reached. `Council.run()`'s loop only ever ends one
+ * of four ways: unanimous concurrence, the budget cap, the round cap, or every remaining member
+ * dropping out mid-round — so once consensus and "last round had zero positions" are ruled out,
+ * `budgetExceeded` distinguishes the last two cases.
  */
 export function classifyCouncilOutcome(params: {
   consensusReached: boolean;
   lastRoundPositionCount: number;
+  budgetExceeded?: boolean;
 }): CouncilOutcome {
   if (params.consensusReached) return "consensus";
   if (params.lastRoundPositionCount === 0) return "all-dropped";
+  if (params.budgetExceeded) return "budget-cap-hit";
   return "cap-hit";
 }
 
