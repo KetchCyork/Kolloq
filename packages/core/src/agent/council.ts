@@ -42,6 +42,29 @@ export interface DroppedMember {
   error: string;
 }
 
+/** One member's judged agreement with the round's leading proposal, per the product spec's 0-10
+ * convergence check (moderator identifies the leading proposal, scores each member's alignment
+ * with it). Produced by an extra moderator LLM call per round — see `Council.scoreAlignment` —
+ * not self-reported by the member, so it's independent of `MemberPosition.stance`. */
+export interface AlignmentScore {
+  member: string;
+  /** Mirrors `CouncilMember.label` (or `name` if no label was set). */
+  label: string;
+  /** 0 (strongly disagrees with the leading proposal) to 10 (fully agrees). */
+  score: number;
+  /** The judge's one-line reason for the score, when it provided one. */
+  justification?: string;
+}
+
+/** One round's alignment judging: every member the judge scored, plus their average. Only
+ * produced for round > 0 (round 0 is independent answers — there's no leading proposal yet to
+ * score agreement against) and only when the judge call succeeded and parsed at least one score. */
+export interface RoundAlignment {
+  round: number;
+  scores: AlignmentScore[];
+  average: number;
+}
+
 export interface CouncilOptions {
   members: CouncilMember[];
   /** Optional distinct, non-debating moderator that only synthesizes the final answer and never
@@ -57,6 +80,7 @@ export type CouncilEvent =
   | { type: "round-start"; round: number }
   | { type: "member-position"; round: number; position: MemberPosition }
   | { type: "member-dropped"; round: number; member: string; label: string; error: string }
+  | { type: "alignment-scores"; round: number; scores: AlignmentScore[]; average: number }
   | { type: "consensus"; round: number }
   | { type: "moderator-synthesis"; content: string }
   | { type: "moderator-error"; error: string };
@@ -74,6 +98,9 @@ export interface CouncilResult {
   answer: string;
   /** Set if the moderator's provider errored while synthesizing; `answer` is then a fallback summary. */
   moderatorError?: string;
+  /** One entry per round (>0) whose alignment-judging call succeeded; rounds where the judge call
+   * failed, or round 0, are simply absent — a failure here never fails or discards the debate. */
+  alignmentScores: RoundAlignment[];
 }
 
 const MIN_MEMBERS = 2;
@@ -116,6 +143,7 @@ export class Council {
   async run(question: string): Promise<CouncilResult> {
     const rounds: MemberPosition[][] = [];
     const dropped: DroppedMember[] = [];
+    const alignmentScores: RoundAlignment[] = [];
     let active = this.members;
     let consensusReached = false;
     let finalRound = 0;
@@ -148,6 +176,16 @@ export class Council {
       active = survivors;
       finalRound = round;
 
+      // Round 0 is independent first answers — there's no leading proposal yet to judge agreement
+      // against, so alignment scoring starts at round 1, same as the stance-based consensus check below.
+      if (round > 0 && positions.length > 0) {
+        const alignment = await this.scoreAlignment(question, round, positions);
+        if (alignment) {
+          alignmentScores.push(alignment);
+          this.onEvent?.({ type: "alignment-scores", round, scores: alignment.scores, average: alignment.average });
+        }
+      }
+
       if (round > 0 && positions.length > 0 && positions.every((position) => position.stance === "concur")) {
         consensusReached = true;
         this.onEvent?.({ type: "consensus", round });
@@ -166,7 +204,7 @@ export class Council {
       this.onEvent?.({ type: "moderator-error", error: moderatorError });
     }
 
-    return { question, rounds, consensusReached, finalRound, dropped, answer, moderatorError };
+    return { question, rounds, consensusReached, finalRound, dropped, answer, moderatorError, alignmentScores };
   }
 
   private async askInitial(member: CouncilMember, question: string): Promise<MemberPosition> {
@@ -239,6 +277,66 @@ export class Council {
       content: content.trim(),
       stance: "dissent",
       reason: "no explicit stance given",
+    };
+  }
+
+  /**
+   * A second, independent moderator call per round (distinct from the debate turns themselves):
+   * asks the moderator to identify the round's leading proposal and score each member's agreement
+   * with it 0-10, per the product spec's convergence check. Best-effort like `synthesize`'s Decision
+   * Brief format — no structured-output contract is enforced, so a provider error or an answer that
+   * doesn't follow the requested format just yields no score for this round rather than failing the
+   * round (or the whole debate).
+   */
+  private async scoreAlignment(
+    question: string,
+    round: number,
+    positions: MemberPosition[],
+  ): Promise<RoundAlignment | null> {
+    const labeled = positions
+      .map((position) => `${position.label}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
+      .join("\n\n");
+    const prompt = [
+      `Question: ${question}`,
+      "",
+      `Round ${round} positions:`,
+      labeled,
+      "",
+      "Identify the leading proposal among these positions. Then, for each participant listed above, rate how " +
+        "closely its position aligns with that leading proposal, from 0 (strongly disagrees) to 10 (fully " +
+        'agrees). Respond with exactly one line per participant, in this format: "<name>: <score>/10 - ' +
+        '<one-line reason>", using each participant\'s name exactly as given above.',
+    ].join("\n");
+
+    let content: string;
+    try {
+      const response = await this.moderator.provider.chat({ messages: this.buildMessages(this.moderator, prompt) });
+      content = response.message.content;
+    } catch {
+      return null;
+    }
+
+    const scores = positions
+      .map((position) => this.parseAlignmentScore(position, content))
+      .filter((score): score is AlignmentScore => score !== null);
+    if (scores.length === 0) return null;
+
+    const average = scores.reduce((sum, score) => sum + score.score, 0) / scores.length;
+    return { round, scores, average };
+  }
+
+  private parseAlignmentScore(position: MemberPosition, content: string): AlignmentScore | null {
+    const escaped = position.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = new RegExp(`${escaped}\\s*:\\s*(\\d{1,2})\\s*/\\s*10\\s*[-–—:]*\\s*(.*)`, "i").exec(content);
+    if (!match) return null;
+    const score = Number(match[1]);
+    if (Number.isNaN(score)) return null;
+    const justification = match[2]?.trim();
+    return {
+      member: position.member,
+      label: position.label,
+      score: Math.max(0, Math.min(10, score)),
+      justification: justification || undefined,
     };
   }
 

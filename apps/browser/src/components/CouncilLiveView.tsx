@@ -1,10 +1,23 @@
-import { computeAlignment, computeTotalCostNote, DEFAULT_COUNCIL_MAX_ROUNDS } from "../councilReducer";
+import {
+  computeAlignment,
+  computeTotalCostNote,
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  latestRoundAlignment,
+} from "../councilReducer";
 import { useStore } from "../store";
 import type { CouncilSession, LiveCouncilTurn } from "../types";
 import { colorForSeat, CouncilRoundList } from "./CouncilRoundList";
 
 const CONTROLS_TOOLTIP =
   "Not yet available — the council engine runs a debate turn to completion and doesn't support mid-run control yet.";
+
+/** Badge color for a 0-10 moderator-judged alignment score: red reads as active disagreement, amber
+ * as partial, green as substantially aligned. Thresholds are a UI convenience, not a scoring rule. */
+function scoreBadgeClass(score: number): string {
+  if (score >= 7) return "green";
+  if (score >= 4) return "amber";
+  return "red";
+}
 
 /**
  * Live split-view: color-coded transcript (left) + alignment/session status (right rail). Pause,
@@ -16,7 +29,10 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
   const { accounts } = useStore();
   const currentRound = Math.max(0, live.rounds.length - 1);
   const maxRounds = live.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
-  const alignment = computeAlignment(live.rounds);
+  const latestAlignment = latestRoundAlignment(live.alignmentScores);
+  // Real moderator-judged 0-10 score once round 1's judging call resolves; before that (or if it
+  // never resolves for this turn) fall back to the concur/dissent share proxy.
+  const alignmentPercent = latestAlignment ? latestAlignment.average * 10 : computeAlignment(live.rounds);
   const costNote = computeTotalCostNote(live.rounds, live.answer, session.members, accounts, session.moderatorAccountId);
 
   const latestStanceByMember = new Map<string, "concur" | "dissent">();
@@ -25,6 +41,7 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
       if (position.stance) latestStanceByMember.set(position.memberId, position.stance);
     }
   }
+  const latestScoreByMember = new Map(latestAlignment?.scores.map((score) => [score.memberId, score]) ?? []);
 
   const statusLabel = live.moderatorError
     ? "Moderator error"
@@ -70,23 +87,32 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
         <aside className="council-side">
           <div className="council-side-h">Alignment</div>
           <div className="meter">
-            <div style={{ width: `${alignment ?? 0}%` }} />
+            <div style={{ width: `${alignmentPercent ?? 0}%` }} />
           </div>
           <div className="hint">
-            {alignment === null
-              ? "Waiting for round 1 rebuttals — round 0 is independent, nothing to agree on yet."
-              : `${alignment}% of round ${currentRound} respondents concur.`}
+            {latestAlignment
+              ? `${latestAlignment.average.toFixed(1)}/10 average alignment — round ${latestAlignment.round} vs. the leading proposal.`
+              : alignmentPercent === null
+                ? "Waiting for round 1 rebuttals — round 0 is independent, nothing to agree on yet."
+                : `${alignmentPercent}% of round ${currentRound} respondents concur.`}
           </div>
 
-          <div className="council-side-h">Latest stance</div>
+          <div className="council-side-h">{latestAlignment ? "Alignment score" : "Latest stance"}</div>
           {session.members.map((member, index) => {
+            const score = latestScoreByMember.get(member.id);
             const stance = latestStanceByMember.get(member.id);
             return (
               <div className="council-score-row" key={member.id}>
                 <span className="dot" style={{ background: colorForSeat(member.id, session.members) }} />
                 {member.role || `Seat ${index + 1}`}
-                <span className="val">
-                  {stance ? <span className={`badge ${stance === "concur" ? "green" : "amber"}`}>{stance}</span> : "–"}
+                <span className="val" title={score?.justification}>
+                  {score ? (
+                    <span className={`badge ${scoreBadgeClass(score.score)}`}>{score.score}/10</span>
+                  ) : stance ? (
+                    <span className={`badge ${stance === "concur" ? "green" : "amber"}`}>{stance}</span>
+                  ) : (
+                    "–"
+                  )}
                 </span>
               </div>
             );

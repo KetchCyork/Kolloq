@@ -41,7 +41,12 @@ describe("Council", () => {
   });
 
   it("ends early on unanimous concurrence and synthesizes via the first member's provider", async () => {
-    const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B", "Final synthesized answer"]);
+    const providerA = new StubProvider("A", [
+      "Answer A0",
+      "CONCUR I agree with B",
+      "A: 9/10 - fully aligned\nB: 8/10 - minor wording difference",
+      "Final synthesized answer",
+    ]);
     const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
 
     const events: CouncilEvent[] = [];
@@ -68,8 +73,21 @@ describe("Council", () => {
     ]);
     expect(result.dropped).toEqual([]);
     expect(result.answer).toBe("Final synthesized answer");
+    expect(result.alignmentScores).toEqual([
+      {
+        round: 1,
+        scores: [
+          { member: "A", label: "A", score: 9, justification: "fully aligned" },
+          { member: "B", label: "B", score: 8, justification: "minor wording difference" },
+        ],
+        average: 8.5,
+      },
+    ]);
 
     expect(events.some((event) => event.type === "consensus" && event.round === 1)).toBe(true);
+    expect(
+      events.some((event) => event.type === "alignment-scores" && event.round === 1 && event.average === 8.5),
+    ).toBe(true);
     expect(events.some((event) => event.type === "moderator-synthesis")).toBe(true);
   });
 
@@ -77,6 +95,7 @@ describe("Council", () => {
     const providerA = new StubProvider("A", [
       "Answer A0",
       "DISSENT: not convinced\nStill think X is risky",
+      "A: 3/10 - still dissenting\nB: 4/10 - different proposal",
       "Best-effort synthesis noting dissent",
     ]);
     const providerB = new StubProvider("B", ["Answer B0", "DISSENT: prefer Y\nY is safer"]);
@@ -102,7 +121,13 @@ describe("Council", () => {
   });
 
   it("drops a member whose provider errors mid-debate and continues the council with the rest", async () => {
-    const providerA = new StubProvider("A", ["A initial", "__throw__", "A synthesis final answer"]);
+    const providerA = new StubProvider("A", [
+      "A initial",
+      "__throw__",
+      "B: 4/10 - still dissenting",
+      "B: 10/10 - resolved",
+      "A synthesis final answer",
+    ]);
     const providerB = new StubProvider("B", [
       "B initial",
       "DISSENT: still unsure\nB's dissenting position",
@@ -131,6 +156,11 @@ describe("Council", () => {
     expect(result.finalRound).toBe(2);
     // Moderator is still the first member (A)'s provider, even though A dropped out of the debate itself.
     expect(result.answer).toBe("A synthesis final answer");
+    // Alignment scoring still runs each round even though A (the moderator) dropped out of debating.
+    expect(result.alignmentScores).toEqual([
+      { round: 1, scores: [{ member: "B", label: "B", score: 4, justification: "still dissenting" }], average: 4 },
+      { round: 2, scores: [{ member: "B", label: "B", score: 10, justification: "resolved" }], average: 10 },
+    ]);
 
     expect(events.some((event) => event.type === "member-dropped" && event.member === "A" && event.round === 1)).toBe(
       true,
@@ -138,7 +168,12 @@ describe("Council", () => {
   });
 
   it("falls back to a deterministic summary (without discarding the completed debate) when the moderator's own provider errors", async () => {
-    const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B", "__throw__"]);
+    const providerA = new StubProvider("A", [
+      "Answer A0",
+      "CONCUR I agree with B",
+      "A: 10/10 - full agreement\nB: 10/10 - full agreement",
+      "__throw__",
+    ]);
     const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
 
     const events: CouncilEvent[] = [];
@@ -214,7 +249,10 @@ describe("Council", () => {
   it("uses an explicit non-debating moderator when provided, instead of members[0]", async () => {
     const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
     const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
-    const moderatorProvider = new StubProvider("Mod", ["Recommendation: do X"]);
+    const moderatorProvider = new StubProvider("Mod", [
+      "A: 9/10 - aligned\nB: 9/10 - aligned",
+      "Recommendation: do X",
+    ]);
 
     const events: CouncilEvent[] = [];
     const council = new Council({
@@ -301,5 +339,123 @@ describe("Council", () => {
     expect(moderatorPromptText).not.toContain(idA);
     expect(moderatorPromptText).not.toContain(idB);
     expect(moderatorPromptText).toContain("Claude · Skeptic");
+  });
+
+  describe("alignment scoring", () => {
+    it("never scores round 0 — it's independent answers, with no leading proposal yet to judge agreement against", async () => {
+      const providerA = new StubProvider("A", [
+        "Answer A0",
+        "CONCUR agreed",
+        "A: 10/10 - aligned\nB: 10/10 - aligned",
+        "Final answer",
+      ]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR agreed too"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        onEvent: (event) => events.push(event),
+      });
+
+      const result = await council.run("Q");
+
+      const alignmentEvents = events.filter((event) => event.type === "alignment-scores");
+      expect(alignmentEvents).toHaveLength(1);
+      expect(alignmentEvents[0]).toMatchObject({ round: 1 });
+      expect(result.alignmentScores.every((entry) => entry.round > 0)).toBe(true);
+    });
+
+    it("does not fail the round or the debate when the alignment-judging call itself errors", async () => {
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", ["__throw__", "Recommendation: do X"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+        onEvent: (event) => events.push(event),
+      });
+
+      const result = await council.run("Should we do X?");
+
+      expect(result.alignmentScores).toEqual([]);
+      expect(events.some((event) => event.type === "alignment-scores")).toBe(false);
+      // The judge call failing must not derail the (separate) synthesis call after it.
+      expect(result.answer).toBe("Recommendation: do X");
+    });
+
+    it("ignores a judge response that doesn't follow the requested scoring format, without adding a score", async () => {
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", ["I'm not going to score this.", "Recommendation: do X"]);
+
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+      });
+
+      const result = await council.run("Should we do X?");
+
+      expect(result.alignmentScores).toEqual([]);
+      expect(result.answer).toBe("Recommendation: do X");
+    });
+
+    it("clamps an out-of-range judge score into 0-10", async () => {
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", [
+        "A: 12/10 - overshot\nB: 9/10 - aligned",
+        "Recommendation: do X",
+      ]);
+
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+      });
+
+      const result = await council.run("Should we do X?");
+
+      expect(result.alignmentScores[0]?.scores.find((score) => score.member === "A")?.score).toBe(10);
+    });
+
+    it("never embeds a member's opaque id in the alignment-scoring prompt", async () => {
+      const idA = "11111111-1111-1111-1111-111111111111";
+      const idB = "22222222-2222-2222-2222-222222222222";
+      const providerA = new StubProvider(idA, ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider(idB, ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", [
+        "Skeptic Bot: 9/10 - aligned\nOptimist Bot: 9/10 - aligned",
+        "Recommendation: do X",
+      ]);
+
+      const council = new Council({
+        members: [
+          { name: idA, label: "Skeptic Bot", provider: providerA },
+          { name: idB, label: "Optimist Bot", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+      });
+
+      await council.run("Should we do X?");
+
+      const scoringPromptText = moderatorProvider.requests[0]!.messages.map((message) => message.content).join("\n");
+      expect(scoringPromptText).not.toContain(idA);
+      expect(scoringPromptText).not.toContain(idB);
+      expect(scoringPromptText).toContain("Skeptic Bot");
+      expect(scoringPromptText).toContain("Optimist Bot");
+    });
   });
 });

@@ -5,6 +5,7 @@ import type {
   CouncilDroppedMember,
   CouncilMemberConfig,
   CouncilMemberPosition,
+  CouncilRoundAlignment,
   LiveCouncilTurn,
   ProviderName,
 } from "./types";
@@ -117,7 +118,16 @@ function providerForMember(
 }
 
 export function initialLiveCouncilTurn(question: string, maxRounds: number): LiveCouncilTurn {
-  return { question, rounds: [], currentRound: 0, maxRounds, dropped: [], consensusReached: false, finished: false };
+  return {
+    question,
+    rounds: [],
+    currentRound: 0,
+    maxRounds,
+    dropped: [],
+    consensusReached: false,
+    finished: false,
+    alignmentScores: [],
+  };
 }
 
 /**
@@ -162,6 +172,19 @@ export function applyCouncilEvent(
         error: event.error,
       };
       return { ...turn, dropped: [...turn.dropped, dropped] };
+    }
+    case "alignment-scores": {
+      const alignment: CouncilRoundAlignment = {
+        round: event.round,
+        scores: event.scores.map((score) => ({
+          memberId: score.member,
+          label: score.label,
+          score: score.score,
+          justification: score.justification,
+        })),
+        average: event.average,
+      };
+      return { ...turn, alignmentScores: [...turn.alignmentScores, alignment] };
     }
     case "consensus":
       return { ...turn, consensusReached: true };
@@ -212,16 +235,21 @@ export function computeTotalCostNote(
   return formatCostEstimate(sumCostEstimates(estimates));
 }
 
-/** Approximate 0-100 "alignment" reading for the live sidebar meter: the share of the latest
- * round's respondents who concurred. There's no numeric per-agent agreement score in the engine
- * (see `packages/core/src/agent/council.ts`) — only a binary concur/dissent stance — so this is a
- * deliberately simple proxy, not the 0-10 score the product spec describes. Round 0 has no stance
- * (nothing to agree/disagree with yet), so it reads as `null` until round 1 exists. */
+/** Fallback 0-100 "alignment" reading for the live sidebar meter, used only when no moderator-judged
+ * `CouncilRoundAlignment` exists yet for this turn (e.g. the judging call hasn't resolved, failed, or
+ * this is a turn saved before per-agent scoring existed): the share of the latest round's respondents
+ * who concurred. Round 0 has no stance (nothing to agree/disagree with yet), so it reads as `null`
+ * until round 1 exists. Prefer `latestRoundAlignment` when it returns a value. */
 export function computeAlignment(rounds: CouncilMemberPosition[][]): number | null {
   const latestRoundWithStance = rounds.slice(1).at(-1);
   if (!latestRoundWithStance || latestRoundWithStance.length === 0) return null;
   const concurring = latestRoundWithStance.filter((position) => position.stance === "concur").length;
   return Math.round((concurring / latestRoundWithStance.length) * 100);
+}
+
+/** Most recent moderator-judged alignment round, or `undefined` when none has resolved yet. */
+export function latestRoundAlignment(alignmentScores: CouncilRoundAlignment[]): CouncilRoundAlignment | undefined {
+  return alignmentScores.at(-1);
 }
 
 const DECISION_BRIEF_HEADERS = [
