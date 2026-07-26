@@ -2,6 +2,22 @@ import { useState } from "react";
 import { signInWithPassword, type AppSession } from "../openWorkAccount";
 import { beginGoogleSignIn, googleSignInAvailable, googleUnavailableReason, runGoogleSignIn } from "../openWorkGoogleAuth";
 
+/**
+ * Extracts a human-readable reason from whatever `continueWithGoogle` caught. Our own JS throws
+ * `Error`s (`err.message`), but a failing Tauri command rejects with the raw string the Rust side
+ * returned. Surfacing that string is what turns an opaque "Google sign-in failed." into an
+ * actionable message like "…denied or cancelled (access_denied)." or a loopback bind error.
+ */
+export function googleSignInErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string" && msg.trim()) return msg;
+  }
+  return "Google sign-in failed.";
+}
+
 const TIERS = [
   { name: "Free", detail: "2 agents · 1 project", detail2: "1 council/mo" },
   { name: "Pro", detail: "10 agents · 10 projects", detail2: "25 councils/mo" },
@@ -24,7 +40,11 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: AppSession)
       const signedIn = await runGoogleSignIn(session);
       onSignedIn(signedIn);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Google sign-in failed.");
+      // The desktop shell's Rust commands (google_oauth_capture, oauth_token_request) reject with a
+      // plain string, not an Error — e.g. "Google sign-in was denied or cancelled (access_denied)."
+      // or "Could not start loopback listener on port 8765: …". `err instanceof Error` is false for
+      // those, so collapsing them to a generic message threw away the one line that names the cause.
+      setError(googleSignInErrorMessage(err));
     } finally {
       setBusy(false);
     }
