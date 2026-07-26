@@ -49,7 +49,11 @@ function log(msg) {
 // from that built output, so core must be compiled first. Idempotent and cheap; keeps this script
 // runnable on its own (not just after a full workspace build).
 log("building @newvector/core …");
-execFileSync("pnpm", ["--filter", "@newvector/core", "build"], { cwd: repoRoot, stdio: "inherit" });
+execFileSync("pnpm", ["--filter", "@newvector/core", "build"], {
+  cwd: repoRoot,
+  stdio: "inherit",
+  shell: process.platform === "win32",
+});
 
 // --- 2. Bundle the sidecar into one self-contained file ----------------------------------------
 log("bundling tool-host.cjs with esbuild …");
