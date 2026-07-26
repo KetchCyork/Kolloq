@@ -1,3 +1,4 @@
+import { classifyProviderError } from "../providers/errorReason.js";
 import type { ChatMessage, ChatProvider } from "../providers/types.js";
 
 /** One seat on the council. Each member is wired to its own provider, unlike `AgentOrchestrator`
@@ -73,6 +74,14 @@ export interface CouncilOptions {
   moderator?: CouncilMember;
   /** Hard cap on debate rounds (round 0 counts as the first). Default 4. */
   maxRounds?: number;
+  /** Hard budget cap in USD. Once accumulated estimated spend (as reported by `estimateCost`) meets
+   * or exceeds this after a round, the round loop halts and moves straight to synthesis, the same
+   * way hitting `maxRounds` does. No-op unless `estimateCost` is also supplied — the engine has no
+   * built-in notion of provider pricing, so a caller that wants enforcement must supply one. */
+  budgetCap?: number;
+  /** Estimates the USD cost of one member's response. Called once per position produced (each round,
+   * each surviving member) and accumulated across the whole debate to enforce `budgetCap`. */
+  estimateCost?: (member: CouncilMember, content: string) => number;
   onEvent?: (event: CouncilEvent) => void;
 }
 
@@ -82,6 +91,7 @@ export type CouncilEvent =
   | { type: "member-dropped"; round: number; member: string; label: string; error: string }
   | { type: "alignment-scores"; round: number; scores: AlignmentScore[]; average: number }
   | { type: "consensus"; round: number }
+  | { type: "budget-exceeded"; round: number; spent: number; cap: number }
   | { type: "moderator-synthesis"; content: string }
   | { type: "moderator-error"; error: string };
 
@@ -92,6 +102,9 @@ export interface CouncilResult {
   consensusReached: boolean;
   /** Index of the last round that actually ran (may be < maxRounds - 1 if consensus was reached early). */
   finalRound: number;
+  /** True if the debate stopped early because accumulated spend met or exceeded `budgetCap`, rather
+   * than reaching consensus or `maxRounds`. */
+  budgetExceeded: boolean;
   dropped: DroppedMember[];
   /** The moderator's synthesized final answer, or a deterministic fallback summary if the moderator's
    * provider errored (see `moderatorError`) — the completed debate is never discarded on a moderator failure. */
@@ -125,6 +138,8 @@ const DECISION_BRIEF_FORMAT =
 export class Council {
   private readonly members: CouncilMember[];
   private readonly maxRounds: number;
+  private readonly budgetCap?: number;
+  private readonly estimateCost?: (member: CouncilMember, content: string) => number;
   private readonly onEvent?: (event: CouncilEvent) => void;
   private readonly moderator: CouncilMember;
 
@@ -136,6 +151,8 @@ export class Council {
     }
     this.members = options.members;
     this.maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
+    this.budgetCap = options.budgetCap;
+    this.estimateCost = options.estimateCost;
     this.onEvent = options.onEvent;
     this.moderator = options.moderator ?? this.members[0]!;
   }
@@ -146,6 +163,8 @@ export class Council {
     const alignmentScores: RoundAlignment[] = [];
     let active = this.members;
     let consensusReached = false;
+    let budgetExceeded = false;
+    let spent = 0;
     let finalRound = 0;
 
     for (let round = 0; round < this.maxRounds && active.length > 0; round++) {
@@ -165,7 +184,7 @@ export class Council {
           survivors.push(member);
           this.onEvent?.({ type: "member-position", round, position });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = classifyProviderError(error).reason;
           const label = member.label ?? member.name;
           dropped.push({ member: member.name, label, round, error: message });
           this.onEvent?.({ type: "member-dropped", round, member: member.name, label, error: message });
@@ -191,6 +210,17 @@ export class Council {
         this.onEvent?.({ type: "consensus", round });
         break;
       }
+
+      if (this.estimateCost) {
+        for (let i = 0; i < positions.length; i++) {
+          spent += this.estimateCost(survivors[i]!, positions[i]!.content);
+        }
+        if (this.budgetCap !== undefined && spent >= this.budgetCap) {
+          budgetExceeded = true;
+          this.onEvent?.({ type: "budget-exceeded", round, spent, cap: this.budgetCap });
+          break;
+        }
+      }
     }
 
     let answer: string;
@@ -199,12 +229,22 @@ export class Council {
       answer = await this.synthesize(question, rounds, dropped, consensusReached);
       this.onEvent?.({ type: "moderator-synthesis", content: answer });
     } catch (error) {
-      moderatorError = error instanceof Error ? error.message : String(error);
+      moderatorError = classifyProviderError(error).reason;
       answer = this.fallbackSynthesis(rounds, dropped, consensusReached);
       this.onEvent?.({ type: "moderator-error", error: moderatorError });
     }
 
-    return { question, rounds, consensusReached, finalRound, dropped, answer, moderatorError, alignmentScores };
+    return {
+      question,
+      rounds,
+      consensusReached,
+      finalRound,
+      budgetExceeded,
+      dropped,
+      answer,
+      moderatorError,
+      alignmentScores,
+    };
   }
 
   private async askInitial(member: CouncilMember, question: string): Promise<MemberPosition> {

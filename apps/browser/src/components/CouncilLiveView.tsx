@@ -47,9 +47,11 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
     ? "Moderator error"
     : live.finished
       ? "Drafting Decision Brief…"
-      : live.rounds.length === 0
-        ? "Starting…"
-        : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
+      : live.budgetExceeded
+        ? "Budget cap reached — drafting Decision Brief…"
+        : live.rounds.length === 0
+          ? "Starting…"
+          : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
 
   return (
     <div className="main">

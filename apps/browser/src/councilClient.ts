@@ -1,5 +1,7 @@
 import type { CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
 import { Council, createProvider } from "@newvector/core";
+import { estimateCost } from "./costEstimate";
+import { getProviderFetch } from "./providerFetch";
 import type { Account, CouncilMemberConfig } from "./types";
 
 function providerForAccount(account: Account) {
@@ -10,6 +12,8 @@ function providerForAccount(account: Account) {
     baseURL: account.baseURL,
     authType: account.authType,
     accessToken: account.oauth?.accessToken,
+    // Desktop shell: route inference through Rust so provider APIs aren't CORS-blocked by the webview.
+    fetchImpl: getProviderFetch(),
   });
 }
 
@@ -31,6 +35,7 @@ export function runCouncilTurn(
   moderatorAccountId: string | undefined,
   question: string,
   onEvent: (event: CouncilEvent) => void,
+  budgetCap?: number,
 ): Promise<CouncilResult> {
   const councilMembers: CouncilMember[] = members.map((member) => {
     const account = accounts.find((candidate) => candidate.id === member.accountId);
@@ -52,6 +57,28 @@ export function runCouncilTurn(
   if (!moderatorAccount) throw new Error("Council has no valid moderator account.");
   const moderator: CouncilMember = { name: "moderator", provider: providerForAccount(moderatorAccount) };
 
-  const council = new Council({ members: councilMembers, moderator, maxRounds, onEvent });
+  // The engine identifies members by `CouncilMember.name` (set to the member config id above, plus
+  // the fixed "moderator" name), so mirror that here to look pricing back up per position — the
+  // engine itself has no notion of provider pricing (see costEstimate.ts), only what this callback
+  // reports. Same per-provider rate table the live cost display already uses, so the hard stop and
+  // the on-screen running total agree.
+  const providerByMemberName = new Map(
+    members
+      .map((member) => [member.id, accounts.find((candidate) => candidate.id === member.accountId)?.provider] as const)
+      .filter((entry): entry is [string, Account["provider"]] => Boolean(entry[1])),
+  );
+  providerByMemberName.set("moderator", moderatorAccount.provider);
+
+  const council = new Council({
+    members: councilMembers,
+    moderator,
+    maxRounds,
+    onEvent,
+    budgetCap,
+    estimateCost:
+      budgetCap !== undefined
+        ? (member, content) => estimateCost(providerByMemberName.get(member.name), content).usd
+        : undefined,
+  });
   return council.run(question);
 }

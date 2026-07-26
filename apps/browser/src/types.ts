@@ -66,6 +66,9 @@ export interface AgentIdentity {
 export interface StoredMessage extends ChatMessage {
   id: string;
   createdAt: number;
+  /** Set when this turn failed outright (provider/network error) instead of producing a real reply —
+   * rendered as a distinct error card rather than a normal assistant bubble. */
+  error?: { reason: string; isConfigIssue: boolean };
 }
 
 export interface AgentSession {
@@ -161,6 +164,9 @@ export interface CouncilTurn {
   rounds: CouncilMemberPosition[][];
   consensusReached: boolean;
   finalRound: number;
+  /** True if the debate stopped early because estimated spend met or exceeded the session's
+   * `budgetCap`, rather than reaching consensus or `maxRounds`. */
+  budgetExceeded: boolean;
   /** The round cap actually in effect for this turn (the session's cap may change between turns). */
   maxRounds: number;
   dropped: CouncilDroppedMember[];
@@ -180,6 +186,7 @@ export interface LiveCouncilTurn {
   maxRounds: number;
   dropped: CouncilDroppedMember[];
   consensusReached: boolean;
+  budgetExceeded: boolean;
   answer?: string;
   moderatorError?: string;
   finished: boolean;
@@ -194,8 +201,10 @@ export interface CouncilSession {
   /** Account that plays the (non-debating) moderator. Defaults to `members[0]`'s account when
    * unset, matching the council engine's own default — old sessions need no migration. */
   moderatorAccountId?: string;
-  /** Soft budget cap in USD, purely informational (the client-side cost estimate is only a rough
-   * approximation, and the debate engine has no mid-run hard stop yet). Undefined means no cap. */
+  /** Budget cap in USD. Enforced as a hard stop by the debate engine's round loop, based on the
+   * same client-side cost estimate the running-cost display uses (see costEstimate.ts) — real
+   * per-request token usage isn't available, so this is an approximation, not a billing figure.
+   * Undefined means no cap. */
   budgetCap?: number;
   turns: CouncilTurn[];
   createdAt: number;
@@ -256,7 +265,7 @@ export interface ProjectChatMessage {
   memberId?: string;
   content: string;
   attachments?: ChatAttachment[];
-  error?: { reason: string };
+  error?: { reason: string; isConfigIssue: boolean };
   createdAt: number;
 }
 
