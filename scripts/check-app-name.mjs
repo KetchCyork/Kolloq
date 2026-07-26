@@ -2,17 +2,21 @@
 /**
  * Guards the user-visible app name.
  *
- * The display name has drifted back to "New Vector Cowork" more than once
+ * The display name has drifted back to stale spellings more than once
  * (see NEW-107), because it lives in eight unrelated files — a Tauri config,
  * three Rust source files, an HTML title, a React component, a workflow, and
  * package.json — so a rename that misses one still builds and still ships.
  * This check makes that miss a CI failure instead of a screenshot.
  *
- * "New Vector AI" is the company and stays. "Open Work" is the product.
- * Internal identifiers (bundle id `ai.newvector.cowork`, keychain service,
- * crate names, IndexedDB name, storage keys, session export format) are
- * deliberately NOT covered here — renaming those would orphan credentials and
- * local data on existing installs.
+ * "New Vector AI" is the company and stays. "Kolloq" is the product
+ * (rebranded from "Open Work" in NEW-243 — see that issue for the brand
+ * assets and rationale). Internal identifiers (bundle id
+ * `ai.newvector.cowork`, keychain service, crate names, IndexedDB name,
+ * storage keys, session export format, the `open-work` npm workspace
+ * package name, the `~/Desktop/OpenWork-QA-Builds` local QA folder
+ * convention) are deliberately NOT covered here — renaming those would
+ * orphan credentials/local data on existing installs or break the
+ * auto-update channel and code-signing identity.
  */
 
 import { execFileSync } from "node:child_process";
@@ -22,7 +26,7 @@ import { dirname, join, resolve } from "node:path";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const APP_NAME = "Open Work";
+const APP_NAME = "Kolloq";
 
 /** Every site that renders the app name to a user. */
 const DISPLAY_NAME_SITES = [
@@ -33,14 +37,16 @@ const DISPLAY_NAME_SITES = [
   { file: "apps/desktop/src-tauri/Cargo.toml", must: `description = "${APP_NAME} desktop shell"`, what: "crate description" },
   { file: "apps/browser/index.html", must: `<title>${APP_NAME}</title>`, what: "browser tab title" },
   { file: "apps/browser/src/components/Sidebar.tsx", must: `>${APP_NAME}<`, what: "in-app sidebar brand" },
-  { file: "package.json", must: `"name": "open-work"`, what: "workspace package name" },
+  // Deliberately still "open-work", not derived from APP_NAME — this is the internal npm
+  // workspace package name (never rendered to a user), kept stable like the bundle id.
+  { file: "package.json", must: `"name": "open-work"`, what: "workspace package name (internal id, kept stable)" },
 ];
 
 /**
  * Names that must never reach a user again. Matched across the whole repo,
  * minus the paths below, so a new file reintroducing one is caught too.
  */
-const FORBIDDEN = ["New Vector Cowork", "OpenWork", "Open-Work app", "NewVector Cowork"];
+const FORBIDDEN = ["Open Work", "OpenWork", "Cowork", "New Vector Cowork", "Open-Work app", "NewVector Cowork"];
 
 const SEARCH_EXTENSIONS = [".json", ".ts", ".tsx", ".js", ".mjs", ".rs", ".html", ".toml", ".yml", ".yaml", ".css", ".md"];
 
@@ -60,6 +66,8 @@ const EXEMPT_LINE_PATTERNS = [
   /github\.com\/KetchCyork\/Open-Work/, // the repo slug, not the app name
   /Open-Work\.git/,
   /OpenWork-QA-Builds/, // qa-build.sh's literal DEST_DIR folder name, not a display rename of "Open Work"
+  /Claude Cowork/, // Anthropic's actual product, referenced for feature-parity comparison in the docs — not our old branding
+  /ai\.newvector\.cowork/, // the internal Tauri bundle identifier, kept stable for auto-update + code-signing continuity
 ];
 
 function trackedFiles() {
@@ -70,7 +78,7 @@ function trackedFiles() {
 
 const failures = [];
 
-// 1. Every display site says exactly "Open Work".
+// 1. Every display site says exactly the app name.
 for (const site of DISPLAY_NAME_SITES) {
   let contents;
   try {

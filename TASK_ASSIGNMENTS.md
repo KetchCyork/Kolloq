@@ -1,4 +1,4 @@
-# Task Assignments — Open Work
+# Task Assignments — Kolloq
 
 Task tracking for this project has moved to Paperclip issues. This file is kept only
 as a pointer — do not add task lists here; they will drift out of sync with the board.

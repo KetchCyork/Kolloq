@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-command rebuild + install of the canonical desktop build to
-# /Applications/Open Work.app.
+# /Applications/Kolloq.app.
 #
 # This machine shares one repo across many agent worktrees, and "does
 # /Applications have my change" used to mean a manual build + drag-and-drop
@@ -69,16 +69,16 @@ fi
 echo "==> Building desktop bundle from ${BRANCH}@${SHA}"
 pnpm --filter @newvector/desktop build
 
-BUNDLE_SRC="apps/desktop/src-tauri/target/release/bundle/macos/Open Work.app"
+BUNDLE_SRC="apps/desktop/src-tauri/target/release/bundle/macos/Kolloq.app"
 if [[ ! -d "$BUNDLE_SRC" ]]; then
   echo "error: expected bundle not found at: $BUNDLE_SRC" >&2
   exit 1
 fi
 
-DEST="/Applications/Open Work.app"
+DEST="/Applications/Kolloq.app"
 echo "==> Installing to ${DEST}"
 rm -rf "$DEST"
 cp -R "$BUNDLE_SRC" "$DEST"
 
-echo "==> Installed Open Work.app built from ${BRANCH}@${SHA}"
+echo "==> Installed Kolloq.app built from ${BRANCH}@${SHA}"
 echo "==> Verify in-app: Settings → General → About should show ${SHA}"

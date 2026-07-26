@@ -21,7 +21,7 @@ const TABS: { id: SettingsTabId; label: string }[] = [
 /** Settings shell (spec §3.2/§7): left-tab layout over Account & Plan, Connections, Skills, Plugins,
  * Integrations, Usage & Billing, and General. */
 /**
- * No Open Work account gate exists yet on `main` (see NEW-137 follow-up issue) — same placeholder
+ * No Kolloq account gate exists yet on `main` (see NEW-137 follow-up issue) — same placeholder
  * this pane's props default to as `Sidebar`'s `accountEmail` prop, and sign-out is a no-op since
  * there is no real session to end.
  */

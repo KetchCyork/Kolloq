@@ -32,7 +32,7 @@ async function checkForUpdate(updater: typeof import("@tauri-apps/plugin-updater
     return;
   }
   const shouldInstall = await confirmDialog({
-    message: `Open Work ${update.version} is available. Download and install now?`,
+    message: `Kolloq ${update.version} is available. Download and install now?`,
     confirmLabel: "Install",
   });
   if (!shouldInstall) return;
