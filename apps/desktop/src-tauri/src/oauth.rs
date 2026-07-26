@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Token endpoints this command is willing to relay a POST to. Kept explicit (rather than taking
 /// any URL from the frontend) so this can't become an open SSRF proxy if the webview content were
@@ -118,10 +118,26 @@ fn url_decode(input: &str) -> String {
 pub async fn google_oauth_capture(port: u16) -> Result<LoopbackCapture, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|err| format!("Could not start loopback listener on port {port}: {err}"))?;
-        // Guard against a user who abandons the browser: don't wait forever for a connection.
-        listener.set_nonblocking(false).ok();
-        let (mut stream, _) = listener.accept().map_err(|err| format!("Loopback accept failed: {err}"))?;
-        stream.set_read_timeout(Some(Duration::from_secs(300))).ok();
+        // Guard against a user who abandons the browser (or a consent page that never redirects
+        // back, e.g. redirect_uri_mismatch): poll for a connection with a deadline instead of
+        // blocking on accept() forever, so the frontend surfaces an error rather than sitting on
+        // "Waiting for Google…" indefinitely.
+        listener.set_nonblocking(true).ok();
+        let deadline = Instant::now() + Duration::from_secs(300);
+        let (mut stream, _) = loop {
+            match listener.accept() {
+                Ok(conn) => break conn,
+                Err(ref err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    if Instant::now() >= deadline {
+                        return Err("Timed out waiting for Google sign-in. Close the browser tab and try again.".to_string());
+                    }
+                    std::thread::sleep(Duration::from_millis(150));
+                }
+                Err(err) => return Err(format!("Loopback accept failed: {err}")),
+            }
+        };
+        stream.set_nonblocking(false).ok();
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
 
         let mut buf = [0u8; 2048];
         let n = stream.read(&mut buf).map_err(|err| format!("Loopback read failed: {err}"))?;

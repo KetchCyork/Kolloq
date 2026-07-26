@@ -38,9 +38,20 @@ export function accountOAuthKey(accountId: string): string {
 }
 
 /**
- * Opens a URL in the user's browser for OAuth login. `window.open` works in the plain browser
- * build and inside the Tauri webview (which routes external navigations to the system browser).
+ * Opens a URL in the user's default browser for OAuth login.
+ *
+ * In the plain browser build `window.open` is correct. Under the Tauri desktop shell it is NOT:
+ * wry's WKWebView (macOS) implements none of the WKUIDelegate methods, so `window.open` — like
+ * `window.alert/confirm/prompt` (NEW-206) — silently no-ops and returns null. That left the Google
+ * OAuth flow stuck on "Waiting for Google…" forever, because the consent page never opened while
+ * the Rust loopback listener blocked awaiting the redirect (NEW-195). Under Tauri we route through
+ * the opener plugin, which hands the URL to the OS default browser.
  */
-export function openExternalUrl(url: string): void {
+export async function openExternalUrl(url: string): Promise<void> {
+  if (isTauriRuntime()) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
   window.open(url, "_blank", "noopener,noreferrer");
 }

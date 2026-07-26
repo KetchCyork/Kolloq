@@ -48,6 +48,49 @@ NEW-120). Two things make that diagnosable:
   belongs there. Pass `--force` to override any of those checks (each still
   prints a loud warning).
 
+## QA / dev builds vs. the canonical `/Applications` install
+
+`/Applications/Open Work.app` (identifier `ai.newvector.cowork`) is the
+**canonical, `main`-only build the board verifies against**. Only write it
+when you are explicitly refreshing that canonical build (e.g. installing a
+signed release, or a `main`-branch build for board verification) — say so in
+the issue when you do, since it replaces whatever was previously installed
+there.
+
+**Per-issue pinned copies in `/Applications` (e.g.
+`/Applications/Open Work (NEW-<id> QA).app`) are prohibited**, not merely
+discouraged — every such bundle still carries the `ai.newvector.cowork`
+family of identifiers, so pinning one there just renames the collision
+instead of removing it. Use `qa-build` below instead. The sole exception is
+`/Applications/Open Work (NEW-42 QA).app`, a pre-convention artifact that
+stays only until NEW-42 leaves `in_review`, at which point QA removes it.
+
+Every other desktop build — local dev, QA verification builds, anything run
+from a worktree — must use:
+
+```sh
+pnpm --filter @newvector/desktop qa-build [--debug]
+```
+
+This builds with a **branch-suffixed identifier and product name**
+(`ai.newvector.cowork.qa.<branch-slug>`, `Open Work (QA <branch>)`) and
+installs the result to `~/Desktop/OpenWork-QA-Builds/<branch-slug>/` —
+never to `/Applications`. Because the bundle identifier differs from the
+canonical one, a QA build can never overwrite `/Applications/Open Work.app`
+or hijack what LaunchServices resolves `ai.newvector.cowork` to, no matter
+how many worktrees have one installed at once. Run it, then `open` the
+printed path directly rather than launching "Open Work" from Spotlight/Dock
+(that always resolves to the canonical build).
+
+`pnpm dev` / `pnpm build` / `qa-build` all run
+`scripts/ensure-target-unindexed.sh` first, which drops a
+`.metadata_never_index` marker in `src-tauri/target/`. That tells Spotlight
+not to index that worktree's build output at all, so a `target/.../bundle`
+directory can never itself become a claimant on `ai.newvector.cowork` the
+way NEW-160 found. `cargo clean` deletes `target/` (and the marker with it),
+so the marker is recreated on every build rather than being a one-time setup
+step.
+
 ## OS keychain credential storage
 
 Provider API keys are secrets. In the plain browser build there's no secure
@@ -195,11 +238,11 @@ remaining repository secrets are required:
 | `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 above | Chosen at export time in Keychain Access | ⏳ pending — CEO to set via `gh secret set` locally (not shared in chat) |
 | `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Christopher York (3B9Z7S9DWL)` | Read from local Keychain (`security find-identity -v -p codesigning`) | ✅ set (2026-07-22) |
 | `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ✅ set (2026-07-22) |
-| `AZURE_TENANT_ID` | Windows code signing — Azure AD (Entra ID) **directory/tenant** GUID | Azure Portal → **Microsoft Entra ID → Overview → "Tenant ID"** (not any ID shown on the Trusted Signing resource blade) | ✅ progressed (2026-07-26) — the `AADSTS90002: Tenant not found` failure is gone, so this GUID now resolves to a real Azure AD tenant. Not yet fully confirmed correct — see `AZURE_CLIENT_ID` below, since the next failure means CI still hasn't completed a real `az login`. |
+| `AZURE_TENANT_ID` | Windows code signing — Azure AD (Entra ID) **directory/tenant** GUID | Azure Portal → **Microsoft Entra ID → Overview → "Tenant ID"** (not any ID shown on the Trusted Signing resource blade) | ✅ confirmed correct (2026-07-26) — the 2026-07-26 15:50 UTC run got past `az login`'s tenant/app lookup entirely (no more `AADSTS90002`/`AADSTS700016`). |
 | `AZURE_TRUSTED_SIGNING_ACCOUNT` | Windows code signing — Trusted Signing account name | Azure Portal | ✅ set (2026-07-24), value `NewVentureAI` |
 | `AZURE_TRUSTED_SIGNING_ENDPOINT` | Windows code signing — account's region endpoint | Azure Portal | ✅ set (2026-07-24), value `https://eus.codesigning.azure.net/` |
 | `AZURE_TRUSTED_SIGNING_CERT_PROFILE` | Windows code signing — certificate **profile name** (the short identifier chosen when creating the profile, *not* the certificate Subject/DN) | Azure Portal → Trusted Signing account → Certificate Profiles | ✅ set (2026-07-24), value `openwork` |
-| `AZURE_CLIENT_ID` | Windows code signing — service principal auth for CI (Trusted Signing has no interactive login) | Azure Portal → Microsoft Entra ID → App registrations → new registration, then assign it the "Trusted Signing Certificate Profile Signer" role on the Trusted Signing account | ✅ confirmed correct (2026-07-26) — the 2026-07-26 15:50 UTC run got past `az login`'s tenant/app lookup entirely (no more `AADSTS90002`/`AADSTS700016`), so `AZURE_TENANT_ID` and `AZURE_CLIENT_ID` are both right. |
+| `AZURE_CLIENT_ID` | Windows code signing — service principal auth for CI (Trusted Signing has no interactive login) | Azure Portal → Microsoft Entra ID → App registrations → new registration, then assign it the "Trusted Signing Certificate Profile Signer" role on the Trusted Signing account | ✅ confirmed correct (2026-07-26) — same run, same reasoning as `AZURE_TENANT_ID` above. |
 | `AZURE_CLIENT_SECRET` | Windows code signing — service principal password for the app above | Azure Portal → the App Registration → Certificates & secrets → new client secret → copy the **Value** column immediately (shown once, at creation time only) | ❌ still wrong (2026-07-26) — the 2026-07-26 15:50 UTC run now fails inside `az login --service-principal` itself with `AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID`. The GitHub secret currently holds the **Secret ID** (a GUID, visible any time in the Certificates & secrets list) instead of the **Secret Value** (a longer opaque string, shown by Azure only once, right after the secret is created, and never retrievable again). To fix: in Azure Portal → the App Registration → Certificates & secrets, create a **new client secret**, immediately copy its **Value** field (not the "Secret ID" column), then `gh secret set AZURE_CLIENT_SECRET --repo KetchCyork/Open-Work` with that value before closing the Azure tab. This is a one-way door if missed — if the tab is closed before copying, the value is gone and a new secret must be created again. |
 
 Windows signing uses [Azure Trusted Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/) rather than a
