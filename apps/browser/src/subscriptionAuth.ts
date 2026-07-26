@@ -107,8 +107,8 @@ export async function beginSubscriptionAuth(provider: ProviderName): Promise<Sub
 }
 
 /** Opens the provider login page in the browser. */
-export function launchSubscriptionLogin(session: SubscriptionAuthSession): void {
-  openExternalUrl(session.authorizeUrl);
+export async function launchSubscriptionLogin(session: SubscriptionAuthSession): Promise<void> {
+  await openExternalUrl(session.authorizeUrl);
 }
 
 interface TokenPayload {

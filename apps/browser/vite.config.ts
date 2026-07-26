@@ -114,6 +114,7 @@ export default defineConfig(({ command, mode }) => {
         "@tauri-apps/plugin-dialog",
         "@tauri-apps/plugin-updater",
         "@tauri-apps/plugin-process",
+        "@tauri-apps/plugin-opener",
       ],
     },
     define: {
