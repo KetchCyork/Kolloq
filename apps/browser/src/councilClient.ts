@@ -1,6 +1,7 @@
 import type { CouncilController, CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
 import { Council, createProvider } from "@newvector/core";
 import { estimateCost } from "./costEstimate";
+import { getProviderFetch } from "./providerFetch";
 import type { Account, CouncilMemberConfig } from "./types";
 
 function providerForAccount(account: Account) {
@@ -11,6 +12,8 @@ function providerForAccount(account: Account) {
     baseURL: account.baseURL,
     authType: account.authType,
     accessToken: account.oauth?.accessToken,
+    // Desktop shell: route inference through Rust so provider APIs aren't CORS-blocked by the webview.
+    fetchImpl: getProviderFetch(),
   });
 }
 

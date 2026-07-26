@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AUTO_ROUTE } from "../projectRouting";
+import { confirmDialog } from "../dialogs";
 import { useStore } from "../store";
 import type { Project } from "../types";
 import { ProjectComposer } from "./ProjectComposer";
@@ -31,8 +32,8 @@ export function ProjectPanel({ project }: { project: Project }) {
         <button
           className="settings-btn"
           style={{ marginLeft: "auto" }}
-          onClick={() => {
-            if (window.confirm(`Delete "${project.identity.name}"? This cannot be undone.`)) {
+          onClick={async () => {
+            if (await confirmDialog({ message: `Delete "${project.identity.name}"? This cannot be undone.`, confirmLabel: "Delete", danger: true })) {
               deleteProject(project.id);
             }
           }}

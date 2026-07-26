@@ -1,3 +1,4 @@
+import { alertDialog } from "../dialogs";
 import { useStore } from "../store";
 import type { Project } from "../types";
 import { randomIdentity } from "../utils";
@@ -7,7 +8,7 @@ export function ProjectRoster({ project }: { project: Project }) {
 
   function handleAdd() {
     if (accounts.length === 0) {
-      window.alert("Add an account first — a roster member needs a model to run on.");
+      void alertDialog("Add an account first — a roster member needs a model to run on.");
       openAccountsManager();
       return;
     }

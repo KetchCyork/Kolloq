@@ -1,3 +1,4 @@
+import { alertDialog } from "../dialogs";
 import { useStore } from "../store";
 
 export function CouncilEmptyState() {
@@ -5,7 +6,7 @@ export function CouncilEmptyState() {
 
   function handleNewCouncil() {
     if (accounts.length < 2) {
-      window.alert("A council needs at least 2 accounts, each on its own provider/model. Add another account first.");
+      void alertDialog("A council needs at least 2 accounts, each on its own provider/model. Add another account first.");
       openAccountsManager();
       return;
     }

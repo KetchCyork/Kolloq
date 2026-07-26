@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { validateCouncilMembers } from "../councilReducer";
+import { confirmDialog } from "../dialogs";
 import { useStore } from "../store";
 import type { CouncilSession } from "../types";
 import { CouncilDecisionBrief } from "./CouncilDecisionBrief";
@@ -99,8 +100,8 @@ export function CouncilPanel({ session }: { session: CouncilSession }) {
         </button>
         <button
           className="settings-btn"
-          onClick={() => {
-            if (window.confirm(`Delete "${session.identity.name}"? This cannot be undone.`)) {
+          onClick={async () => {
+            if (await confirmDialog({ message: `Delete "${session.identity.name}"? This cannot be undone.`, confirmLabel: "Delete", danger: true })) {
               deleteCouncilSession(session.id);
             }
           }}
