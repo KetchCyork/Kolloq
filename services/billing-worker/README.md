@@ -1,10 +1,10 @@
 # @newvector/billing-worker
 
-Cloudflare Worker for Open Work billing (Phase 2 of [NEW-225](../../docs/openwork-product-spec.md#8-accounts-subscription-tiers--enterprise)) — Stripe-hosted Checkout/Portal, TEST mode. No database server: a single KV namespace maps `email <-> Stripe customer id` and stores the entitlement record the webhook keeps current.
+Cloudflare Worker for Kolloq billing (Phase 2 of [NEW-225](../../docs/openwork-product-spec.md#8-accounts-subscription-tiers--enterprise)) — Stripe-hosted Checkout/Portal, TEST mode. No database server: a single KV namespace maps `email <-> Stripe customer id` and stores the entitlement record the webhook keeps current.
 
 ## Endpoints
 
-Every endpoint except the webhook is authorized by `Authorization: Bearer <Google id_token>` — the same OIDC id_token the app already gets from Google Sign-In (`apps/browser/src/openWorkGoogleAuth.ts`). The worker verifies it against Google's live JWKS (signature, issuer, audience = `GOOGLE_OAUTH_CLIENT_ID`, `email_verified`) and uses the verified email as the user's identity. There is no separate Open Work session/user database — this **is** the auth layer for v1.
+Every endpoint except the webhook is authorized by `Authorization: Bearer <Google id_token>` — the same OIDC id_token the app already gets from Google Sign-In (`apps/browser/src/openWorkGoogleAuth.ts`). The worker verifies it against Google's live JWKS (signature, issuer, audience = `GOOGLE_OAUTH_CLIENT_ID`, `email_verified`) and uses the verified email as the user's identity. There is no separate Kolloq session/user database — this **is** the auth layer for v1.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
