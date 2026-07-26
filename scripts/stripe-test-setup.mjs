@@ -193,8 +193,14 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  if (!secretKey.startsWith('sk_test_')) {
-    console.error('Refusing to run: STRIPE_SECRET_KEY must be a TEST-mode key (sk_test_...).');
+  // Both full secret keys (sk_test_...) and restricted keys (rk_test_...) are
+  // valid here — the issue instructs using a restricted key, which uses the
+  // rk_ prefix, not sk_. Either is fine as long as it's TEST-mode.
+  if (!secretKey.startsWith('sk_test_') && !secretKey.startsWith('rk_test_')) {
+    console.error('Refusing to run: STRIPE_SECRET_KEY must be a TEST-mode key (sk_test_... or rk_test_...).');
+    console.error('Got a key starting with a different prefix — in the Stripe Dashboard, toggle to "Test mode"');
+    console.error('(top-right switch) BEFORE creating the restricted key. Test and Live keys are separate sets;');
+    console.error('a key created while Live mode is active will start with sk_live_/rk_live_ regardless of scopes.');
     process.exitCode = 1;
     return;
   }
