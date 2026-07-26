@@ -2536,6 +2536,8 @@ select {
   flex-direction: column;
   gap: 18px;
   padding: 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .signin-card {
