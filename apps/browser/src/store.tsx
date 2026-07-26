@@ -712,6 +712,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,
+          alignmentScores: liveTurn.alignmentScores,
           forcedVote: liveTurn.forcedVote,
           totalCostNote: computeTotalCostNote(
             liveTurn.rounds,

@@ -137,6 +137,24 @@ export interface CouncilDroppedMember {
   error: string;
 }
 
+/** One member's judged 0-10 agreement with a round's leading proposal (see `AlignmentScore` in
+ * `@newvector/core`), re-keyed from the engine's opaque `member` id to `memberId` to match every
+ * other council UI type. */
+export interface CouncilAlignmentScore {
+  memberId: string;
+  label: string;
+  score: number;
+  justification?: string;
+}
+
+/** One round's alignment judging, as scored by an extra moderator LLM call. Absent for round 0
+ * (no leading proposal yet) and for any round where that judging call failed or didn't parse. */
+export interface CouncilRoundAlignment {
+  round: number;
+  scores: CouncilAlignmentScore[];
+  average: number;
+}
+
 /** One complete debate: a question asked to the council, its round-by-round transcript, and the
  * moderator's final synthesized answer. A council session can accumulate many turns over time. */
 export interface CouncilTurn {
@@ -155,6 +173,8 @@ export interface CouncilTurn {
   answer: string;
   moderatorError?: string;
   totalCostNote: string;
+  /** Absent on turns saved before per-agent alignment scoring existed; treat as no scores. */
+  alignmentScores?: CouncilRoundAlignment[];
   /** True when a human ended the debate early via Force vote, rather than it reaching consensus or
    * exhausting `maxRounds` on its own. */
   forcedVote: boolean;
@@ -173,6 +193,7 @@ export interface LiveCouncilTurn {
   answer?: string;
   moderatorError?: string;
   finished: boolean;
+  alignmentScores: CouncilRoundAlignment[];
   /** True between a `paused` event and the following `resumed` event (see `CouncilController`). */
   paused: boolean;
   /** True once a `force-vote` event has landed — the debate is wrapping up early instead of running

@@ -8,6 +8,7 @@ import {
   diversityHint,
   estimateCouncilCostRange,
   initialLiveCouncilTurn,
+  latestRoundAlignment,
   MAX_COUNCIL_MEMBERS,
   MIN_COUNCIL_MEMBERS,
   parseDecisionBrief,
@@ -137,6 +138,35 @@ describe("applyCouncilEvent", () => {
     expect(turn.moderatorError).toBe("moderator down");
     expect(turn.finished).toBe(true);
     expect(turn.rounds[0]).toHaveLength(1);
+  });
+
+  it("re-keys alignment-scores events onto memberId, appending one entry per round", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    turn = applyCouncilEvent(
+      turn,
+      {
+        type: "alignment-scores",
+        round: 1,
+        scores: [
+          { member: "m1", label: "Claude · claude-3-5-sonnet-20241022", score: 9, justification: "aligned" },
+          { member: "m2", label: "GPT · gpt-4o-mini", score: 6 },
+        ],
+        average: 7.5,
+      },
+      members,
+      accounts,
+    );
+
+    expect(turn.alignmentScores).toEqual([
+      {
+        round: 1,
+        scores: [
+          { memberId: "m1", label: "Claude · claude-3-5-sonnet-20241022", score: 9, justification: "aligned" },
+          { memberId: "m2", label: "GPT · gpt-4o-mini", score: 6, justification: undefined },
+        ],
+        average: 7.5,
+      },
+    ]);
   });
 
   it("toggles paused on paused/resumed events", () => {
@@ -291,6 +321,20 @@ describe("computeAlignment", () => {
       [position({ memberId: "m1", stance: "concur" })],
     ];
     expect(computeAlignment(rounds)).toBe(100);
+  });
+});
+
+describe("latestRoundAlignment", () => {
+  it("returns undefined when no round has been scored yet", () => {
+    expect(latestRoundAlignment([])).toBeUndefined();
+  });
+
+  it("returns the most recently scored round, not an earlier one", () => {
+    const rounds = [
+      { round: 1, scores: [], average: 4 },
+      { round: 2, scores: [], average: 8 },
+    ];
+    expect(latestRoundAlignment(rounds)).toEqual({ round: 2, scores: [], average: 8 });
   });
 });
 
