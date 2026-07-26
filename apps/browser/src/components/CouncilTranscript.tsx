@@ -11,15 +11,19 @@ function outcomeLabel(
   // Turns recorded before the cap became configurable have no `maxRounds`, and a restored/imported
   // session can still hold them, so fall back rather than printing "after undefined rounds".
   maxRounds: number | undefined,
+  forcedVote: boolean,
+  finalRound: number,
   budgetExceeded: boolean,
 ): string {
-  const outcome = classifyCouncilOutcome({ consensusReached, lastRoundPositionCount, budgetExceeded });
+  const outcome = classifyCouncilOutcome({ consensusReached, lastRoundPositionCount, forcedVote, budgetExceeded });
   const cap = maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
   switch (outcome) {
     case "consensus":
       return "Consensus reached";
     case "all-dropped":
       return "No answer from any member — best-effort synthesis";
+    case "forced-vote":
+      return `Vote forced after round ${finalRound} — best-effort synthesis`;
     case "budget-cap-hit":
       return "Budget cap reached — best-effort synthesis";
     case "cap-hit":
@@ -45,7 +49,14 @@ export function CouncilTranscript({ session }: { session: CouncilSession }) {
           <CouncilRoundList rounds={turn.rounds} dropped={turn.dropped} members={session.members} />
           <div className={`council-answer ${turn.consensusReached ? "consensus" : "no-consensus"}`}>
             <div className="council-answer-label">
-              {outcomeLabel(turn.consensusReached, turn.rounds.at(-1)?.length ?? 0, turn.maxRounds, turn.budgetExceeded)}
+              {outcomeLabel(
+                turn.consensusReached,
+                turn.rounds.at(-1)?.length ?? 0,
+                turn.maxRounds,
+                turn.forcedVote,
+                turn.finalRound,
+                turn.budgetExceeded,
+              )}
               {turn.moderatorError ? " · moderator error, fallback summary shown" : ""}
             </div>
             <div className="council-answer-content">{turn.answer}</div>

@@ -175,6 +175,9 @@ export interface CouncilTurn {
   totalCostNote: string;
   /** Absent on turns saved before per-agent alignment scoring existed; treat as no scores. */
   alignmentScores?: CouncilRoundAlignment[];
+  /** True when a human ended the debate early via Force vote, rather than it reaching consensus or
+   * exhausting `maxRounds` on its own. */
+  forcedVote: boolean;
 }
 
 /** In-progress (not yet persisted) transcript for a turn that's currently debating. */
@@ -191,6 +194,14 @@ export interface LiveCouncilTurn {
   moderatorError?: string;
   finished: boolean;
   alignmentScores: CouncilRoundAlignment[];
+  /** True between a `paused` event and the following `resumed` event (see `CouncilController`). */
+  paused: boolean;
+  /** True once a `force-vote` event has landed — the debate is wrapping up early instead of running
+   * further rounds. */
+  forcedVote: boolean;
+  /** The most recently applied `injected` event's message, shown as a brief acknowledgment — cleared
+   * isn't necessary since a later injection (or none) simply replaces/keeps it for the rest of the turn. */
+  lastInjectedMessage?: string;
 }
 
 export interface CouncilSession {

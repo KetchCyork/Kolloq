@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import {
   computeAlignment,
   computeTotalCostNote,
@@ -8,8 +9,7 @@ import { useStore } from "../store";
 import type { CouncilSession, LiveCouncilTurn } from "../types";
 import { colorForSeat, CouncilRoundList } from "./CouncilRoundList";
 
-const CONTROLS_TOOLTIP =
-  "Not yet available — the council engine runs a debate turn to completion and doesn't support mid-run control yet.";
+const FORCE_VOTE_TOOLTIP = "Stop the debate now and have the moderator synthesize from the positions gathered so far.";
 
 /** Badge color for a 0-10 moderator-judged alignment score: red reads as active disagreement, amber
  * as partial, green as substantially aligned. Thresholds are a UI convenience, not a scoring rule. */
@@ -21,12 +21,17 @@ function scoreBadgeClass(score: number): string {
 
 /**
  * Live split-view: color-coded transcript (left) + alignment/session status (right rail). Pause,
- * Inject message, and Force vote are shown per the mockup/product spec but disabled — the
- * `Council` engine (packages/core/src/agent/council.ts) runs a turn start-to-finish with no
- * mid-debate control hook yet, so wiring them for real is follow-up backend work, not a UI gap.
+ * Inject message, and Force vote drive the `Council` engine's mid-debate control hook
+ * (`CouncilController` in packages/core/src/agent/council.ts) via the store — disabled only once
+ * the turn has finished, since there's nothing left to control.
+ *
+ * Inject/Force-vote use an inline panel rather than window.prompt/window.confirm: the desktop
+ * shell's WebKit view has no UI delegate for native dialogs, so they silently no-op there (NEW-81 QA).
  */
 export function CouncilLiveView({ session, live }: { session: CouncilSession; live: LiveCouncilTurn }) {
-  const { accounts } = useStore();
+  const { accounts, pauseCouncilTurn, resumeCouncilTurn, injectCouncilMessage, forceCouncilVote } = useStore();
+  const [injectDraft, setInjectDraft] = useState<string | null>(null);
+  const [confirmingForceVote, setConfirmingForceVote] = useState(false);
   const currentRound = Math.max(0, live.rounds.length - 1);
   const maxRounds = live.maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
   const latestAlignment = latestRoundAlignment(live.alignmentScores);
@@ -47,11 +52,27 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
     ? "Moderator error"
     : live.finished
       ? "Drafting Decision Brief…"
-      : live.budgetExceeded
-        ? "Budget cap reached — drafting Decision Brief…"
-        : live.rounds.length === 0
-          ? "Starting…"
-          : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
+      : live.paused
+        ? "Paused"
+        : live.forcedVote
+          ? "Forcing vote…"
+          : live.budgetExceeded
+            ? "Budget cap reached — drafting Decision Brief…"
+            : live.rounds.length === 0
+              ? "Starting…"
+              : `Round ${currentRound} · ${currentRound === 0 ? "Opening positions" : "Rebuttal & revision"}`;
+
+  function handleInjectSubmit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = injectDraft?.trim();
+    if (trimmed) injectCouncilMessage(session.id, trimmed);
+    setInjectDraft(null);
+  }
+
+  function handleForceVoteConfirm() {
+    forceCouncilVote(session.id);
+    setConfirmingForceVote(false);
+  }
 
   return (
     <div className="main">
@@ -64,20 +85,75 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
           <div className="chat-header-sub">{live.question}</div>
         </div>
         <span className="badge amber">{statusLabel}</span>
-        <button type="button" className="settings-btn" disabled title={CONTROLS_TOOLTIP}>
-          ⏸ Pause
+        <button
+          type="button"
+          className="settings-btn"
+          disabled={live.finished || live.forcedVote}
+          onClick={() => (live.paused ? resumeCouncilTurn(session.id) : pauseCouncilTurn(session.id))}
+        >
+          {live.paused ? "▶ Resume" : "⏸ Pause"}
         </button>
-        <button type="button" className="settings-btn" disabled title={CONTROLS_TOOLTIP}>
+        <button
+          type="button"
+          className="settings-btn"
+          disabled={live.finished || live.forcedVote}
+          onClick={() => {
+            setConfirmingForceVote(false);
+            setInjectDraft((d) => (d === null ? "" : null));
+          }}
+        >
           💬 Inject message
         </button>
-        <button type="button" className="settings-btn" disabled title={CONTROLS_TOOLTIP}>
+        <button
+          type="button"
+          className="settings-btn"
+          disabled={live.finished || live.forcedVote}
+          title={FORCE_VOTE_TOOLTIP}
+          onClick={() => {
+            setInjectDraft(null);
+            setConfirmingForceVote((c) => !c);
+          }}
+        >
           🗳 Force vote
         </button>
       </div>
 
+      {injectDraft !== null && !(live.finished || live.forcedVote) && (
+        <form className="council-inline-panel" onSubmit={handleInjectSubmit}>
+          <input
+            autoFocus
+            type="text"
+            value={injectDraft}
+            onChange={(event) => setInjectDraft(event.target.value)}
+            placeholder="Inject a message or additional context for the next round…"
+          />
+          <button type="submit" className="settings-btn" disabled={!injectDraft.trim()}>
+            Send
+          </button>
+          <button type="button" className="settings-btn" onClick={() => setInjectDraft(null)}>
+            Cancel
+          </button>
+        </form>
+      )}
+
+      {confirmingForceVote && !(live.finished || live.forcedVote) && (
+        <div className="council-inline-panel">
+          <span>{FORCE_VOTE_TOOLTIP}</span>
+          <button type="button" className="settings-btn" onClick={handleForceVoteConfirm}>
+            Confirm force vote
+          </button>
+          <button type="button" className="settings-btn" onClick={() => setConfirmingForceVote(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
       <div className="council-layout">
         <div className="council-main">
           <CouncilRoundList rounds={live.rounds} dropped={live.dropped} members={session.members} />
+          {live.lastInjectedMessage && !live.finished && (
+            <div className="council-live-status">💬 Injected for the next round: “{live.lastInjectedMessage}”</div>
+          )}
           {live.moderatorError && (
             <div className="council-answer no-consensus">
               <div className="council-answer-label">Moderator error: {live.moderatorError}</div>

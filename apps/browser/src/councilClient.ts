@@ -1,4 +1,4 @@
-import type { CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
+import type { CouncilController, CouncilEvent, CouncilMember, CouncilResult } from "@newvector/core";
 import { Council, createProvider } from "@newvector/core";
 import { estimateCost } from "./costEstimate";
 import { getProviderFetch } from "./providerFetch";
@@ -35,6 +35,7 @@ export function runCouncilTurn(
   moderatorAccountId: string | undefined,
   question: string,
   onEvent: (event: CouncilEvent) => void,
+  controller?: CouncilController,
   budgetCap?: number,
 ): Promise<CouncilResult> {
   const councilMembers: CouncilMember[] = members.map((member) => {
@@ -80,5 +81,5 @@ export function runCouncilTurn(
         ? (member, content) => estimateCost(providerByMemberName.get(member.name), content).usd
         : undefined,
   });
-  return council.run(question);
+  return council.run(question, controller);
 }
