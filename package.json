@@ -12,6 +12,7 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "check:app-name": "node scripts/check-app-name.mjs",
+    "stripe:test-setup": "node scripts/stripe-test-setup.mjs",
     "cli": "pnpm --filter @newvector/core cli",
     "desktop:install": "bash apps/desktop/scripts/install.sh"
   }
