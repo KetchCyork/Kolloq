@@ -1,7 +1,54 @@
+import { execFileSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
+
+// Ollama's own CORS allowlist (`OLLAMA_ORIGINS`) rejects requests whose Origin header isn't
+// localhost, which blocks the browser app's direct Ollama fetches whenever it's loaded from a
+// tailnet IP/hostname (see NEW-97). Routing through this dev/preview server's proxy avoids a
+// cross-origin browser fetch, but Ollama checks the literal Origin header value it receives —
+// `changeOrigin` only rewrites the outgoing Host header, so the browser's original (tailnet)
+// Origin would otherwise still reach Ollama unchanged and get rejected exactly the same way.
+// Stripping it makes the proxied request look origin-less, which Ollama always allows.
+const OLLAMA_PROXY_PREFIX = "/__ollama__";
+const ollamaProxy = {
+  [OLLAMA_PROXY_PREFIX]: {
+    target: "http://localhost:11434",
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(new RegExp(`^${OLLAMA_PROXY_PREFIX}`), ""),
+    configure: (proxy: import("http-proxy")) => {
+      proxy.on("proxyReq", (proxyReq: import("http").ClientRequest) => {
+        proxyReq.removeHeader("origin");
+      });
+    },
+  },
+};
+
+/**
+ * Build provenance, inlined so a running app can say what it was built from
+ * instead of the only diagnostic being "compare Vite asset hashes across
+ * worktrees" (see NEW-120, NEW-157). Falls back to "unknown" outside a git
+ * checkout (e.g. a source tarball) rather than failing the build.
+ */
+function readGit(args: string[]): string {
+  try {
+    return execFileSync("git", args, { cwd: fileURLToPath(new URL(".", import.meta.url)) })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+function buildProvenance() {
+  return {
+    sha: readGit(["rev-parse", "--short", "HEAD"]) || "unknown",
+    branch: readGit(["rev-parse", "--abbrev-ref", "HEAD"]) || "unknown",
+    dirty: readGit(["status", "--porcelain"]).length > 0,
+    time: new Date().toISOString(),
+  };
+}
 
 /**
  * Build env vars a *shippable* binary cannot go out without.
@@ -47,8 +94,35 @@ export default defineConfig(({ command, mode }) => {
   const isRelease = ["1", "true"].includes((env.RELEASE_BUILD ?? "").trim().toLowerCase());
   if (command === "build") assertReleaseEnv(env, isRelease);
 
+  const provenance = buildProvenance();
+
   return {
     plugins: [react()],
+    optimizeDeps: {
+      // Every `@tauri-apps/*` module is reached *only* through a runtime `await import(...)`
+      // (see credentials.ts, openWorkGoogleAuth.ts, projectFolder.ts, desktopIntegration.ts,
+      // subscriptionAuth.ts). Vite's dep scanner only walks statically-reachable imports at
+      // startup, so it never pre-bundles these. The first time one is invoked at runtime — e.g.
+      // clicking "Continue with Google", whose first act is `import("@tauri-apps/api/core")` —
+      // Vite discovers the new dep, re-runs the optimizer, and invalidates the in-flight hashed
+      // chunk, so the import rejects with "Failed to fetch dynamically imported module:
+      // .../@tauri-apps_api_core.js?v=<hash>" (NEW-195). Listing them here forces pre-bundling
+      // at server start so the hash is stable and the dynamic import resolves on the first click.
+      include: [
+        "@tauri-apps/api/core",
+        "@tauri-apps/api/event",
+        "@tauri-apps/plugin-dialog",
+        "@tauri-apps/plugin-updater",
+        "@tauri-apps/plugin-process",
+        "@tauri-apps/plugin-opener",
+      ],
+    },
+    define: {
+      __BUILD_SHA__: JSON.stringify(provenance.sha),
+      __BUILD_BRANCH__: JSON.stringify(provenance.branch),
+      __BUILD_DIRTY__: JSON.stringify(provenance.dirty),
+      __BUILD_TIME__: JSON.stringify(provenance.time),
+    },
     resolve: {
       alias: {
         // Resolve @newvector/core from its TypeScript source for the browser
@@ -68,11 +142,13 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+      proxy: ollamaProxy,
     },
     preview: {
       // Allow reaching the preview over the private Tailscale tailnet by hostname,
       // not just by IP (Vite blocks unknown Host headers with a 403 otherwise).
       allowedHosts: [".ts.net", "christophers-macbook-pro.tailcd24a8.ts.net"],
+      proxy: ollamaProxy,
     },
   };
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmDialog } from "../dialogs";
 import { useStore } from "../store";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -50,8 +51,8 @@ export function ChatPanel() {
         </button>
         <button
           className="settings-btn"
-          onClick={() => {
-            if (window.confirm(`Delete "${session.identity.name}"? This cannot be undone.`)) {
+          onClick={async () => {
+            if (await confirmDialog({ message: `Delete "${session.identity.name}"? This cannot be undone.`, confirmLabel: "Delete", danger: true })) {
               deleteSession(session.id);
             }
           }}

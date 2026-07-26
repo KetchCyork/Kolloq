@@ -1,79 +1,100 @@
 import { useEffect, useRef } from "react";
-import type { CouncilDroppedMember, CouncilMemberPosition, CouncilSession, LiveCouncilTurn } from "../types";
+import { classifyCouncilOutcome, DEFAULT_COUNCIL_MAX_ROUNDS, parseDecisionBrief } from "../councilReducer";
+import type { CouncilSession, CouncilTurn } from "../types";
+import { CouncilRoundList } from "./CouncilRoundList";
 
-function RoundList({ rounds, dropped }: { rounds: CouncilMemberPosition[][]; dropped: CouncilDroppedMember[] }) {
+const DECISION_BRIEF_SECTION_LABELS = [
+  ["recommendation", "Recommendation"],
+  ["rationale", "Rationale"],
+  ["contention", "Key contention & resolution"],
+  ["nextSteps", "Next steps"],
+] as const;
+
+/** Same section split CouncilDecisionBrief.tsx renders for the primary card — kept here too so
+ * the embedded synthesis box doesn't leak the moderator's literal `**Header:**` markdown when the
+ * card above already parsed it out. Falls back to the raw answer when parseDecisionBrief can't
+ * find any recognized headers. */
+function CouncilAnswerContent({ answer }: { answer: string }) {
+  const sections = parseDecisionBrief(answer);
+  if (!sections.structured) return <>{answer}</>;
   return (
-    <div className="council-rounds">
-      {rounds.map((positions, roundIndex) => (
-        <div className="council-round" key={roundIndex}>
-          <div className="council-round-label">Round {roundIndex}</div>
-          {positions.map((position) => (
-            <div className="council-position" key={position.memberId}>
-              <div className="council-position-head">
-                <span className="council-position-name">{position.label}</span>
-                {position.role && <span className="council-position-role">{position.role}</span>}
-                {position.stance && <span className={`council-stance-badge ${position.stance}`}>{position.stance}</span>}
-                <span className="council-cost-note">{position.costNote}</span>
-              </div>
-              {position.reason && <div className="council-position-reason">{position.reason}</div>}
-              <div className="council-position-content">{position.content}</div>
+    <>
+      {DECISION_BRIEF_SECTION_LABELS.map(
+        ([key, label]) =>
+          sections[key] && (
+            <div className="council-answer-section" key={key}>
+              <div className="council-answer-heading">{label}</div>
+              <p>{sections[key]}</p>
             </div>
-          ))}
-          {dropped
-            .filter((member) => member.round === roundIndex)
-            .map((member) => (
-              <div className="council-dropped" key={member.memberId}>
-                ⚠ {member.label} dropped after a provider error: {member.error}
-              </div>
-            ))}
-        </div>
-      ))}
-    </div>
+          ),
+      )}
+    </>
   );
 }
 
-export function CouncilTranscript({ session, live }: { session: CouncilSession; live?: LiveCouncilTurn }) {
+/** One-line summary of why a finished debate stopped, distinguishing a real consensus from the
+ * round cap being hit or every member dropping out — all three otherwise look like "no answer". */
+function outcomeLabel(
+  consensusReached: boolean,
+  lastRoundPositionCount: number,
+  // Turns recorded before the cap became configurable have no `maxRounds`, and a restored/imported
+  // session can still hold them, so fall back rather than printing "after undefined rounds".
+  maxRounds: number | undefined,
+  forcedVote: boolean,
+  finalRound: number,
+  budgetExceeded: boolean,
+): string {
+  const outcome = classifyCouncilOutcome({ consensusReached, lastRoundPositionCount, forcedVote, budgetExceeded });
+  const cap = maxRounds || DEFAULT_COUNCIL_MAX_ROUNDS;
+  switch (outcome) {
+    case "consensus":
+      return "Consensus reached";
+    case "all-dropped":
+      return "No answer from any member — best-effort synthesis";
+    case "forced-vote":
+      return `Vote forced after round ${finalRound} — best-effort synthesis`;
+    case "budget-cap-hit":
+      return "Budget cap reached — best-effort synthesis";
+    case "cap-hit":
+      return `No consensus after ${cap} round${cap === 1 ? "" : "s"} (round cap) — best-effort synthesis`;
+  }
+}
+
+/** Full round-by-round history for every turn in a session — used to expand "View full debate
+ * transcript" under the latest turn's Decision Brief. Scrolls itself to the bottom on mount since
+ * it's typically revealed after the brief, further down the page. */
+export function CouncilTranscript({ session }: { session: CouncilSession }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [session.turns.length, live?.rounds.length, live?.answer, live?.moderatorError]);
+  }, [session.turns.length]);
 
   return (
-    <div className="messages council-transcript">
-      {session.turns.map((turn) => (
+    <div className="council-transcript">
+      {session.turns.map((turn: CouncilTurn) => (
         <div className="council-turn" key={turn.id}>
           <div className="council-question">{turn.question}</div>
-          <RoundList rounds={turn.rounds} dropped={turn.dropped} />
+          <CouncilRoundList rounds={turn.rounds} dropped={turn.dropped} members={session.members} />
           <div className={`council-answer ${turn.consensusReached ? "consensus" : "no-consensus"}`}>
             <div className="council-answer-label">
-              {turn.consensusReached ? "Consensus reached" : "No consensus — best-effort synthesis"}
+              {outcomeLabel(
+                turn.consensusReached,
+                turn.rounds.at(-1)?.length ?? 0,
+                turn.maxRounds,
+                turn.forcedVote,
+                turn.finalRound,
+                turn.budgetExceeded,
+              )}
               {turn.moderatorError ? " · moderator error, fallback summary shown" : ""}
             </div>
-            <div className="council-answer-content">{turn.answer}</div>
-            <div className="council-cost-note council-total-cost">Total est. cost: {turn.totalCostNote}</div>
+            <div className="council-answer-content">
+              <CouncilAnswerContent answer={turn.answer} />
+            </div>
+            <div className="council-msg-cost">Total est. cost: {turn.totalCostNote}</div>
           </div>
         </div>
       ))}
-
-      {live && (
-        <div className="council-turn council-turn-live">
-          <div className="council-question">{live.question}</div>
-          <RoundList rounds={live.rounds} dropped={live.dropped} />
-          {live.answer ? (
-            <div className={`council-answer ${live.consensusReached ? "consensus" : "no-consensus"}`}>
-              <div className="council-answer-content">{live.answer}</div>
-            </div>
-          ) : live.moderatorError ? (
-            <div className="council-answer no-consensus">
-              <div className="council-answer-label">Moderator error: {live.moderatorError}</div>
-            </div>
-          ) : (
-            <div className="council-live-status">Debating…</div>
-          )}
-        </div>
-      )}
-
       <div ref={bottomRef} />
     </div>
   );

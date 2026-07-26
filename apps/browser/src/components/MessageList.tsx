@@ -24,7 +24,7 @@ export function MessageList({ session, live }: { session: AgentSession; live?: L
   return (
     <div className="messages">
       {session.messages.map((message) => (
-        <MessageItem key={message.id} message={message} />
+        <MessageItem key={message.id} message={message} sessionId={session.id} />
       ))}
 
       {live && (

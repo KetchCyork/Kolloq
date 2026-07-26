@@ -66,6 +66,9 @@ export interface AgentIdentity {
 export interface StoredMessage extends ChatMessage {
   id: string;
   createdAt: number;
+  /** Set when this turn failed outright (provider/network error) instead of producing a real reply —
+   * rendered as a distinct error card rather than a normal assistant bubble. */
+  error?: { reason: string; isConfigIssue: boolean };
 }
 
 export interface AgentSession {
@@ -74,6 +77,32 @@ export interface AgentSession {
   providerConfig: ProviderConfig;
   systemPrompt: string;
   messages: StoredMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Where a skill came from. Marketplace and URL sources from spec §7 aren't offered yet — there's no
+ * catalog to browse and no CORS-safe fetch path — so installs are a pasted body or a local file. */
+export type SkillSource = "pasted" | "local-file";
+
+/**
+ * An installed skill (spec §4/§7): a SKILL.md-style instruction package installed globally and
+ * attached to individual agents. Attached + enabled skills are folded into the agent's system prompt
+ * at turn time (see `composeAgentSystemPrompt`), so a skill changes behavior without editing personas.
+ */
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  /** The markdown body injected into attached agents' prompts. */
+  instructions: string;
+  source: SkillSource;
+  /** File name for `local-file` installs, shown on the card so the user knows where it came from. */
+  sourceLabel?: string;
+  /** Off keeps the skill installed and attached but out of prompts. */
+  enabled: boolean;
+  /** `AgentSession` ids this skill is attached to. */
+  attachedAgentIds: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -108,6 +137,24 @@ export interface CouncilDroppedMember {
   error: string;
 }
 
+/** One member's judged 0-10 agreement with a round's leading proposal (see `AlignmentScore` in
+ * `@newvector/core`), re-keyed from the engine's opaque `member` id to `memberId` to match every
+ * other council UI type. */
+export interface CouncilAlignmentScore {
+  memberId: string;
+  label: string;
+  score: number;
+  justification?: string;
+}
+
+/** One round's alignment judging, as scored by an extra moderator LLM call. Absent for round 0
+ * (no leading proposal yet) and for any round where that judging call failed or didn't parse. */
+export interface CouncilRoundAlignment {
+  round: number;
+  scores: CouncilAlignmentScore[];
+  average: number;
+}
+
 /** One complete debate: a question asked to the council, its round-by-round transcript, and the
  * moderator's final synthesized answer. A council session can accumulate many turns over time. */
 export interface CouncilTurn {
@@ -117,21 +164,44 @@ export interface CouncilTurn {
   rounds: CouncilMemberPosition[][];
   consensusReached: boolean;
   finalRound: number;
+  /** True if the debate stopped early because estimated spend met or exceeded the session's
+   * `budgetCap`, rather than reaching consensus or `maxRounds`. */
+  budgetExceeded: boolean;
+  /** The round cap actually in effect for this turn (the session's cap may change between turns). */
+  maxRounds: number;
   dropped: CouncilDroppedMember[];
   answer: string;
   moderatorError?: string;
   totalCostNote: string;
+  /** Absent on turns saved before per-agent alignment scoring existed; treat as no scores. */
+  alignmentScores?: CouncilRoundAlignment[];
+  /** True when a human ended the debate early via Force vote, rather than it reaching consensus or
+   * exhausting `maxRounds` on its own. */
+  forcedVote: boolean;
 }
 
 /** In-progress (not yet persisted) transcript for a turn that's currently debating. */
 export interface LiveCouncilTurn {
   question: string;
   rounds: CouncilMemberPosition[][];
+  /** Round index of the most recent `round-start` event, for "round N of maxRounds" progress. */
+  currentRound: number;
+  maxRounds: number;
   dropped: CouncilDroppedMember[];
   consensusReached: boolean;
+  budgetExceeded: boolean;
   answer?: string;
   moderatorError?: string;
   finished: boolean;
+  alignmentScores: CouncilRoundAlignment[];
+  /** True between a `paused` event and the following `resumed` event (see `CouncilController`). */
+  paused: boolean;
+  /** True once a `force-vote` event has landed — the debate is wrapping up early instead of running
+   * further rounds. */
+  forcedVote: boolean;
+  /** The most recently applied `injected` event's message, shown as a brief acknowledgment — cleared
+   * isn't necessary since a later injection (or none) simply replaces/keeps it for the rest of the turn. */
+  lastInjectedMessage?: string;
 }
 
 export interface CouncilSession {
@@ -139,6 +209,14 @@ export interface CouncilSession {
   identity: AgentIdentity;
   members: CouncilMemberConfig[];
   maxRounds?: number;
+  /** Account that plays the (non-debating) moderator. Defaults to `members[0]`'s account when
+   * unset, matching the council engine's own default — old sessions need no migration. */
+  moderatorAccountId?: string;
+  /** Budget cap in USD. Enforced as a hard stop by the debate engine's round loop, based on the
+   * same client-side cost estimate the running-cost display uses (see costEstimate.ts) — real
+   * per-request token usage isn't available, so this is an approximation, not a billing figure.
+   * Undefined means no cap. */
+  budgetCap?: number;
   turns: CouncilTurn[];
   createdAt: number;
   updatedAt: number;
@@ -198,7 +276,7 @@ export interface ProjectChatMessage {
   memberId?: string;
   content: string;
   attachments?: ChatAttachment[];
-  error?: { reason: string };
+  error?: { reason: string; isConfigIssue: boolean };
   createdAt: number;
 }
 

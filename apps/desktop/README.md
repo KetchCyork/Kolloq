@@ -28,6 +28,26 @@ pnpm --filter @newvector/desktop build    # tauri build — produces an unsigned
 you (see `build.beforeDevCommand`/`beforeBuildCommand` in `tauri.conf.json`),
 so there's no separate frontend build step.
 
+## Build provenance and installing to /Applications
+
+This machine routinely has several worktrees checked out on different
+branches, so "the app in `/Applications` doesn't have my change" is
+ambiguous between "it never shipped" and "the installed copy is stale" (see
+NEW-120). Two things make that diagnosable:
+
+- **Every build knows what it was built from.** `apps/browser/vite.config.ts`
+  inlines the git short SHA, branch, dirty flag, and build timestamp at
+  build/dev time; Settings → General → **About** renders them. Read that
+  before assuming a change didn't ship.
+- **`pnpm desktop:install`** is the one command that rebuilds the desktop
+  bundle and installs it to `/Applications/Open Work.app`
+  (`apps/desktop/scripts/install.sh`). It refuses (exits non-zero) if the
+  checkout is dirty, on a branch other than `main`, or behind
+  `origin/main` — `/Applications` is the single shared canonical install
+  across every worktree on this machine, so only a clean `main` build
+  belongs there. Pass `--force` to override any of those checks (each still
+  prints a loud warning).
+
 ## QA / dev builds vs. the canonical `/Applications` install
 
 `/Applications/Open Work.app` (identifier `ai.newvector.cowork`) is the
@@ -94,6 +114,46 @@ in `src-tauri/`.
 
 The browser build's existing behavior (key inline in IndexedDB) is
 unchanged — this only activates under Tauri.
+
+## Node sidecar and bundled runtime
+
+The webview front-end (the browser bundle) can't run the Node-only tools — the
+Office generators (`docx`/`exceljs`/`pptxgenjs`) and later fs/shell/code-interpreter.
+`src-tauri/src/node.rs` bridges to an out-of-process Node **sidecar**: per tool call it
+resolves the session sandbox, spawns Node against the sidecar entry script, writes one
+JSON request to stdin, and returns stdout to the front-end. `apps/browser/src/nodeContext.ts`
+calls the `node_tool_exec` / `node_read_file` commands (the download read-back path).
+
+**In `tauri dev`** the host runs `node sidecar/tool-host.mjs`, resolving
+`@newvector/core/node` from the workspace `node_modules` — the developer machine has Node.
+
+**In a packaged app** neither Node nor `node_modules` exist on the user's machine, so
+`sidecar/build.mjs` produces two self-contained artifacts, shipped via `bundle.resources`
+in `tauri.conf.json`. Both `beforeBuildCommand` and `beforeDevCommand` run it: because the
+artifacts are declared resources, Tauri's build script fails the *cargo* compile when they're
+missing, so even `tauri dev` needs them staged once on a fresh checkout.
+
+- `sidecar/dist/tool-host.cjs` — the sidecar + `@newvector/core/node` + `docx`/`exceljs`/
+  `pptxgenjs` rolled into one file by esbuild. No `node_modules` resolution at runtime.
+- `sidecar/runtime/node[.exe]` — the **official** Node binary for the target platform,
+  downloaded from nodejs.org and **checksum-verified** against `SHASUMS256.txt`. Official
+  builds are self-contained (ICU statically linked, only system libs); a Homebrew/distro
+  Node links against separate dylibs and would not run on the user's machine, so we
+  download rather than copy the local `process.execPath`. Cached under `sidecar/.node-cache/`.
+
+At runtime `node.rs` resolves `<resource_dir>/sidecar/dist/tool-host.cjs` and
+`<resource_dir>/sidecar/runtime/node`, falling back to the dev script + `node` on PATH.
+`NEWVECTOR_NODE` overrides the interpreter. All build outputs are git-ignored.
+
+Run the packaging step standalone with `pnpm --filter @newvector/desktop sidecar:bundle`.
+The runtime is staged for the **host** platform/arch (what Tauri builds for — the release
+matrix runs one native runner per OS); override with `NEWVECTOR_RUNTIME_PLATFORM` / `_ARCH`.
+
+> **macOS signing (overlaps [NEW-43]):** the embedded `runtime/node` binary lands in
+> `Contents/Resources/` and, under hardened runtime, must be code-signed with the app's
+> identity or Gatekeeper will kill it. Tauri's bundler signs nested resources when a
+> signing identity is configured, so this is handled once the Apple Developer cert is in
+> place — no extra code changes needed. Unsigned local/dev builds run fine.
 
 ## Native menu and system tray
 
@@ -178,12 +238,36 @@ remaining repository secrets are required:
 | `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 above | Chosen at export time in Keychain Access | ⏳ pending — CEO to set via `gh secret set` locally (not shared in chat) |
 | `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Christopher York (3B9Z7S9DWL)` | Read from local Keychain (`security find-identity -v -p codesigning`) | ✅ set (2026-07-22) |
 | `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization | Apple Developer Program | ✅ set (2026-07-22) |
-| `WINDOWS_CERTIFICATE` / `_PASSWORD` | Windows code signing (.pfx) | Code-signing CA (e.g. DigiCert, ~$300+/yr) or Azure Trusted Signing | ⏳ pending |
+| `AZURE_TENANT_ID` | Windows code signing — Azure AD (Entra ID) **directory/tenant** GUID | Azure Portal → **Microsoft Entra ID → Overview → "Tenant ID"** (not any ID shown on the Trusted Signing resource blade) | ❌ set (2026-07-24) but confirmed wrong (2026-07-26) — the 2026-07-26 Windows release run failed at the `az login --service-principal` step with `AADSTS90002: Tenant '***' not found`, i.e. the stored GUID doesn't resolve to any Azure AD tenant. Likely sourced from the Trusted Signing account blade instead of the Entra ID Overview page — needs to be re-copied from the correct page and re-set with `gh secret set AZURE_TENANT_ID --repo KetchCyork/Open-Work` |
+| `AZURE_TRUSTED_SIGNING_ACCOUNT` | Windows code signing — Trusted Signing account name | Azure Portal | ✅ set (2026-07-24), value `NewVentureAI` |
+| `AZURE_TRUSTED_SIGNING_ENDPOINT` | Windows code signing — account's region endpoint | Azure Portal | ✅ set (2026-07-24), value `https://eus.codesigning.azure.net/` |
+| `AZURE_TRUSTED_SIGNING_CERT_PROFILE` | Windows code signing — certificate **profile name** (the short identifier chosen when creating the profile, *not* the certificate Subject/DN) | Azure Portal → Trusted Signing account → Certificate Profiles | ✅ set (2026-07-24), value `openwork` |
+| `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Windows code signing — service principal auth for CI (Trusted Signing has no interactive login) | Azure Portal → Microsoft Entra ID → App registrations → new registration, then assign it the "Trusted Signing Certificate Profile Signer" role on the Trusted Signing account, then Certificates & secrets → new client secret | ⚠️ set (2026-07-26) but unverified and possibly swapped/mislabeled — because the tenant lookup above fails first, CI never reached the point of validating these. The two values posted in the NEW-43 comment thread also don't match the shapes Azure normally produces: a client secret **Value** is a ~40-char string (often containing `~`), while the Application (client) ID and the Secret **ID** (as opposed to its Value) are both GUIDs — it's a common mistake to copy the Secret ID instead of the Value from the Certificates & secrets page. Re-verify both from the App Registration's Overview (client ID) and a freshly-created Certificates & secrets entry (Value, copied immediately — Azure only shows it once), then re-set with `gh secret set` directly rather than pasting into the issue thread |
 
-CEO approved budget for the Apple Developer Program and a Windows
-code-signing cert and is doing the account sign-up personally (identity
-verification/payment can't be delegated to an agent). Once those accounts
-exist, hand the resulting certificate/credential values to this agent (or
-add the secrets directly via `gh secret set <NAME> --repo
-KetchCyork/Open-Work`) and the release workflow will start producing fully
-signed installers with no further code changes.
+Windows signing uses [Azure Trusted Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/) rather than a
+downloadable `.pfx`: a 2023 CA/Browser Forum rule moved publicly-trusted
+code-signing keys to HSM-backed storage, and a physical USB token doesn't
+work on GitHub-hosted Windows runners. The release workflow installs
+[`trusted-signing-cli`](https://github.com/Levminer/trusted-signing-cli) on
+the Windows runner and points Tauri's bundler at it via a
+`bundle.windows.signCommand` config override — see
+`.github/workflows/desktop-release.yml` for the exact invocation. It signs
+only once every secret above is present; a partial set falls back to an
+unsigned Windows build rather than breaking the release.
+
+CEO approved budget for the Apple Developer Program and the Azure Trusted
+Signing account and is doing the account sign-up / identity verification
+personally (can't be delegated to an agent). Apple is fully wired. For
+Windows, the account-level values are set; still needed from the CEO:
+
+1. The Trusted Signing **certificate profile name** (Azure Portal →
+   Trusted Signing account → Certificate Profiles — a short name like
+   `my-cert-profile`, not the Subject/DN already provided).
+2. An App Registration (service principal) with the "Trusted Signing
+   Certificate Profile Signer" role on the Trusted Signing account, and its
+   client ID + client secret.
+
+Once those exist, hand the values to this agent (or add the secrets
+directly via `gh secret set <NAME> --repo KetchCyork/Open-Work`) and the
+release workflow will start producing fully signed Windows installers with
+no further code changes.

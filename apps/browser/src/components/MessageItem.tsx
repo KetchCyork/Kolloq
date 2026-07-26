@@ -1,8 +1,59 @@
+import type { FileArtifact } from "@newvector/core";
 import { attachmentDataUrl } from "../attachments";
+import { alertDialog } from "../dialogs";
+import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatBytes } from "../fileArtifact";
+import { useStore } from "../store";
 import type { StoredMessage } from "../types";
 import { formatTime } from "../utils";
 
-export function MessageItem({ message }: { message: StoredMessage }) {
+function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; sessionId: string }) {
+  const filename = artifactFilename(artifact);
+  async function handleDownload() {
+    try {
+      await downloadFileArtifact(artifact, sessionId);
+    } catch (error) {
+      await alertDialog(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return (
+    <div className="artifact-download">
+      <span className="artifact-icon">📄</span>
+      <span className="artifact-name" title={artifact.path}>
+        {filename}
+      </span>
+      <span className="artifact-size">{formatBytes(artifact.bytesWritten)}</span>
+      <button onClick={handleDownload} disabled={!canDownloadArtifact(artifact)}>
+        Download
+      </button>
+    </div>
+  );
+}
+
+export function MessageItem({ message, sessionId }: { message: StoredMessage; sessionId: string }) {
+  const { setCurrentView } = useStore();
+
+  if (message.error) {
+    return (
+      <div className={`message role-${message.role}`}>
+        <div>
+          <div className="bubble message-error-bubble">
+            <div className="message-error-head">
+              <span aria-hidden="true">⚠️</span>
+              <span>Turn failed</span>
+            </div>
+            <div className="message-error-reason">{message.error.reason}</div>
+            {message.error.isConfigIssue && (
+              <button type="button" className="link-button" onClick={() => setCurrentView("settings")}>
+                Manage Accounts
+              </button>
+            )}
+          </div>
+          <div className="message-meta">{formatTime(message.createdAt)}</div>
+        </div>
+      </div>
+    );
+  }
+
   if (message.role === "tool") {
     return (
       <div className="message role-tool">
@@ -13,6 +64,7 @@ export function MessageItem({ message }: { message: StoredMessage }) {
             <span className="status-badge done">result</span>
           </div>
           <div className="tool-card-body">{message.content}</div>
+          {message.artifact ? <ArtifactDownload artifact={message.artifact} sessionId={sessionId} /> : null}
         </div>
       </div>
     );

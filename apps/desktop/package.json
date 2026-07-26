@@ -6,9 +6,15 @@
     "dev": "bash scripts/ensure-target-unindexed.sh && tauri dev",
     "build": "bash scripts/ensure-target-unindexed.sh && bash scripts/drain-stale-bundle.sh && tauri build",
     "qa-build": "bash scripts/qa-build.sh",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sidecar:bundle": "node sidecar/build.mjs",
+    "sidecar:smoke": "node sidecar/tool-host.mjs"
+  },
+  "dependencies": {
+    "@newvector/core": "workspace:*"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4"
+    "@tauri-apps/cli": "^2.11.4",
+    "esbuild": "^0.28.1"
   }
 }

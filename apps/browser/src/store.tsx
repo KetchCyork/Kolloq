@@ -1,9 +1,17 @@
+import { CouncilController } from "@newvector/core";
 import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
+import { classifyProviderError } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
 import { runCouncilTurn } from "./councilClient";
-import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
+import {
+  applyCouncilEvent,
+  computeTotalCostNote,
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  initialLiveCouncilTurn,
+  validateCouncilMembers,
+} from "./councilReducer";
 import {
   accountCredentialKey,
   accountOAuthKey,
@@ -21,6 +29,7 @@ import {
   loadAllCouncilSessions,
   loadAllProjects,
   loadAllSessions,
+  loadAllSkills,
   putAccount,
   putAllCouncilSessions,
   putAllSessions,
@@ -28,12 +37,15 @@ import {
   putProject,
   putProjectFolderHandle,
   putSession,
+  putSkill,
   deleteSession as deleteSessionRecord,
+  deleteSkill as deleteSkillRecord,
 } from "./db";
 import { migrateSessionsToAccounts } from "./accountMigration";
 import { applyTheme, loadPreferences, savePreferences, type Preferences } from "./preferences";
 import { pickWorkingFolder, workingFolderName, type WorkingFolderHandle } from "./projectFolder";
 import { resolveRoutedMember } from "./projectRouting";
+import { composeAgentSystemPrompt, skillsForAgent } from "./skills";
 import { isOAuthCredentialExpiring, refreshSubscriptionAuth } from "./subscriptionAuth";
 import { capture, setTelemetryEnabled } from "./telemetry";
 import type {
@@ -52,6 +64,7 @@ import type {
   ProjectTaskStatus,
   ProviderConfig,
   SessionExportFile,
+  Skill,
   StoredMessage,
 } from "./types";
 import {
@@ -165,6 +178,7 @@ interface StoreState {
   councilSessions: CouncilSession[];
   projects: Project[];
   accounts: Account[];
+  skills: Skill[];
   activeSessionId: string | null;
   live: Record<string, LiveTurn>;
   councilLive: Record<string, LiveCouncilTurn>;
@@ -186,10 +200,15 @@ interface StoreApi extends StoreState {
   createCouncilSession: (members: Array<Omit<CouncilMemberConfig, "id">>) => CouncilSession;
   updateCouncilSession: (
     id: string,
-    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>,
+    patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>,
   ) => void;
   deleteCouncilSession: (id: string) => void;
   askCouncil: (sessionId: string, question: string) => Promise<void>;
+  /** Mid-debate controls for a council turn currently in `councilLive` — no-ops once it's finished. */
+  pauseCouncilTurn: (sessionId: string) => void;
+  resumeCouncilTurn: (sessionId: string) => void;
+  injectCouncilMessage: (sessionId: string, message: string) => void;
+  forceCouncilVote: (sessionId: string) => void;
   exportSessions: () => SessionExportFile;
   importSessions: (data: SessionExportFile, mode: "merge" | "replace") => Promise<void>;
   createAccount: (input: Omit<Account, "id" | "createdAt">) => Account;
@@ -201,6 +220,14 @@ interface StoreApi extends StoreState {
   updatePreferences: (patch: Partial<Preferences>) => void;
   /** Jumps straight to the General tab of Settings. */
   openPreferences: () => void;
+  createSkill: (input: Omit<Skill, "id" | "createdAt" | "updatedAt">) => Skill;
+  updateSkill: (id: string, patch: Partial<Omit<Skill, "id" | "createdAt">>) => void;
+  deleteSkill: (id: string) => void;
+  /** Attaches/detaches one skill to one agent — the write both the Skills pane's agent picker and the
+   * agent drawer's skill list make, so neither has to rebuild `attachedAgentIds` itself. */
+  setSkillAttached: (skillId: string, agentId: string, attached: boolean) => void;
+  /** Jumps straight to the Skills tab of Settings. */
+  openSkillsManager: () => void;
   createProject: () => Project;
   updateProject: (id: string, patch: Partial<Pick<Project, "identity" | "instructions">>) => void;
   deleteProject: (id: string) => void;
@@ -229,6 +256,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [councilSessions, setCouncilSessions] = useState<CouncilSession[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveTurn>>({});
   const [councilLive, setCouncilLive] = useState<Record<string, LiveCouncilTurn>>({});
@@ -245,9 +273,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   projectsRef.current = projects;
   const accountsRef = useRef<Account[]>([]);
   accountsRef.current = accounts;
+  const skillsRef = useRef<Skill[]>([]);
+  skillsRef.current = skills;
   const preferencesRef = useRef<Preferences>(preferences);
   preferencesRef.current = preferences;
   const initStarted = useRef(false);
+  /** One live `CouncilController` per in-progress council turn, keyed by session id — not React
+   * state, since pause/resume/inject/force-vote take effect through the engine's event stream
+   * (which already drives `councilLive`), not by re-rendering off the controller itself. */
+  const councilControllersRef = useRef<Record<string, CouncilController>>({});
 
   useEffect(() => {
     setTelemetryEnabled(preferences.telemetryEnabled);
@@ -267,11 +301,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     initStarted.current = true;
 
     async function init() {
-      const [loadedSessions, loadedAccounts, loadedCouncilSessions, loadedProjects] = await Promise.all([
+      const [loadedSessions, loadedAccounts, loadedCouncilSessions, loadedProjects, loadedSkills] = await Promise.all([
         loadAllSessions(),
         loadAllAccounts(),
         loadAllCouncilSessions(),
         loadAllProjects(),
+        loadAllSkills(),
       ]);
       const [hydratedSessions, hydratedAccounts] = await Promise.all([
         Promise.all(loadedSessions.map(hydrateSession)),
@@ -296,6 +331,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
       setCouncilSessions(titled.sessions);
       setProjects(loadedProjects);
+      setSkills(loadedSkills);
       setActiveSessionId((current) => current ?? migration.sessions[0]?.id ?? titled.sessions[0]?.id ?? null);
       // No agent sessions to land on but a council exists — open straight to the Advisory Council view instead of an empty Chat.
       if (migration.sessions.length === 0 && titled.sessions.length > 0) {
@@ -388,10 +424,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const createSkill = useCallback((input: Omit<Skill, "id" | "createdAt" | "updatedAt">): Skill => {
+    const skill: Skill = { ...input, id: randomId(), createdAt: nowMs(), updatedAt: nowMs() };
+    setSkills((prev) => [...prev, skill]);
+    void putSkill(skill);
+    return skill;
+  }, []);
+
+  const updateSkill = useCallback((id: string, patch: Partial<Omit<Skill, "id" | "createdAt">>) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.id !== id) return skill;
+        const updated = { ...skill, ...patch, updatedAt: nowMs() };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  const deleteSkillById = useCallback((id: string) => {
+    setSkills((prev) => prev.filter((skill) => skill.id !== id));
+    void deleteSkillRecord(id);
+  }, []);
+
+  const setSkillAttached = useCallback((skillId: string, agentId: string, attached: boolean) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (skill.id !== skillId) return skill;
+        const already = skill.attachedAgentIds.includes(agentId);
+        if (already === attached) return skill;
+        const attachedAgentIds = attached
+          ? [...skill.attachedAgentIds, agentId]
+          : skill.attachedAgentIds.filter((candidate) => candidate !== agentId);
+        const updated = { ...skill, attachedAgentIds, updatedAt: nowMs() };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
+  /** Drops a deleted agent from every skill's attachment list, so the Skills pane never shows a
+   * count that includes agents that no longer exist. */
+  const detachAgentFromSkills = useCallback((agentId: string) => {
+    setSkills((prev) =>
+      prev.map((skill) => {
+        if (!skill.attachedAgentIds.includes(agentId)) return skill;
+        const updated = {
+          ...skill,
+          attachedAgentIds: skill.attachedAgentIds.filter((candidate) => candidate !== agentId),
+          updatedAt: nowMs(),
+        };
+        void putSkill(updated);
+        return updated;
+      }),
+    );
+  }, []);
+
   const deleteSessionById = useCallback(
     (id: string) => {
       setSessions((prev) => prev.filter((session) => session.id !== id));
       void deleteSessionRecord(id);
+      detachAgentFromSkills(id);
       if (isTauriRuntime()) void deleteApiKey(id);
       setActiveSessionId((current) => {
         if (current !== id) return current;
@@ -399,7 +492,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return remaining[0]?.id ?? null;
       });
     },
-    [],
+    [detachAgentFromSkills],
   );
 
   const appendMessages = useCallback((sessionId: string, messages: StoredMessage[]) => {
@@ -428,7 +521,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       };
       appendMessages(sessionId, [userMessage]);
       setLive((prev) => ({ ...prev, [sessionId]: { text: "", toolCalls: [] } }));
-      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount() });
+      capture({ type: "message_sent", provider: session.providerConfig.provider, toolCount: getToolCount(sessionId) });
 
       const onEvent = (event: AgentEvent) => {
         if (event.type === "tool-call") {
@@ -480,16 +573,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const effectiveSession = {
           ...session,
+          // Attached, enabled skills are folded in per turn rather than baked into `systemPrompt`, so
+          // editing or toggling a skill in Settings takes effect on the next message.
+          systemPrompt: composeAgentSystemPrompt(session.systemPrompt, skillsForAgent(skillsRef.current, session.id)),
           providerConfig: resolveProviderConfig(session.providerConfig, accountsForTurn),
         };
         const turn = await runSessionTurn(effectiveSession, priorMessages, text, attachments, onEvent);
         const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
         appendMessages(sessionId, storedTurn);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
         capture({ type: "provider_error", provider: session.providerConfig.provider });
+        const { reason, isConfigIssue } = classifyProviderError(error);
         appendMessages(sessionId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${message}` },
+          { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: { reason, isConfigIssue } },
         ]);
       } finally {
         setLive((prev) => {
@@ -519,7 +615,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateCouncilSession = useCallback(
-    (id: string, patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds">>) => {
+    (
+      id: string,
+      patch: Partial<Pick<CouncilSession, "identity" | "members" | "maxRounds" | "moderatorAccountId" | "budgetCap">>,
+    ) => {
       setCouncilSessions((prev) =>
         prev.map((session) => {
           if (session.id !== id) return session;
@@ -559,8 +658,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
+    const maxRounds = session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS;
+    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question, maxRounds);
     setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
+
+    const controller = new CouncilController();
+    councilControllersRef.current[sessionId] = controller;
 
     const onEvent = (event: CouncilEvent) => {
       liveTurn = applyCouncilEvent(liveTurn, event, session.members, accountsRef.current);
@@ -568,13 +671,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await runCouncilTurn(session.members, accountsForTurn, session.maxRounds, question, onEvent);
+      const result = await runCouncilTurn(
+        session.members,
+        accountsForTurn,
+        maxRounds,
+        session.moderatorAccountId,
+        question,
+        onEvent,
+        controller,
+        session.budgetCap,
+      );
+      // On a moderator error, the "moderator-error" event only carries the error message — the
+      // engine's deterministic fallback synthesis (see Council.fallbackSynthesis) lives on the
+      // resolved result instead, so surface it here rather than leaving the turn's answer empty.
+      if (!liveTurn.answer && result.answer) {
+        liveTurn = { ...liveTurn, answer: result.answer };
+      }
     } catch (error) {
       // Council.run() itself never rejects (member/moderator errors surface as events); this only
       // fires for setup failures, e.g. a member's account was removed after validation passed.
       const message = error instanceof Error ? error.message : String(error);
       liveTurn = { ...liveTurn, moderatorError: liveTurn.moderatorError ?? message, finished: true };
     } finally {
+      delete councilControllersRef.current[sessionId];
       setCouncilLive((prev) => {
         const next = { ...prev };
         delete next[sessionId];
@@ -587,11 +706,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: nowMs(),
           rounds: liveTurn.rounds,
           consensusReached: liveTurn.consensusReached,
+          budgetExceeded: liveTurn.budgetExceeded,
           finalRound: Math.max(0, liveTurn.rounds.length - 1),
+          maxRounds,
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,
-          totalCostNote: computeTotalCostNote(liveTurn.rounds, liveTurn.answer, session.members, accountsRef.current),
+          alignmentScores: liveTurn.alignmentScores,
+          forcedVote: liveTurn.forcedVote,
+          totalCostNote: computeTotalCostNote(
+            liveTurn.rounds,
+            liveTurn.answer,
+            session.members,
+            accountsRef.current,
+            session.moderatorAccountId,
+          ),
         };
         setCouncilSessions((prev) =>
           prev.map((candidate) => {
@@ -612,6 +741,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
       }
     }
+  }, []);
+
+  /** No-ops once the turn has finished (its controller was already removed in `askCouncil`'s
+   * `finally`) — the buttons that call these are themselves disabled once `live.finished`, but a
+   * stray late click shouldn't throw. */
+  const pauseCouncilTurn = useCallback((sessionId: string) => {
+    councilControllersRef.current[sessionId]?.pause();
+  }, []);
+
+  const resumeCouncilTurn = useCallback((sessionId: string) => {
+    councilControllersRef.current[sessionId]?.resume();
+  }, []);
+
+  const injectCouncilMessage = useCallback((sessionId: string, message: string) => {
+    councilControllersRef.current[sessionId]?.inject(message);
+  }, []);
+
+  const forceCouncilVote = useCallback((sessionId: string) => {
+    councilControllersRef.current[sessionId]?.forceVote();
   }, []);
 
   const createProject = useCallback((): Project => {
@@ -920,6 +1068,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }));
           appendProjectMessages(projectId, storedTurn);
         } else if (turnError) {
+          const { reason, isConfigIssue } = classifyProviderError(turnError);
           appendProjectMessages(projectId, [
             {
               id: randomId(),
@@ -927,14 +1076,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               role: "assistant",
               memberId: member.id,
               content: "",
-              error: { reason: turnError.message },
+              error: { reason, isConfigIssue },
             },
           ]);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const { reason, isConfigIssue } = classifyProviderError(error);
         appendProjectMessages(projectId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", memberId: member.id, content: "", error: { reason: message } },
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: "",
+            error: { reason, isConfigIssue },
+          },
         ]);
       } finally {
         setProjectLive((prev) => {
@@ -991,6 +1147,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       councilSessions,
       projects,
       accounts,
+      skills,
       activeSessionId,
       live,
       councilLive,
@@ -1010,6 +1167,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateCouncilSession,
       deleteCouncilSession: deleteCouncilSessionById,
       askCouncil,
+      pauseCouncilTurn,
+      resumeCouncilTurn,
+      injectCouncilMessage,
+      forceCouncilVote,
       exportSessions,
       importSessions,
       createAccount,
@@ -1022,6 +1183,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePreferences,
       openPreferences: () => {
         setSettingsTab("general");
+        setCurrentView("settings");
+      },
+      createSkill,
+      updateSkill,
+      deleteSkill: deleteSkillById,
+      setSkillAttached,
+      openSkillsManager: () => {
+        setSettingsTab("skills");
         setCurrentView("settings");
       },
       createProject,
@@ -1044,6 +1213,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       councilSessions,
       projects,
       accounts,
+      skills,
       activeSessionId,
       live,
       councilLive,
@@ -1060,12 +1230,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateCouncilSession,
       deleteCouncilSessionById,
       askCouncil,
+      pauseCouncilTurn,
+      resumeCouncilTurn,
+      injectCouncilMessage,
+      forceCouncilVote,
       exportSessions,
       importSessions,
       createAccount,
       updateAccount,
       deleteAccountById,
       updatePreferences,
+      createSkill,
+      updateSkill,
+      deleteSkillById,
+      setSkillAttached,
       createProject,
       updateProjectById,
       deleteProjectById,

@@ -1,6 +1,8 @@
 mod keychain;
 mod menu;
+mod node;
 mod oauth;
+mod provider;
 mod tray;
 mod working_folder;
 
@@ -12,12 +14,18 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             keychain::set_credential,
             keychain::get_credential,
             keychain::delete_credential,
+            node::node_tool_exec,
+            node::node_read_file,
             oauth::oauth_token_request,
             working_folder::list_working_folder_entries,
+            oauth::google_oauth_capture,
+            provider::provider_fetch,
         ])
         .setup(|app| {
             let menu = menu::build(app.handle())?;

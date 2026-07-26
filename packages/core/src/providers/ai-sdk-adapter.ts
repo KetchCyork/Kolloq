@@ -87,8 +87,44 @@ export async function toUserContent(providerId: string, message: ChatMessage): P
   return [...(message.content ? [{ type: "text" as const, text: message.content }] : []), ...attachmentParts];
 }
 
+/**
+ * Anthropic (and some other providers) reject any message whose serialized payload contains an
+ * empty text content block — the visible error is "messages: text content blocks must be
+ * non-empty". This surfaces when replaying stored history that holds a turn whose content resolves
+ * to nothing: an assistant reply that came back empty, a blank user turn, or an old attachment
+ * whose extracted text degraded away. Because the *entire* thread is re-serialized on every send,
+ * one such turn baked into history breaks every subsequent send until it is guarded.
+ *
+ * This pass strips blank (empty or whitespace-only) text blocks and substitutes a placeholder when
+ * a message would otherwise be left with no content, so a single degraded historical turn can never
+ * wall off a whole thread. Non-text blocks (images, files, tool calls/results) are left untouched.
+ */
+const EMPTY_TEXT_PLACEHOLDER = "(no content)";
+
+export function sanitizeEmptyContent(messages: CoreMessage[]): CoreMessage[] {
+  return messages.map((message) => {
+    const content = message.content;
+
+    if (typeof content === "string") {
+      if (content.trim().length > 0) return message;
+      return { ...message, content: EMPTY_TEXT_PLACEHOLDER } as CoreMessage;
+    }
+
+    if (Array.isArray(content)) {
+      const filtered = content.filter((part) => !(part.type === "text" && part.text.trim().length === 0));
+      if (filtered.length === content.length) return message;
+      // If filtering blank text blocks empties the whole message, fall back to a placeholder string
+      // so the turn still carries non-empty content and role alternation stays intact.
+      if (filtered.length === 0) return { ...message, content: EMPTY_TEXT_PLACEHOLDER } as CoreMessage;
+      return { ...message, content: filtered } as CoreMessage;
+    }
+
+    return message;
+  });
+}
+
 async function toCoreMessages(providerId: string, messages: ChatMessage[]): Promise<CoreMessage[]> {
-  return Promise.all(
+  const coreMessages = await Promise.all(
     messages.map(async (message): Promise<CoreMessage> => {
       if (message.role === "tool") {
         return {
@@ -126,6 +162,8 @@ async function toCoreMessages(providerId: string, messages: ChatMessage[]): Prom
       return { role: message.role, content: message.content } as CoreMessage;
     }),
   );
+
+  return sanitizeEmptyContent(coreMessages);
 }
 
 /**
