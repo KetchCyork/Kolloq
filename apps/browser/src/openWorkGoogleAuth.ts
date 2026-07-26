@@ -228,7 +228,7 @@ export async function runGoogleSignIn(session: GoogleAuthSession): Promise<AppSe
   // Bind the loopback listener first (the command awaits the redirect), then open the consent page.
   const capture = invoke<{ code: string; state: string }>("google_oauth_capture", { port: GOOGLE_LOOPBACK_PORT });
   const { openExternalUrl } = await import("./credentials");
-  openExternalUrl(session.authorizeUrl);
+  await openExternalUrl(session.authorizeUrl);
   const captured = await capture;
 
   if (captured.state !== session.state) throw new Error("OAuth state mismatch — sign-in was interrupted or tampered with.");
