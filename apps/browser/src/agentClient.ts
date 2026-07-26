@@ -2,6 +2,7 @@ import type { AgentEvent, ChatAttachment, ChatMessage } from "@newvector/core";
 import { AgentRunner, createOfficeProxyTools, createProvider, defineTool, ToolRegistry } from "@newvector/core";
 import { z } from "zod";
 import { createTauriNodeExec, nodeContextAvailable } from "./nodeContext";
+import { getProviderFetch } from "./providerFetch";
 import type { AgentSession, ProviderConfig, StoredMessage } from "./types";
 
 /**
@@ -56,6 +57,8 @@ export function runSessionTurn(
     baseURL: session.providerConfig.baseURL,
     authType: session.providerConfig.authType,
     accessToken: session.providerConfig.accessToken,
+    // Desktop shell: route inference through Rust so provider APIs aren't CORS-blocked by the webview.
+    fetchImpl: getProviderFetch(),
   });
 
   const runner = new AgentRunner({
@@ -90,6 +93,8 @@ export function runProjectTurn(
     baseURL: providerConfig.baseURL,
     authType: providerConfig.authType,
     accessToken: providerConfig.accessToken,
+    // Desktop shell: route inference through Rust so provider APIs aren't CORS-blocked by the webview.
+    fetchImpl: getProviderFetch(),
   });
 
   const runner = new AgentRunner({

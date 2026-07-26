@@ -1,3 +1,4 @@
+import { classifyProviderError } from "../providers/errorReason.js";
 import type { ChatMessage, ChatProvider } from "../providers/types.js";
 
 /** One seat on the council. Each member is wired to its own provider, unlike `AgentOrchestrator`
@@ -155,7 +156,7 @@ export class Council {
           survivors.push(member);
           this.onEvent?.({ type: "member-position", round, position });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = classifyProviderError(error).reason;
           const label = member.label ?? member.name;
           dropped.push({ member: member.name, label, round, error: message });
           this.onEvent?.({ type: "member-dropped", round, member: member.name, label, error: message });
@@ -190,7 +191,7 @@ export class Council {
       answer = await this.synthesize(question, rounds, dropped, consensusReached);
       this.onEvent?.({ type: "moderator-synthesis", content: answer });
     } catch (error) {
-      moderatorError = error instanceof Error ? error.message : String(error);
+      moderatorError = classifyProviderError(error).reason;
       answer = this.fallbackSynthesis(rounds, dropped, consensusReached);
       this.onEvent?.({ type: "moderator-error", error: moderatorError });
     }
