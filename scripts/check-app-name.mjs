@@ -59,6 +59,7 @@ const EXEMPT_PATH_PARTS = [
 const EXEMPT_LINE_PATTERNS = [
   /github\.com\/KetchCyork\/Open-Work/, // the repo slug, not the app name
   /Open-Work\.git/,
+  /OpenWork-QA-Builds/, // qa-build.sh's literal DEST_DIR folder name, not a display rename of "Open Work"
 ];
 
 function trackedFiles() {

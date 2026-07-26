@@ -48,6 +48,49 @@ NEW-120). Two things make that diagnosable:
   belongs there. Pass `--force` to override any of those checks (each still
   prints a loud warning).
 
+## QA / dev builds vs. the canonical `/Applications` install
+
+`/Applications/Open Work.app` (identifier `ai.newvector.cowork`) is the
+**canonical, `main`-only build the board verifies against**. Only write it
+when you are explicitly refreshing that canonical build (e.g. installing a
+signed release, or a `main`-branch build for board verification) — say so in
+the issue when you do, since it replaces whatever was previously installed
+there.
+
+**Per-issue pinned copies in `/Applications` (e.g.
+`/Applications/Open Work (NEW-<id> QA).app`) are prohibited**, not merely
+discouraged — every such bundle still carries the `ai.newvector.cowork`
+family of identifiers, so pinning one there just renames the collision
+instead of removing it. Use `qa-build` below instead. The sole exception is
+`/Applications/Open Work (NEW-42 QA).app`, a pre-convention artifact that
+stays only until NEW-42 leaves `in_review`, at which point QA removes it.
+
+Every other desktop build — local dev, QA verification builds, anything run
+from a worktree — must use:
+
+```sh
+pnpm --filter @newvector/desktop qa-build [--debug]
+```
+
+This builds with a **branch-suffixed identifier and product name**
+(`ai.newvector.cowork.qa.<branch-slug>`, `Open Work (QA <branch>)`) and
+installs the result to `~/Desktop/OpenWork-QA-Builds/<branch-slug>/` —
+never to `/Applications`. Because the bundle identifier differs from the
+canonical one, a QA build can never overwrite `/Applications/Open Work.app`
+or hijack what LaunchServices resolves `ai.newvector.cowork` to, no matter
+how many worktrees have one installed at once. Run it, then `open` the
+printed path directly rather than launching "Open Work" from Spotlight/Dock
+(that always resolves to the canonical build).
+
+`pnpm dev` / `pnpm build` / `qa-build` all run
+`scripts/ensure-target-unindexed.sh` first, which drops a
+`.metadata_never_index` marker in `src-tauri/target/`. That tells Spotlight
+not to index that worktree's build output at all, so a `target/.../bundle`
+directory can never itself become a claimant on `ai.newvector.cowork` the
+way NEW-160 found. `cargo clean` deletes `target/` (and the marker with it),
+so the marker is recreated on every build rather than being a one-time setup
+step.
+
 ## OS keychain credential storage
 
 Provider API keys are secrets. In the plain browser build there's no secure

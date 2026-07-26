@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "dev": "bash scripts/ensure-target-unindexed.sh && tauri dev",
+    "build": "bash scripts/ensure-target-unindexed.sh && bash scripts/drain-stale-bundle.sh && tauri build",
+    "qa-build": "bash scripts/qa-build.sh",
     "tauri": "tauri",
     "sidecar:bundle": "node sidecar/build.mjs",
     "sidecar:smoke": "node sidecar/tool-host.mjs"
