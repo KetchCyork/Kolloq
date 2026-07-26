@@ -121,7 +121,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name,
-              name: isTagPush ? `Open Work ${tag_name.replace('desktop-v', '')}` : `Open Work (manual run ${context.runNumber})`,
+              name: isTagPush ? `Kolloq ${tag_name.replace('desktop-v', '')}` : `Kolloq (manual run ${context.runNumber})`,
               draft: true,
               prerelease: !isTagPush,
             });

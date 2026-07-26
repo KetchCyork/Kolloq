@@ -5,7 +5,7 @@ use tauri::{AppHandle, Runtime};
 /// using the platform's predefined items (About, Quit, Cut/Copy/Paste, ...) so
 /// behavior matches the user's OS conventions instead of a hand-rolled one.
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let app_name = "Open Work";
+    let app_name = "Kolloq";
 
     let app_menu = Submenu::with_items(
         app,

@@ -2,7 +2,7 @@ import { useStore } from "../store";
 
 /**
  * Tier data is a placeholder (spec §8.2: "Limits below are placeholders — final numbers TBD pending
- * pricing work"). Real Open Work accounts only have a Free tier for now (no billing backend exists
+ * pricing work"). Real Kolloq accounts only have a Free tier for now (no billing backend exists
  * yet — see openWorkAccount.ts) so every account is shown against Free's limits; the comparison grid
  * below is illustrative, not something a user can actually act on yet.
  */
@@ -76,7 +76,7 @@ export function SettingsAccountPlanPane({ accountEmail, onSignOut }: { accountEm
             <h3>
               {accountEmail} <span className="badge">FREE</span>
             </h3>
-            <div className="settings-card-sub">Open Work account</div>
+            <div className="settings-card-sub">Kolloq account</div>
           </div>
           <div className="spacer" />
           <button type="button" className="settings-btn" disabled title="Billing isn't available yet.">

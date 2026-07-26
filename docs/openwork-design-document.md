@@ -1,9 +1,9 @@
-# Open Work — Design Document (UI / UX Specification)
+# Kolloq — Design Document (UI / UX Specification)
 
 **Version:** 1.0 (Draft for review)
 **Date:** July 20, 2026
 **Author:** Prepared for Chris York
-**Supports:** `docs/openwork-mockup.html` (the interactive mockup from NEW-73) and the *Open Work — Product Specification* (`docs/openwork-product-spec.md`).
+**Supports:** `docs/openwork-mockup.html` (the interactive mockup from NEW-73) and the *Kolloq — Product Specification* (`docs/openwork-product-spec.md`).
 **Status:** Design specification. This document formalizes the visual design language, design tokens, component library, and screen anatomy realized in the mockup so that design and engineering share one source of truth. It does not add product scope — for what the product does, see the product spec; for how it looks and behaves, see here.
 
 ---
@@ -113,10 +113,10 @@ Heading rule: serif is reserved for *titles that name a thing* (view titles, car
 ## 4. Brand & Identity
 
 - **Mark:** a teal-to-green gradient ring enclosing a stylized **"w"** (rendered as an inline SVG so it stays crisp and inherits the gradient at any size). Gradient stops: `#41e0a7 → #17b394`, top-left to bottom-right.
-- **Wordmark:** "Open Work" in the bold system sans — white on dark surfaces, navy (`#1a2744`) on light.
+- **Wordmark:** "Kolloq" in the bold system sans — white on dark surfaces, navy (`#1a2744`) on light.
 - **Tagline (sign-in):** *"Every model. One workspace. Better decisions."*
 - **Placement:** mark + wordmark top-left of the sidebar; mark + H1 centered on the sign-in card.
-- **Enterprise override:** tenants may replace the mark and accent color and set a custom app name in title bars (e.g., "Acme Advisor, powered by Open Work"). The design system exposes exactly two override points — the logo slot and `--accent` (with `--accent-soft`/`--on-accent` derived) — so a tenant theme is a token swap, not a redesign. See product spec §8.4.
+- **Enterprise override:** tenants may replace the mark and accent color and set a custom app name in title bars (e.g., "Acme Advisor, powered by Kolloq"). The design system exposes exactly two override points — the logo slot and `--accent` (with `--accent-soft`/`--on-accent` derived) — so a tenant theme is a token swap, not a redesign. See product spec §8.4.
 
 ---
 
@@ -211,13 +211,13 @@ The mockup is a single-window app shell (fixed sidebar + swapped main view). Scr
 **App shell (all screens):** left sidebar rail (250px) with logo, "New chat" CTA, five nav items, Recents, and the user/plan footer; a main column with a 1px-bordered **topbar** (view title in serif + contextual badges/actions) above the active view.
 
 ### 8.0 Sign-in (`#signin`)
-Full-screen gate over a radial teal→dark gradient. Centered card: mark + "Open Work" H1 + tagline, three SSO buttons (Google, Apple, company SSO), an "or" divider, email/password, primary Sign in, and a local-data reassurance note. Below the card, a three-tile **tier strip** markets Free/Pro/Max. Sign-in must clear before the workspace shows.
+Full-screen gate over a radial teal→dark gradient. Centered card: mark + "Kolloq" H1 + tagline, three SSO buttons (Google, Apple, company SSO), an "or" divider, email/password, primary Sign in, and a local-data reassurance note. Below the card, a three-tile **tier strip** markets Free/Pro/Max. Sign-in must clear before the workspace shows.
 
 ### 8.1 Chat (`#v-chat`)
 Topbar: conversation title (serif) + agent badge + Share/Export. Scroll column capped at 760px with `.msg` rows; agent handoffs render a switch divider. **Composer** (`.composer`, radius 16): textarea + a control row with the **agent picker** (chip → dropdown of agents with model/provider sublines), attach/tools chips, and an accent send button. This screen is the parity-with-Claude-Chat surface.
 
 ### 8.2 Project (`#v-project`)
-Topbar adds the **folder bar** (path, R&W badge, Change/Disconnect). Body is three zones: a 290px left panel (Agent roster → Tasks → Files → Project instructions), the chat main column, and its composer (with an "Auto-route ▾" agent selector). Demonstrates the Cowork-parity + multi-agent-roster extension.
+Topbar adds the **folder bar** (path, R&W badge, Change/Disconnect). Body is three zones: a 290px left panel (Agent roster → Tasks → Files → Project instructions), the chat main column, and its composer (with an "Auto-route ▾" agent selector). Demonstrates the Claude Cowork-parity + multi-agent-roster extension.
 
 ### 8.3 Council setup (`#v-council-setup`)
 860px form: the **Challenge** textarea (+ attachment chips), optional decision criteria, a 5-across **seat grid** (four filled with stances, one "＋ Add fifth seat"), a diversity hint, and a three-up row of Moderator / Max rounds / Budget cap selects. A cost-estimate + session-quota hint precedes the primary "Convene the council →".

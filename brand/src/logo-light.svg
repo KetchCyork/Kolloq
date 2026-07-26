@@ -1,17 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="140" viewBox="0 0 480 140">
-  <!-- Open Work horizontal lockup for LIGHT backgrounds (navy wordmark). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="400" viewBox="0 0 900 400">
+  <!-- Kolloq wordmark lockup — council ring + "kolloq" wordmark, self-contained on navy. The brand kit
+       shipped one lockup (NEW-243); it doubles as both the dark- and light-surface variant since its
+       own navy background travels with it rather than compositing onto the page background. -->
   <defs>
-    <linearGradient id="teal" x1="0.12" y1="0.05" x2="0.9" y2="1">
-      <stop offset="0" stop-color="#41E8C6"/>
-      <stop offset="1" stop-color="#14B487"/>
+    <linearGradient id="ring" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#4ade80"/>
     </linearGradient>
   </defs>
-  <g transform="translate(6,6) scale(0.125)">
-    <circle cx="512" cy="512" r="270" fill="none" stroke="url(#teal)" stroke-width="58"/>
-    <path d="M 384 432 L 456 604 L 512 500 L 568 604 L 640 432"
-          fill="none" stroke="url(#teal)" stroke-width="52"
-          stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="900" height="400" fill="#0b1220"/>
+  <circle cx="200" cy="200" r="105" fill="none" stroke="url(#ring)" stroke-width="10" stroke-dasharray="92 40" stroke-linecap="round" transform="rotate(-90 200 200)"/>
+  <g fill="url(#ring)">
+    <circle cx="200" cy="95" r="17"/>
+    <circle cx="300" cy="168" r="17"/>
+    <circle cx="262" cy="285" r="17"/>
+    <circle cx="138" cy="285" r="17"/>
+    <circle cx="100" cy="168" r="17"/>
   </g>
-  <text x="160" y="90" font-family="'SF Pro Display','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif"
-        font-size="60" font-weight="600" letter-spacing="0.5" fill="#16233F">Open Work</text>
+  <text x="200" y="248" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="130" fill="#ffffff">k</text>
+  <text x="380" y="245" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="120" fill="#ffffff" letter-spacing="-2">kolloq</text>
 </svg>

@@ -35,7 +35,7 @@ export function reconcileModelSelection(current: string, models: string[], prefe
   return models[0];
 }
 
-// Open Work agent palette (--a1..--a5 in styles.css), per the design document.
+// Kolloq agent palette (--a1..--a5 in styles.css), per the design document.
 // Kept as literals because these are assigned to stored session identities, not
 // read from CSS at render time.
 const IDENTITY_COLORS = ["#e08a63", "#5b9bd5", "#5cb87a", "#a97fd1", "#d9a94a"];
@@ -50,7 +50,7 @@ export function nowMs(): number {
 }
 
 export function randomIdentity(existingCount: number): AgentIdentity {
-  // Colour and emoji cycle independently — the Open Work palette has 5 entries
+  // Colour and emoji cycle independently — the Kolloq palette has 5 entries
   // and the emoji set has 7, so a shared index would strand the last two emojis.
   return {
     name: `Agent ${existingCount + 1}`,

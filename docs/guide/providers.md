@@ -1,6 +1,6 @@
 # Providers
 
-Open Work supports five provider backends. All share the same `AgentRunner` interface — only credentials and model IDs differ.
+Kolloq supports five provider backends. All share the same `AgentRunner` interface — only credentials and model IDs differ.
 
 ## Anthropic
 

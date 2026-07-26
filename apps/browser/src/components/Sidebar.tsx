@@ -62,8 +62,8 @@ function emailInitials(email: string): string {
   return chars.filter(Boolean).join("").toUpperCase() || "?";
 }
 
-// Falls back to a placeholder until an Open Work account/sign-in system is wired up (tracked separately).
-export const PLACEHOLDER_ACCOUNT_EMAIL = "you@openwork.local";
+// Falls back to a placeholder until a Kolloq account/sign-in system is wired up (tracked separately).
+export const PLACEHOLDER_ACCOUNT_EMAIL = "you@kolloq.local";
 
 export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountEmail?: string }) {
   const {
@@ -114,7 +114,7 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
     <aside className="sidebar">
       <div className="sidebar-brand">
         <img className="sidebar-brand-mark" src="/logo-mark.svg" alt="" width={22} height={22} />
-        <span className="sidebar-brand-name">Open Work</span>
+        <span className="sidebar-brand-name">Kolloq</span>
       </div>
 
       <button className="sidebar-new-btn" onClick={() => createSession()}>

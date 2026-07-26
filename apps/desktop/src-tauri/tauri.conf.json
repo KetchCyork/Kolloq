@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Open Work",
+  "productName": "Kolloq",
   "version": "0.1.0",
   "identifier": "ai.newvector.cowork",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Open Work",
+        "title": "Kolloq",
         "width": 1200,
         "height": 800,
         "minWidth": 720,

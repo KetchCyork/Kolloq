@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Open Work
+  name: Kolloq
   text: AI agents on any LLM
   tagline: A Claude Code–style harness for Anthropic, OpenAI, Gemini, Ollama, and OpenRouter. Browser app, desktop app, or headless CLI.
   actions:
