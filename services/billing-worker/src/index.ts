@@ -1,3 +1,4 @@
+import { handleCheckoutReturn } from "./handlers/checkoutReturn";
 import { handleCreateCheckoutSession } from "./handlers/createCheckoutSession";
 import { handleEntitlement } from "./handlers/entitlement";
 import { handlePortalSession } from "./handlers/portalSession";
@@ -38,6 +39,8 @@ export default {
         response = await handleEntitlement(request, env);
       } else if (request.method === "POST" && url.pathname === "/portal-session") {
         response = await handlePortalSession(request, env);
+      } else if (request.method === "GET" && url.pathname === "/checkout/return") {
+        response = handleCheckoutReturn(request);
       } else {
         response = Response.json({ error: "not_found" }, { status: 404 });
       }

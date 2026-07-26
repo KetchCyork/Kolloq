@@ -80,6 +80,7 @@ export function App() {
   const activeCouncilSession = councilSessions.find((session) => session.id === activeSessionId);
   const activeProject = projects.find((project) => project.id === activeSessionId);
   const accountEmail = appSession.email;
+  const accountIdToken = appSession.idToken;
 
   function handleSignOut() {
     setAppSession(null);
@@ -94,7 +95,7 @@ export function App() {
       case "agents":
         return <AgentsView />;
       case "settings":
-        return <SettingsView accountEmail={accountEmail} onSignOut={handleSignOut} />;
+        return <SettingsView accountEmail={accountEmail} idToken={accountIdToken} onSignOut={handleSignOut} />;
       case "chat":
       default:
         return <ChatPanel />;

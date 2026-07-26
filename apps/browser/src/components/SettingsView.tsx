@@ -27,14 +27,15 @@ const TABS: { id: SettingsTabId; label: string }[] = [
  */
 export function SettingsView({
   accountEmail = PLACEHOLDER_ACCOUNT_EMAIL,
+  idToken,
   onSignOut = () => {},
-}: { accountEmail?: string; onSignOut?: () => void } = {}) {
+}: { accountEmail?: string; idToken?: string; onSignOut?: () => void } = {}) {
   const { settingsTab, setSettingsTab } = useStore();
 
   function renderPane() {
     switch (settingsTab) {
       case "account":
-        return <SettingsAccountPlanPane accountEmail={accountEmail} onSignOut={onSignOut} />;
+        return <SettingsAccountPlanPane accountEmail={accountEmail} idToken={idToken} onSignOut={onSignOut} />;
       case "connections":
         return <SettingsConnectionsPane />;
       case "skills":
