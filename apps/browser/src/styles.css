@@ -1983,6 +1983,22 @@ select {
   word-break: break-word;
 }
 
+.council-answer-section + .council-answer-section {
+  margin-top: 12px;
+}
+
+.council-answer-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.council-answer-section p {
+  margin: 0;
+}
+
 .council-composer textarea {
   background: var(--panel);
   border: 1px solid var(--border);
