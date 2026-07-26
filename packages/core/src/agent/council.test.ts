@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatProvider, ChatRequest, ChatResponse, StreamEvent } from "../providers/types.js";
-import { Council, type CouncilEvent } from "./council.js";
+import { Council, CouncilController, type CouncilEvent } from "./council.js";
 
 /** Deterministic fixed-playback provider — one instance per council member, no live/paid API calls. */
 class StubProvider implements ChatProvider {
@@ -301,6 +301,135 @@ describe("Council", () => {
     expect(moderatorPromptText).not.toContain(idA);
     expect(moderatorPromptText).not.toContain(idB);
     expect(moderatorPromptText).toContain("Claude · Skeptic");
+  });
+
+  describe("CouncilController", () => {
+    it("halts the debate at the next checkpoint until resume() is called", async () => {
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR agree", "Final synthesized answer"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        onEvent: (event) => events.push(event),
+      });
+
+      const controller = new CouncilController();
+      controller.pause();
+      const resultPromise = council.run("Should we do X?", controller);
+
+      // Let the run loop reach the pre-round-0 checkpoint and start waiting on resume().
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(events.some((event) => event.type === "paused")).toBe(true);
+      expect(providerA.requests).toHaveLength(0);
+      expect(providerB.requests).toHaveLength(0);
+
+      controller.resume();
+      const result = await resultPromise;
+
+      expect(events.some((event) => event.type === "resumed")).toBe(true);
+      expect(result.consensusReached).toBe(true);
+      expect(result.answer).toBe("Final synthesized answer");
+    });
+
+    it("delivers an injected message to every surviving member's next-round prompt", async () => {
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR agree", "Final synthesized answer"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        onEvent: (event) => events.push(event),
+      });
+
+      const controller = new CouncilController();
+      controller.inject("Consider the budget constraint.");
+      const result = await council.run("Should we do X?", controller);
+
+      const round0PromptA = providerA.requests[0]!.messages.map((message) => message.content).join("\n");
+      const round0PromptB = providerB.requests[0]!.messages.map((message) => message.content).join("\n");
+      expect(round0PromptA).toContain("Consider the budget constraint.");
+      expect(round0PromptB).toContain("Consider the budget constraint.");
+
+      // Consumed once, at the round it was injected for — not repeated into round 1.
+      const round1PromptA = providerA.requests[1]!.messages.map((message) => message.content).join("\n");
+      expect(round1PromptA).not.toContain("Consider the budget constraint.");
+
+      expect(events.some((event) => event.type === "injected" && event.message === "Consider the budget constraint.")).toBe(
+        true,
+      );
+      expect(result.consensusReached).toBe(true);
+    });
+
+    it("stops asking further members and synthesizes from partial positions when forceVote() fires mid-round", async () => {
+      const providerA = new StubProvider("A", ["Answer A0", "Forced synthesis noting only A answered"]);
+      const providerB = new StubProvider("B", ["Answer B0 should never be requested"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        onEvent: (event) => events.push(event),
+      });
+
+      const controller = new CouncilController();
+      const originalChat = providerA.chat.bind(providerA);
+      providerA.chat = async (request) => {
+        const response = await originalChat(request);
+        controller.forceVote();
+        return response;
+      };
+
+      const result = await council.run("Should we do X?", controller);
+
+      expect(result.forcedVote).toBe(true);
+      expect(result.consensusReached).toBe(false);
+      expect(result.rounds).toEqual([[{ member: "A", label: "A", content: "Answer A0" }]]);
+      expect(providerB.requests).toHaveLength(0);
+      expect(events.some((event) => event.type === "force-vote")).toBe(true);
+      expect(result.answer).toBe("Forced synthesis noting only A answered");
+    });
+
+    it("wakes a paused debate and forces the vote, rather than hanging until a separate resume()", async () => {
+      const providerA = new StubProvider("A", ["Forced synthesis with no positions"]);
+      const providerB = new StubProvider("B", ["Answer B0 should never be requested"]);
+
+      const events: CouncilEvent[] = [];
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        onEvent: (event) => events.push(event),
+      });
+
+      const controller = new CouncilController();
+      controller.pause();
+      const resultPromise = council.run("Should we do X?", controller);
+
+      // Let the run loop reach the pre-round-0 checkpoint and start waiting on resume().
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(events.some((event) => event.type === "paused")).toBe(true);
+
+      controller.forceVote();
+      const result = await resultPromise;
+
+      expect(result.forcedVote).toBe(true);
+      expect(result.rounds).toEqual([]);
+      // Only the moderator's (A's) synthesis call — no member was ever asked for a position.
+      expect(providerA.requests).toHaveLength(1);
+      expect(providerB.requests).toHaveLength(0);
+      expect(events.some((event) => event.type === "force-vote")).toBe(true);
+      expect(result.answer).toBe("Forced synthesis with no positions");
+    });
   });
 
   it("halts the debate once accumulated cost meets the budget cap, and still synthesizes", async () => {

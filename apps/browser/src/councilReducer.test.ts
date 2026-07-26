@@ -138,6 +138,28 @@ describe("applyCouncilEvent", () => {
     expect(turn.finished).toBe(true);
     expect(turn.rounds[0]).toHaveLength(1);
   });
+
+  it("toggles paused on paused/resumed events", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    expect(turn.paused).toBe(false);
+    turn = applyCouncilEvent(turn, { type: "paused" }, members, accounts);
+    expect(turn.paused).toBe(true);
+    turn = applyCouncilEvent(turn, { type: "resumed" }, members, accounts);
+    expect(turn.paused).toBe(false);
+  });
+
+  it("records the latest injected message", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    turn = applyCouncilEvent(turn, { type: "injected", message: "Consider the budget." }, members, accounts);
+    expect(turn.lastInjectedMessage).toBe("Consider the budget.");
+  });
+
+  it("marks forcedVote on a force-vote event", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    expect(turn.forcedVote).toBe(false);
+    turn = applyCouncilEvent(turn, { type: "force-vote" }, members, accounts);
+    expect(turn.forcedVote).toBe(true);
+  });
 });
 
 describe("classifyCouncilOutcome", () => {
@@ -151,6 +173,23 @@ describe("classifyCouncilOutcome", () => {
 
   it("returns cap-hit when the debate ended without consensus but members still responded", () => {
     expect(classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 2 })).toBe("cap-hit");
+  });
+
+  it("returns forced-vote when a human ended the debate early, distinct from cap-hit", () => {
+    const capHit = classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 2 });
+    const forcedVote = classifyCouncilOutcome({
+      consensusReached: false,
+      lastRoundPositionCount: 2,
+      forcedVote: true,
+    });
+    expect(forcedVote).toBe("forced-vote");
+    expect(forcedVote).not.toBe(capHit);
+  });
+
+  it("prefers forced-vote over all-dropped when the aborted round has zero positions", () => {
+    expect(
+      classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 0, forcedVote: true }),
+    ).toBe("forced-vote");
   });
 });
 

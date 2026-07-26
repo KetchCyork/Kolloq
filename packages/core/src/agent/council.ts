@@ -69,7 +69,11 @@ export type CouncilEvent =
   | { type: "consensus"; round: number }
   | { type: "budget-exceeded"; round: number; spent: number; cap: number }
   | { type: "moderator-synthesis"; content: string }
-  | { type: "moderator-error"; error: string };
+  | { type: "moderator-error"; error: string }
+  | { type: "paused" }
+  | { type: "resumed" }
+  | { type: "injected"; message: string }
+  | { type: "force-vote" };
 
 export interface CouncilResult {
   question: string;
@@ -87,6 +91,75 @@ export interface CouncilResult {
   answer: string;
   /** Set if the moderator's provider errored while synthesizing; `answer` is then a fallback summary. */
   moderatorError?: string;
+  /** True if `CouncilController.forceVote()` cut the debate short before consensus or the round cap. */
+  forcedVote?: boolean;
+}
+
+/**
+ * Caller-held handle for mid-debate control, passed to `Council.run()`. `Council` checks in with
+ * it between rounds and between each member's turn within a round — the only points where it's
+ * safe to act, since an in-flight provider call itself can't be aborted (see `ChatProvider`, which
+ * has no cancellation signal). Safe to hold onto and call from a UI event handler at any time;
+ * calls before the next checkpoint are simply queued (e.g. `pause()` takes effect at the next
+ * checkpoint, not mid-request).
+ */
+export class CouncilController {
+  private paused = false;
+  private resumeWaiters: Array<() => void> = [];
+  private forceVoteRequested = false;
+  private pendingInjection: string | undefined;
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** Halts the debate at the next checkpoint (before the next member's turn or round) until `resume()`. */
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    const waiters = this.resumeWaiters;
+    this.resumeWaiters = [];
+    for (const resolve of waiters) resolve();
+  }
+
+  /** Queues a message every surviving member sees at the start of the next round's prompt. A
+   * second call before the next round starts overwrites the first — only the latest is delivered. */
+  inject(message: string): void {
+    this.pendingInjection = message;
+  }
+
+  /** Requests that the debate stop asking further members — as soon as the current checkpoint is
+   * reached — and move straight to the moderator's synthesis using whatever positions exist so far.
+   * Also resumes a paused debate, since a paused checkpoint is stuck waiting on `resume()` and would
+   * otherwise never reach the point where the force-vote request is consumed. */
+  forceVote(): void {
+    this.forceVoteRequested = true;
+    if (this.paused) this.resume();
+  }
+
+  /** @internal Resolves immediately unless paused, in which case it resolves on the next `resume()`. */
+  waitForResume(): Promise<void> {
+    if (!this.paused) return Promise.resolve();
+    return new Promise((resolve) => this.resumeWaiters.push(resolve));
+  }
+
+  /** @internal Consumes (clears) any pending injection. */
+  consumeInjection(): string | undefined {
+    const message = this.pendingInjection;
+    this.pendingInjection = undefined;
+    return message;
+  }
+
+  /** @internal Consumes (clears) a pending force-vote request. */
+  consumeForceVote(): boolean {
+    const requested = this.forceVoteRequested;
+    this.forceVoteRequested = false;
+    return requested;
+  }
 }
 
 const MIN_MEMBERS = 2;
@@ -130,7 +203,11 @@ export class Council {
     this.moderator = options.moderator ?? this.members[0]!;
   }
 
-  async run(question: string): Promise<CouncilResult> {
+  /**
+   * Runs one debate. `controller` is optional — omitting it (or leaving it untouched) reproduces
+   * the original start-to-finish behavior exactly, since every checkpoint is a no-op without one.
+   */
+  async run(question: string, controller?: CouncilController): Promise<CouncilResult> {
     const rounds: MemberPosition[][] = [];
     const dropped: DroppedMember[] = [];
     let active = this.members;
@@ -138,20 +215,34 @@ export class Council {
     let budgetExceeded = false;
     let spent = 0;
     let finalRound = 0;
+    let forcedVote = false;
 
     for (let round = 0; round < this.maxRounds && active.length > 0; round++) {
+      if (await this.checkpoint(controller)) {
+        forcedVote = true;
+        this.onEvent?.({ type: "force-vote" });
+        break;
+      }
+
       this.onEvent?.({ type: "round-start", round });
 
       const positions: MemberPosition[] = [];
       const survivors: CouncilMember[] = [];
       const previousPositions = rounds.at(-1);
+      const injected = controller?.consumeInjection();
+      if (injected) this.onEvent?.({ type: "injected", message: injected });
 
       for (const member of active) {
+        if (await this.checkpoint(controller)) {
+          forcedVote = true;
+          break;
+        }
+
         try {
           const position =
             round === 0
-              ? await this.askInitial(member, question)
-              : await this.askRevision(member, question, previousPositions ?? []);
+              ? await this.askInitial(member, question, injected)
+              : await this.askRevision(member, question, previousPositions ?? [], injected);
           positions.push(position);
           survivors.push(member);
           this.onEvent?.({ type: "member-position", round, position });
@@ -166,6 +257,11 @@ export class Council {
       rounds.push(positions);
       active = survivors;
       finalRound = round;
+
+      if (forcedVote) {
+        this.onEvent?.({ type: "force-vote" });
+        break;
+      }
 
       if (round > 0 && positions.length > 0 && positions.every((position) => position.stance === "concur")) {
         consensusReached = true;
@@ -188,19 +284,44 @@ export class Council {
     let answer: string;
     let moderatorError: string | undefined;
     try {
-      answer = await this.synthesize(question, rounds, dropped, consensusReached);
+      answer = await this.synthesize(question, rounds, dropped, consensusReached, forcedVote);
       this.onEvent?.({ type: "moderator-synthesis", content: answer });
     } catch (error) {
       moderatorError = classifyProviderError(error).reason;
-      answer = this.fallbackSynthesis(rounds, dropped, consensusReached);
+      answer = this.fallbackSynthesis(rounds, dropped, consensusReached, forcedVote);
       this.onEvent?.({ type: "moderator-error", error: moderatorError });
     }
 
-    return { question, rounds, consensusReached, finalRound, budgetExceeded, dropped, answer, moderatorError };
+    return {
+      question,
+      rounds,
+      consensusReached,
+      finalRound,
+      budgetExceeded,
+      dropped,
+      answer,
+      moderatorError,
+      forcedVote,
+    };
   }
 
-  private async askInitial(member: CouncilMember, question: string): Promise<MemberPosition> {
-    const response = await member.provider.chat({ messages: this.buildMessages(member, question) });
+  /** Checks in with `controller` at a safe point (see class doc). Returns `true` if a force-vote
+   * request was pending and has now been consumed — the caller must stop asking further members. */
+  private async checkpoint(controller: CouncilController | undefined): Promise<boolean> {
+    if (!controller) return false;
+    if (controller.isPaused) {
+      this.onEvent?.({ type: "paused" });
+      await controller.waitForResume();
+      this.onEvent?.({ type: "resumed" });
+    }
+    return controller.consumeForceVote();
+  }
+
+  private async askInitial(member: CouncilMember, question: string, injected?: string): Promise<MemberPosition> {
+    const prompt = injected
+      ? [question, "", `Additional context from the moderator: ${injected}`].join("\n")
+      : question;
+    const response = await member.provider.chat({ messages: this.buildMessages(member, prompt) });
     return { member: member.name, label: member.label ?? member.name, role: member.role, content: response.message.content };
   }
 
@@ -208,6 +329,7 @@ export class Council {
     member: CouncilMember,
     question: string,
     previousPositions: MemberPosition[],
+    injected?: string,
   ): Promise<MemberPosition> {
     const labeled = previousPositions
       .map((position) => `${position.label}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
@@ -218,6 +340,7 @@ export class Council {
       "Positions from the previous round:",
       labeled,
       "",
+      injected ? `Additional context from the moderator: ${injected}\n` : "",
       "Revise your position if warranted based on the other members' reasoning. " +
         "If you agree with the emerging consensus, start your reply with \"CONCUR\" followed by your " +
         "(possibly unchanged) position. If you still disagree, start your reply with " +
@@ -277,6 +400,7 @@ export class Council {
     rounds: MemberPosition[][],
     dropped: DroppedMember[],
     consensusReached: boolean,
+    forcedVote: boolean,
   ): Promise<string> {
     const moderator = this.moderator;
     const finalPositions = rounds.at(-1) ?? [];
@@ -301,8 +425,11 @@ export class Council {
 
     const outcomeNote = consensusReached
       ? "The council reached unanimous consensus. Write the final answer."
-      : `The council did not reach unanimous consensus within ${rounds.length} round(s). Write the best final ` +
-        "answer, explicitly noting the unresolved dissent below.";
+      : forcedVote
+        ? `A vote was forced early, after ${rounds.length} round(s), before consensus was reached. Write the best ` +
+          "final answer from the positions gathered so far, explicitly noting the unresolved dissent below."
+        : `The council did not reach unanimous consensus within ${rounds.length} round(s). Write the best final ` +
+          "answer, explicitly noting the unresolved dissent below.";
 
     const dissentNote = dissenting.length
       ? `\nUnresolved dissent:\n${dissenting
@@ -339,14 +466,18 @@ export class Council {
     rounds: MemberPosition[][],
     dropped: DroppedMember[],
     consensusReached: boolean,
+    forcedVote: boolean,
   ): string {
     const finalPositions = rounds.at(-1) ?? [];
     const dissenting = finalPositions.filter((position) => position.stance === "dissent");
 
     const consensusNote = consensusReached
       ? "The council reached unanimous consensus, but the moderator's provider errored while synthesizing a final answer."
-      : `The council did not reach unanimous consensus within ${rounds.length} round(s), and the moderator's ` +
-        "provider errored while synthesizing a final answer.";
+      : forcedVote
+        ? `A vote was forced early, after ${rounds.length} round(s), before consensus was reached, and the ` +
+          "moderator's provider errored while synthesizing a final answer."
+        : `The council did not reach unanimous consensus within ${rounds.length} round(s), and the moderator's ` +
+          "provider errored while synthesizing a final answer.";
 
     const droppedNote = dropped.length
       ? ` Members dropped from the debate after a provider error: ${dropped

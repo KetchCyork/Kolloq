@@ -126,6 +126,8 @@ export function initialLiveCouncilTurn(question: string, maxRounds: number): Liv
     consensusReached: false,
     budgetExceeded: false,
     finished: false,
+    paused: false,
+    forcedVote: false,
   };
 }
 
@@ -180,26 +182,38 @@ export function applyCouncilEvent(
       return { ...turn, answer: event.content, finished: true };
     case "moderator-error":
       return { ...turn, moderatorError: event.error, finished: true };
+    case "paused":
+      return { ...turn, paused: true };
+    case "resumed":
+      return { ...turn, paused: false };
+    case "injected":
+      return { ...turn, lastInjectedMessage: event.message };
+    case "force-vote":
+      return { ...turn, forcedVote: true };
     default:
       return turn;
   }
 }
 
-export type CouncilOutcome = "consensus" | "budget-cap-hit" | "cap-hit" | "all-dropped";
+export type CouncilOutcome = "consensus" | "forced-vote" | "budget-cap-hit" | "cap-hit" | "all-dropped";
 
 /**
  * Classifies why a finished turn's debate stopped, so the UI can tell a real "no consensus" apart
  * from the round cap or budget cap simply being reached. `Council.run()`'s loop only ever ends one
- * of four ways: unanimous concurrence, the budget cap, the round cap, or every remaining member
- * dropping out mid-round — so once consensus and "last round had zero positions" are ruled out,
- * `budgetExceeded` distinguishes the last two cases.
+ * of five ways: unanimous concurrence, a human forcing an early vote, the budget cap, every
+ * remaining member dropping out mid-round, or the round cap — so once those are ruled out in
+ * order, the round cap is the only case left. `forcedVote` is checked before `all-dropped` since a
+ * forced vote can itself land with zero positions in the last (aborted) round, and the human's
+ * action is the more relevant fact.
  */
 export function classifyCouncilOutcome(params: {
   consensusReached: boolean;
   lastRoundPositionCount: number;
+  forcedVote?: boolean;
   budgetExceeded?: boolean;
 }): CouncilOutcome {
   if (params.consensusReached) return "consensus";
+  if (params.forcedVote) return "forced-vote";
   if (params.lastRoundPositionCount === 0) return "all-dropped";
   if (params.budgetExceeded) return "budget-cap-hit";
   return "cap-hit";
