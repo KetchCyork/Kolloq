@@ -2,11 +2,13 @@ import type { CouncilEvent } from "@newvector/core";
 import { describe, expect, it } from "vitest";
 import {
   applyCouncilEvent,
+  classifyCouncilOutcome,
   computeAlignment,
   computeTotalCostNote,
   diversityHint,
   estimateCouncilCostRange,
   initialLiveCouncilTurn,
+  latestRoundAlignment,
   MAX_COUNCIL_MEMBERS,
   MIN_COUNCIL_MEMBERS,
   parseDecisionBrief,
@@ -77,11 +79,11 @@ describe("applyCouncilEvent", () => {
   ];
 
   it("builds up rounds from round-start and member-position events, with resolved labels and cost notes", () => {
-    let turn = initialLiveCouncilTurn("Should we do X?");
+    let turn = initialLiveCouncilTurn("Should we do X?", 4);
     const events: CouncilEvent[] = [
       { type: "round-start", round: 0 },
-      { type: "member-position", round: 0, position: { member: "m1", role: "skeptic", content: "Answer A0" } },
-      { type: "member-position", round: 0, position: { member: "m2", content: "Answer B0" } },
+      { type: "member-position", round: 0, position: { member: "m1", label: "m1", role: "skeptic", content: "Answer A0" } },
+      { type: "member-position", round: 0, position: { member: "m2", label: "m2", content: "Answer B0" } },
     ];
     for (const event of events) turn = applyCouncilEvent(turn, event, members, accounts);
 
@@ -91,36 +93,43 @@ describe("applyCouncilEvent", () => {
       { memberId: "m2", label: "GPT · gpt-4o-mini", role: undefined, content: "Answer B0", costNote: "~3 tok · ~$0.0000" },
     ]);
     expect(turn.finished).toBe(false);
+    expect(turn.currentRound).toBe(0);
+    expect(turn.maxRounds).toBe(4);
   });
 
   it("records a dropped member with its resolved label", () => {
-    let turn = initialLiveCouncilTurn("Q");
+    let turn = initialLiveCouncilTurn("Q", 4);
     turn = applyCouncilEvent(turn, { type: "round-start", round: 1 }, members, accounts);
-    turn = applyCouncilEvent(turn, { type: "member-dropped", round: 1, member: "m1", error: "boom" }, members, accounts);
+    turn = applyCouncilEvent(
+      turn,
+      { type: "member-dropped", round: 1, member: "m1", label: "Claude · claude-3-5-sonnet-20241022", error: "boom" },
+      members,
+      accounts,
+    );
 
     expect(turn.dropped).toEqual([{ memberId: "m1", label: "Claude · claude-3-5-sonnet-20241022", round: 1, error: "boom" }]);
   });
 
   it("marks consensusReached on a consensus event without finishing the turn", () => {
-    let turn = initialLiveCouncilTurn("Q");
+    let turn = initialLiveCouncilTurn("Q", 4);
     turn = applyCouncilEvent(turn, { type: "consensus", round: 1 }, members, accounts);
     expect(turn.consensusReached).toBe(true);
     expect(turn.finished).toBe(false);
   });
 
   it("finishes the turn on moderator-synthesis, storing the answer", () => {
-    let turn = initialLiveCouncilTurn("Q");
+    let turn = initialLiveCouncilTurn("Q", 4);
     turn = applyCouncilEvent(turn, { type: "moderator-synthesis", content: "Final answer" }, members, accounts);
     expect(turn.answer).toBe("Final answer");
     expect(turn.finished).toBe(true);
   });
 
   it("finishes the turn on moderator-error without discarding prior rounds", () => {
-    let turn = initialLiveCouncilTurn("Q");
+    let turn = initialLiveCouncilTurn("Q", 4);
     turn = applyCouncilEvent(turn, { type: "round-start", round: 0 }, members, accounts);
     turn = applyCouncilEvent(
       turn,
-      { type: "member-position", round: 0, position: { member: "m1", content: "A0" } },
+      { type: "member-position", round: 0, position: { member: "m1", label: "m1", content: "A0" } },
       members,
       accounts,
     );
@@ -129,6 +138,88 @@ describe("applyCouncilEvent", () => {
     expect(turn.moderatorError).toBe("moderator down");
     expect(turn.finished).toBe(true);
     expect(turn.rounds[0]).toHaveLength(1);
+  });
+
+  it("re-keys alignment-scores events onto memberId, appending one entry per round", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    turn = applyCouncilEvent(
+      turn,
+      {
+        type: "alignment-scores",
+        round: 1,
+        scores: [
+          { member: "m1", label: "Claude · claude-3-5-sonnet-20241022", score: 9, justification: "aligned" },
+          { member: "m2", label: "GPT · gpt-4o-mini", score: 6 },
+        ],
+        average: 7.5,
+      },
+      members,
+      accounts,
+    );
+
+    expect(turn.alignmentScores).toEqual([
+      {
+        round: 1,
+        scores: [
+          { memberId: "m1", label: "Claude · claude-3-5-sonnet-20241022", score: 9, justification: "aligned" },
+          { memberId: "m2", label: "GPT · gpt-4o-mini", score: 6, justification: undefined },
+        ],
+        average: 7.5,
+      },
+    ]);
+  });
+
+  it("toggles paused on paused/resumed events", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    expect(turn.paused).toBe(false);
+    turn = applyCouncilEvent(turn, { type: "paused" }, members, accounts);
+    expect(turn.paused).toBe(true);
+    turn = applyCouncilEvent(turn, { type: "resumed" }, members, accounts);
+    expect(turn.paused).toBe(false);
+  });
+
+  it("records the latest injected message", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    turn = applyCouncilEvent(turn, { type: "injected", message: "Consider the budget." }, members, accounts);
+    expect(turn.lastInjectedMessage).toBe("Consider the budget.");
+  });
+
+  it("marks forcedVote on a force-vote event", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    expect(turn.forcedVote).toBe(false);
+    turn = applyCouncilEvent(turn, { type: "force-vote" }, members, accounts);
+    expect(turn.forcedVote).toBe(true);
+  });
+});
+
+describe("classifyCouncilOutcome", () => {
+  it("returns consensus when the debate reached unanimous concurrence", () => {
+    expect(classifyCouncilOutcome({ consensusReached: true, lastRoundPositionCount: 2 })).toBe("consensus");
+  });
+
+  it("returns all-dropped when the final round has zero positions", () => {
+    expect(classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 0 })).toBe("all-dropped");
+  });
+
+  it("returns cap-hit when the debate ended without consensus but members still responded", () => {
+    expect(classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 2 })).toBe("cap-hit");
+  });
+
+  it("returns forced-vote when a human ended the debate early, distinct from cap-hit", () => {
+    const capHit = classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 2 });
+    const forcedVote = classifyCouncilOutcome({
+      consensusReached: false,
+      lastRoundPositionCount: 2,
+      forcedVote: true,
+    });
+    expect(forcedVote).toBe("forced-vote");
+    expect(forcedVote).not.toBe(capHit);
+  });
+
+  it("prefers forced-vote over all-dropped when the aborted round has zero positions", () => {
+    expect(
+      classifyCouncilOutcome({ consensusReached: false, lastRoundPositionCount: 0, forcedVote: true }),
+    ).toBe("forced-vote");
   });
 });
 
@@ -233,6 +324,20 @@ describe("computeAlignment", () => {
   });
 });
 
+describe("latestRoundAlignment", () => {
+  it("returns undefined when no round has been scored yet", () => {
+    expect(latestRoundAlignment([])).toBeUndefined();
+  });
+
+  it("returns the most recently scored round, not an earlier one", () => {
+    const rounds = [
+      { round: 1, scores: [], average: 4 },
+      { round: 2, scores: [], average: 8 },
+    ];
+    expect(latestRoundAlignment(rounds)).toEqual({ round: 2, scores: [], average: 8 });
+  });
+});
+
 describe("parseDecisionBrief", () => {
   it("splits a well-formed brief into its sections", () => {
     const answer = [
@@ -289,6 +394,107 @@ describe("parseDecisionBrief", () => {
     expect(sections.nextSteps).toBe("Spike the migration.");
     for (const value of Object.values(sections)) {
       if (typeof value === "string") expect(value).not.toContain("**");
+    }
+  });
+
+  it("strips quote-wrapped headers instead of leaking \" into section content", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing.",
+      '"Rationale:"',
+      "Cheaper and faster.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain('"');
+    }
+  });
+
+  it("drops a stray bare-decoration line left over from an asymmetric wrapper", () => {
+    const answer = [
+      "**Recommendation:",
+      "Buy Stripe Billing.",
+      "**",
+      "**Rationale:",
+      "Cheaper and faster.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+  });
+
+  it("drops a stray decoration line even when a blank line pads it from the next header", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing over building in-house.",
+      "",
+      "**Rationale:",
+      "Cheaper and faster to ship; team lacks billing-domain expertise.",
+      "**",
+      "",
+      "_Key contention & resolution:_",
+      "One member argued for in-house control; resolved in favor of speed to market.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.rationale).toBe(
+      "Cheaper and faster to ship; team lacks billing-domain expertise.",
+    );
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain("**");
+    }
+  });
+
+  it("strips markdown H2 heading prefixes instead of leaking ## into section content", () => {
+    const answer = [
+      "## Recommendation:",
+      "Buy Stripe Billing.",
+      "## Rationale:",
+      "Cheaper and faster.",
+      "## Key contention & resolution:",
+      "Critic conceded on TCO.",
+      "## Next steps:",
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain("#");
+    }
+  });
+
+  it("matches a header even when the model inserts extra internal whitespace", () => {
+    const answer = [
+      '"Recommendation:"',
+      "Buy Stripe Billing.",
+      '"Rationale:"',
+      "Cheaper and faster.",
+      '"Key contention  & resolution:"',
+      "Critic conceded on TCO.",
+      '"Next steps:"',
+      "Spike the migration.",
+    ].join("\n");
+
+    const sections = parseDecisionBrief(answer);
+    expect(sections.structured).toBe(true);
+    expect(sections.recommendation).toBe("Buy Stripe Billing.");
+    expect(sections.rationale).toBe("Cheaper and faster.");
+    expect(sections.contention).toBe("Critic conceded on TCO.");
+    expect(sections.nextSteps).toBe("Spike the migration.");
+    for (const value of Object.values(sections)) {
+      if (typeof value === "string") expect(value).not.toContain('"');
     }
   });
 });

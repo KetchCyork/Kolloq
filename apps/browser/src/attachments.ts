@@ -2,7 +2,7 @@ import type { ChatAttachment } from "@newvector/core";
 import { randomId } from "./utils";
 
 /** Browsers cap File.webkitRelativePath but not File.name, so anything past this is rejected up front instead of bloating IndexedDB. */
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 export interface AttachmentRejection {
   name: string;

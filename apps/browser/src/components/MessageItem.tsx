@@ -1,6 +1,8 @@
 import type { FileArtifact } from "@newvector/core";
 import { attachmentDataUrl } from "../attachments";
+import { alertDialog } from "../dialogs";
 import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatBytes } from "../fileArtifact";
+import { useStore } from "../store";
 import type { StoredMessage } from "../types";
 import { formatTime } from "../utils";
 
@@ -10,7 +12,7 @@ function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; ses
     try {
       await downloadFileArtifact(artifact, sessionId);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
+      await alertDialog(error instanceof Error ? error.message : String(error));
     }
   }
   return (
@@ -28,6 +30,30 @@ function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; ses
 }
 
 export function MessageItem({ message, sessionId }: { message: StoredMessage; sessionId: string }) {
+  const { setCurrentView } = useStore();
+
+  if (message.error) {
+    return (
+      <div className={`message role-${message.role}`}>
+        <div>
+          <div className="bubble message-error-bubble">
+            <div className="message-error-head">
+              <span aria-hidden="true">⚠️</span>
+              <span>Turn failed</span>
+            </div>
+            <div className="message-error-reason">{message.error.reason}</div>
+            {message.error.isConfigIssue && (
+              <button type="button" className="link-button" onClick={() => setCurrentView("settings")}>
+                Manage Accounts
+              </button>
+            )}
+          </div>
+          <div className="message-meta">{formatTime(message.createdAt)}</div>
+        </div>
+      </div>
+    );
+  }
+
   if (message.role === "tool") {
     return (
       <div className="message role-tool">

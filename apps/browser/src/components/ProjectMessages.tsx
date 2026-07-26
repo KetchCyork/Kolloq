@@ -7,7 +7,7 @@ import type { Project } from "../types";
 import { formatTime } from "../utils";
 
 export function ProjectMessages({ project, live }: { project: Project; live?: LiveTurn }) {
-  const { accounts } = useStore();
+  const { accounts, setCurrentView } = useStore();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,6 +40,11 @@ export function ProjectMessages({ project, live }: { project: Project; live?: Li
                     <span>Turn failed</span>
                   </div>
                   <div className="message-error-reason">{message.error.reason}</div>
+                  {message.error.isConfigIssue && (
+                    <button type="button" className="link-button" onClick={() => setCurrentView("settings")}>
+                      Manage Accounts
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>

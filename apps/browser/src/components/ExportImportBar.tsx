@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { alertDialog, confirmDialog } from "../dialogs";
 import { useStore } from "../store";
 import type { SessionExportFile } from "../types";
 
@@ -23,16 +24,20 @@ export function ExportImportBar() {
     try {
       parsed = JSON.parse(text);
     } catch {
-      window.alert("That file isn't valid JSON.");
+      await alertDialog("That file isn't valid JSON.");
       return;
     }
-    const replace = window.confirm(
-      "Import sessions.\n\nOK = merge with existing sessions (same-id sessions are overwritten)\nCancel = replace all local sessions",
-    );
+    const merge = await confirmDialog({
+      title: "Import sessions",
+      message:
+        "Merge keeps your existing sessions (same-id sessions are overwritten).\nReplace discards all local sessions and imports only this file.",
+      confirmLabel: "Merge",
+      cancelLabel: "Replace all",
+    });
     try {
-      await importSessions(parsed, replace ? "merge" : "replace");
+      await importSessions(parsed, merge ? "merge" : "replace");
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : String(error));
+      await alertDialog(error instanceof Error ? error.message : String(error));
     }
   }
 

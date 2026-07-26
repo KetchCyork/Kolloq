@@ -6,6 +6,8 @@ export interface OpenRouterProviderConfig {
   apiKey?: string;
   baseURL?: string;
   model?: string;
+  /** Custom `fetch` (desktop shell routes through Rust to bypass webview CORS). */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -19,6 +21,7 @@ export function createOpenRouterProvider(config: OpenRouterProviderConfig = {}):
     name: "openrouter",
     baseURL: config.baseURL ?? "https://openrouter.ai/api/v1",
     apiKey: config.apiKey,
+    fetch: config.fetchImpl,
   });
   return new AiSdkChatProvider("openrouter", model, openrouter(model));
 }

@@ -4,7 +4,7 @@ import { listModels } from "@newvector/core";
 import { useStore } from "../store";
 import { capture } from "../telemetry";
 import type { ProviderName } from "../types";
-import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES, reconcileModelSelection } from "../utils";
 
 /** Debounce before firing a live model-list request after the provider/key/base URL settle. */
 const MODEL_LIST_DEBOUNCE_MS = 500;
@@ -76,6 +76,12 @@ export function OnboardingWizard() {
           if (cancelled) return;
           setModelOptions(models);
           setModelsLoading(false);
+          // The live catalog is the source of truth for what this account can actually reach, so
+          // snap the selection onto it — otherwise a hardcoded default the provider has since
+          // retired stays selected and 404s on the first chat.
+          setModel((current) =>
+            reconcileModelSelection(current, models.map((m) => m.id), PROVIDER_DEFAULT_MODELS[provider]),
+          );
         })
         .catch((err) => {
           if (cancelled) return;

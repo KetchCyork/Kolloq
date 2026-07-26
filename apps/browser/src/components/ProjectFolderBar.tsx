@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmDialog } from "../dialogs";
 import { isFolderAccessSupported } from "../projectFolder";
 import { useStore } from "../store";
 import type { Project } from "../types";
@@ -23,7 +24,7 @@ export function ProjectFolderBar({ project }: { project: Project }) {
 
   async function handleConnect() {
     if (project.workingFolder) {
-      const confirmed = window.confirm(
+      const confirmed = await confirmDialog(
         `Change the working folder? Agents in "${project.identity.name}" will lose access to "${project.workingFolder.name}" immediately.`,
       );
       if (!confirmed) return;
@@ -36,9 +37,13 @@ export function ProjectFolderBar({ project }: { project: Project }) {
     }
   }
 
-  function handleDisconnect() {
+  async function handleDisconnect() {
     if (!project.workingFolder) return;
-    const confirmed = window.confirm(`Disconnect "${project.workingFolder.name}"? Agents will lose access immediately.`);
+    const confirmed = await confirmDialog({
+      message: `Disconnect "${project.workingFolder.name}"? Agents will lose access immediately.`,
+      confirmLabel: "Disconnect",
+      danger: true,
+    });
     if (confirmed) disconnectProjectFolder(project.id);
   }
 

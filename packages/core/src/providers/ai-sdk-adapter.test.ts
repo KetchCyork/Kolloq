@@ -2,7 +2,8 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { Document, Packer, Paragraph } from "docx";
 import { describe, expect, it } from "vitest";
-import { repairStringifiedToolArgs, toUserContent } from "./ai-sdk-adapter.js";
+import type { CoreMessage } from "ai";
+import { repairStringifiedToolArgs, sanitizeEmptyContent, toUserContent } from "./ai-sdk-adapter.js";
 import type { ChatMessage } from "./types.js";
 
 const image: ChatMessage["attachments"] = [
@@ -158,6 +159,60 @@ describe("toUserContent", () => {
     expect(content).toBe(
       'what is this?\n\n--- note.txt (text/plain) ---\nhello world\n\n[1 attachment(s) not sent — the "ollama" provider does not support image/file attachments: "pixel.png"]',
     );
+  });
+});
+
+describe("sanitizeEmptyContent", () => {
+  it("replaces an empty string content with a non-empty placeholder", () => {
+    const messages: CoreMessage[] = [{ role: "assistant", content: "" }];
+    expect(sanitizeEmptyContent(messages)).toEqual([{ role: "assistant", content: "(no content)" }]);
+  });
+
+  it("replaces whitespace-only string content with a placeholder", () => {
+    const messages: CoreMessage[] = [{ role: "user", content: "   \n  " }];
+    expect(sanitizeEmptyContent(messages)).toEqual([{ role: "user", content: "(no content)" }]);
+  });
+
+  it("leaves non-empty string content untouched (same reference)", () => {
+    const messages: CoreMessage[] = [{ role: "assistant", content: "hello" }];
+    const result = sanitizeEmptyContent(messages);
+    expect(result[0]).toBe(messages[0]);
+  });
+
+  it("drops a blank text block from an array while keeping other parts (e.g. a stale attachment turn)", () => {
+    const messages: CoreMessage[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "" },
+          { type: "image", image: "aGVsbG8=", mimeType: "image/png" },
+        ],
+      },
+    ];
+    expect(sanitizeEmptyContent(messages)).toEqual([
+      { role: "user", content: [{ type: "image", image: "aGVsbG8=", mimeType: "image/png" }] },
+    ]);
+  });
+
+  it("substitutes a placeholder when filtering blank text blocks empties the whole message", () => {
+    const messages: CoreMessage[] = [{ role: "assistant", content: [{ type: "text", text: "  " }] }];
+    expect(sanitizeEmptyContent(messages)).toEqual([{ role: "assistant", content: "(no content)" }]);
+  });
+
+  it("leaves tool-call and tool-result parts untouched", () => {
+    const messages: CoreMessage[] = [
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "c1", toolName: "search", args: { q: "x" } }],
+      },
+      {
+        role: "tool",
+        content: [{ type: "tool-result", toolCallId: "c1", toolName: "search", result: "" }],
+      },
+    ];
+    const result = sanitizeEmptyContent(messages);
+    expect(result[0]).toBe(messages[0]);
+    expect(result[1]).toBe(messages[1]);
   });
 });
 

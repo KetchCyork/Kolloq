@@ -1,9 +1,17 @@
+import { CouncilController } from "@newvector/core";
 import type { AgentEvent, ChatAttachment, ChatMessage, CouncilEvent, ToolCall } from "@newvector/core";
+import { classifyProviderError } from "@newvector/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getToolCount, runProjectTurn, runSessionTurn } from "./agentClient";
 import { filesToAttachments } from "./attachments";
 import { runCouncilTurn } from "./councilClient";
-import { applyCouncilEvent, computeTotalCostNote, initialLiveCouncilTurn, validateCouncilMembers } from "./councilReducer";
+import {
+  applyCouncilEvent,
+  computeTotalCostNote,
+  DEFAULT_COUNCIL_MAX_ROUNDS,
+  initialLiveCouncilTurn,
+  validateCouncilMembers,
+} from "./councilReducer";
 import {
   accountCredentialKey,
   accountOAuthKey,
@@ -196,6 +204,11 @@ interface StoreApi extends StoreState {
   ) => void;
   deleteCouncilSession: (id: string) => void;
   askCouncil: (sessionId: string, question: string) => Promise<void>;
+  /** Mid-debate controls for a council turn currently in `councilLive` — no-ops once it's finished. */
+  pauseCouncilTurn: (sessionId: string) => void;
+  resumeCouncilTurn: (sessionId: string) => void;
+  injectCouncilMessage: (sessionId: string, message: string) => void;
+  forceCouncilVote: (sessionId: string) => void;
   exportSessions: () => SessionExportFile;
   importSessions: (data: SessionExportFile, mode: "merge" | "replace") => Promise<void>;
   createAccount: (input: Omit<Account, "id" | "createdAt">) => Account;
@@ -265,6 +278,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const preferencesRef = useRef<Preferences>(preferences);
   preferencesRef.current = preferences;
   const initStarted = useRef(false);
+  /** One live `CouncilController` per in-progress council turn, keyed by session id — not React
+   * state, since pause/resume/inject/force-vote take effect through the engine's event stream
+   * (which already drives `councilLive`), not by re-rendering off the controller itself. */
+  const councilControllersRef = useRef<Record<string, CouncilController>>({});
 
   useEffect(() => {
     setTelemetryEnabled(preferences.telemetryEnabled);
@@ -565,10 +582,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const storedTurn: StoredMessage[] = turn.map((message) => ({ ...message, id: randomId(), createdAt: nowMs() }));
         appendMessages(sessionId, storedTurn);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
         capture({ type: "provider_error", provider: session.providerConfig.provider });
+        const { reason, isConfigIssue } = classifyProviderError(error);
         appendMessages(sessionId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", content: `⚠️ ${message}` },
+          { id: randomId(), createdAt: nowMs(), role: "assistant", content: "", error: { reason, isConfigIssue } },
         ]);
       } finally {
         setLive((prev) => {
@@ -641,8 +658,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question);
+    const maxRounds = session.maxRounds ?? DEFAULT_COUNCIL_MAX_ROUNDS;
+    let liveTurn: LiveCouncilTurn = initialLiveCouncilTurn(question, maxRounds);
     setCouncilLive((prev) => ({ ...prev, [sessionId]: liveTurn }));
+
+    const controller = new CouncilController();
+    councilControllersRef.current[sessionId] = controller;
 
     const onEvent = (event: CouncilEvent) => {
       liveTurn = applyCouncilEvent(liveTurn, event, session.members, accountsRef.current);
@@ -653,10 +674,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const result = await runCouncilTurn(
         session.members,
         accountsForTurn,
-        session.maxRounds,
+        maxRounds,
         session.moderatorAccountId,
         question,
         onEvent,
+        controller,
+        session.budgetCap,
       );
       // On a moderator error, the "moderator-error" event only carries the error message — the
       // engine's deterministic fallback synthesis (see Council.fallbackSynthesis) lives on the
@@ -670,6 +693,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const message = error instanceof Error ? error.message : String(error);
       liveTurn = { ...liveTurn, moderatorError: liveTurn.moderatorError ?? message, finished: true };
     } finally {
+      delete councilControllersRef.current[sessionId];
       setCouncilLive((prev) => {
         const next = { ...prev };
         delete next[sessionId];
@@ -682,10 +706,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: nowMs(),
           rounds: liveTurn.rounds,
           consensusReached: liveTurn.consensusReached,
+          budgetExceeded: liveTurn.budgetExceeded,
           finalRound: Math.max(0, liveTurn.rounds.length - 1),
+          maxRounds,
           dropped: liveTurn.dropped,
           answer: liveTurn.answer ?? "",
           moderatorError: liveTurn.moderatorError,
+          alignmentScores: liveTurn.alignmentScores,
+          forcedVote: liveTurn.forcedVote,
           totalCostNote: computeTotalCostNote(
             liveTurn.rounds,
             liveTurn.answer,
@@ -713,6 +741,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
       }
     }
+  }, []);
+
+  /** No-ops once the turn has finished (its controller was already removed in `askCouncil`'s
+   * `finally`) — the buttons that call these are themselves disabled once `live.finished`, but a
+   * stray late click shouldn't throw. */
+  const pauseCouncilTurn = useCallback((sessionId: string) => {
+    councilControllersRef.current[sessionId]?.pause();
+  }, []);
+
+  const resumeCouncilTurn = useCallback((sessionId: string) => {
+    councilControllersRef.current[sessionId]?.resume();
+  }, []);
+
+  const injectCouncilMessage = useCallback((sessionId: string, message: string) => {
+    councilControllersRef.current[sessionId]?.inject(message);
+  }, []);
+
+  const forceCouncilVote = useCallback((sessionId: string) => {
+    councilControllersRef.current[sessionId]?.forceVote();
   }, []);
 
   const createProject = useCallback((): Project => {
@@ -1021,6 +1068,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }));
           appendProjectMessages(projectId, storedTurn);
         } else if (turnError) {
+          const { reason, isConfigIssue } = classifyProviderError(turnError);
           appendProjectMessages(projectId, [
             {
               id: randomId(),
@@ -1028,14 +1076,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               role: "assistant",
               memberId: member.id,
               content: "",
-              error: { reason: turnError.message },
+              error: { reason, isConfigIssue },
             },
           ]);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const { reason, isConfigIssue } = classifyProviderError(error);
         appendProjectMessages(projectId, [
-          { id: randomId(), createdAt: nowMs(), role: "assistant", memberId: member.id, content: "", error: { reason: message } },
+          {
+            id: randomId(),
+            createdAt: nowMs(),
+            role: "assistant",
+            memberId: member.id,
+            content: "",
+            error: { reason, isConfigIssue },
+          },
         ]);
       } finally {
         setProjectLive((prev) => {
@@ -1112,6 +1167,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateCouncilSession,
       deleteCouncilSession: deleteCouncilSessionById,
       askCouncil,
+      pauseCouncilTurn,
+      resumeCouncilTurn,
+      injectCouncilMessage,
+      forceCouncilVote,
       exportSessions,
       importSessions,
       createAccount,
@@ -1171,6 +1230,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateCouncilSession,
       deleteCouncilSessionById,
       askCouncil,
+      pauseCouncilTurn,
+      resumeCouncilTurn,
+      injectCouncilMessage,
+      forceCouncilVote,
       exportSessions,
       importSessions,
       createAccount,

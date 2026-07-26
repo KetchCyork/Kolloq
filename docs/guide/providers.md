@@ -6,7 +6,7 @@ Open Work supports five provider backends. All share the same `AgentRunner` inte
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-pnpm cli -- --provider anthropic --model claude-3-5-sonnet-20241022 "Hello"
+pnpm cli -- --provider anthropic --model claude-sonnet-5 "Hello"
 ```
 
 Get a key at [console.anthropic.com](https://console.anthropic.com) → API Keys.
@@ -40,6 +40,15 @@ pnpm cli -- --provider ollama --model llama3.1 "Hello"
 ```
 
 The default base URL is `http://localhost:11434/v1`. Override it with `--base-url`.
+
+### Reaching Ollama from the browser app over a network address
+
+Ollama only accepts cross-origin requests from localhost. If you open the browser app at anything
+other than `localhost` — a LAN IP, or a Tailscale hostname — its direct Ollama calls are
+CORS-rejected. The dev and preview servers ship an `/__ollama__` proxy for exactly this case: set
+the Ollama account's base URL to `/__ollama__/v1` instead of `http://localhost:11434/v1`, and the
+request goes through the app's own origin (the proxy strips `Origin` before forwarding, which
+Ollama always allows). Leave the default base URL alone when you're on `localhost`.
 
 ## OpenRouter
 
