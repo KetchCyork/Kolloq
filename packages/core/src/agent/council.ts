@@ -448,7 +448,10 @@ export class Council {
     positions: MemberPosition[],
   ): Promise<RoundAlignment | null> {
     const labeled = positions
-      .map((position) => `${position.label}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
+      .map(
+        (position, index) =>
+          `Seat ${index + 1}${position.role ? ` (${position.role})` : ""}: ${position.content}`,
+      )
       .join("\n\n");
     const prompt = [
       `Question: ${question}`,
@@ -456,10 +459,10 @@ export class Council {
       `Round ${round} positions:`,
       labeled,
       "",
-      "Identify the leading proposal among these positions. Then, for each participant listed above, rate how " +
+      "Identify the leading proposal among these positions. Then, for each seat listed above, rate how " +
         "closely its position aligns with that leading proposal, from 0 (strongly disagrees) to 10 (fully " +
-        'agrees). Respond with exactly one line per participant, in this format: "<name>: <score>/10 - ' +
-        '<one-line reason>", using each participant\'s name exactly as given above.',
+        'agrees). Respond with exactly one line per seat, in this format: "Seat <number>: <score>/10 - ' +
+        '<one-line reason>". Refer to each seat only by its number (e.g. "Seat 1"), never by name.',
     ].join("\n");
 
     let content: string;
@@ -470,28 +473,39 @@ export class Council {
       return null;
     }
 
-    const scores = positions
-      .map((position) => this.parseAlignmentScore(position, content))
-      .filter((score): score is AlignmentScore => score !== null);
+    const scores = this.parseAlignmentScores(positions, content);
     if (scores.length === 0) return null;
 
     const average = scores.reduce((sum, score) => sum + score.score, 0) / scores.length;
     return { round, scores, average };
   }
 
-  private parseAlignmentScore(position: MemberPosition, content: string): AlignmentScore | null {
-    const escaped = position.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = new RegExp(`${escaped}\\s*:\\s*(\\d{1,2})\\s*/\\s*10\\s*[-–—:]*\\s*(.*)`, "i").exec(content);
-    if (!match) return null;
-    const score = Number(match[1]);
-    if (Number.isNaN(score)) return null;
-    const justification = match[2]?.trim();
-    return {
-      member: position.member,
-      label: position.label,
-      score: Math.max(0, Math.min(10, score)),
-      justification: justification || undefined,
-    };
+  /** Parses "Seat <n>: <score>/10 - <reason>" lines, keyed by seat position rather than by name —
+   * models reliably echo back a bare number mid-prose but routinely paraphrase or shorten a
+   * punctuation-heavy display label, which made name-based matching silently parse zero scores in
+   * live use (see NEW-82 QA repro). Duplicate seat numbers keep only the first match. */
+  private parseAlignmentScores(positions: MemberPosition[], content: string): AlignmentScore[] {
+    const pattern = /seat\s*(\d+)\s*:\s*(\d{1,2})\s*\/\s*10\s*[-–—:]*\s*(.*)/gi;
+    const scores: AlignmentScore[] = [];
+    const seen = new Set<number>();
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      const seatIndex = Number(match[1]) - 1;
+      if (seen.has(seatIndex)) continue;
+      const position = positions[seatIndex];
+      if (!position) continue;
+      const score = Number(match[2]);
+      if (Number.isNaN(score)) continue;
+      seen.add(seatIndex);
+      const justification = match[3]?.trim();
+      scores.push({
+        member: position.member,
+        label: position.label,
+        score: Math.max(0, Math.min(10, score)),
+        justification: justification || undefined,
+      });
+    }
+    return scores;
   }
 
   private async synthesize(
