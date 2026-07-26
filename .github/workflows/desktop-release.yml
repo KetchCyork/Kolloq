@@ -30,9 +30,7 @@ name: Desktop release
 #   AZURE_CLIENT_ID / AZURE_CLIENT_SECRET - service principal with the
 #                                          "Trusted Signing Certificate
 #                                          Profile Signer" role on the
-#                                          Trusted Signing account (read by
-#                                          trusted-signing-cli's Azure SDK
-#                                          EnvironmentCredential)
+#                                          Trusted Signing account
 #   AZURE_TRUSTED_SIGNING_ACCOUNT        - Trusted Signing account name
 #   AZURE_TRUSTED_SIGNING_ENDPOINT       - account's region endpoint URL
 #   AZURE_TRUSTED_SIGNING_CERT_PROFILE   - the certificate PROFILE name (the
@@ -40,6 +38,23 @@ name: Desktop release
 #                                          creating the profile in the Azure
 #                                          Portal) - NOT the certificate
 #                                          Subject/DN
+#
+# trusted-signing-cli (as of 0.11.0) does NOT use the Azure SDK's
+# EnvironmentCredential - it shells out to `az login --service-principal`
+# using the installed Azure CLI, then to `signtool.exe`, and both tool paths
+# default to hardcoded locations (`C:\Program Files\Microsoft SDKs\Azure\CLI2\
+# wbin\az.cmd` and a specific Windows SDK version under `Windows Kits\10\bin`)
+# that can drift out from under `windows-latest`. The "Resolve Windows signing
+# tool paths" step below finds the actual installed paths at build time and
+# passes them via AZURE_CLI_PATH / SIGNTOOL_PATH (both read by
+# trusted-signing-cli's env fallbacks) instead of trusting the defaults.
+#
+# Tauri's bundler also swallows trusted-signing-cli's stdout/stderr on
+# failure - the whole thing collapses to "failed to run trusted-signing-cli"
+# with no indication of *why*. The `-v` flag on the Windows build step below
+# bumps the bundler's own logger to debug, which does print the captured
+# output, so a real signing failure is diagnosable in the Actions log instead
+# of being a black box.
 #
 # Without these secrets the workflow still builds *unsigned* installers (Tauri
 # falls back gracefully), which is fine for internal test builds but should
@@ -168,6 +183,28 @@ jobs:
           cargo install trusted-signing-cli --locked
           echo "installed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve Windows signing tool paths
+        # trusted-signing-cli's --azure-cli-path/--sign-tool-path defaults are
+        # hardcoded to specific install locations that can drift across
+        # windows-latest image updates. Find what's actually on this runner
+        # instead of trusting the defaults; if either lookup comes up empty,
+        # the env: block below falls back to the tool's own hardcoded default
+        # rather than exporting an empty path.
+        if: steps.trusted-signing-cli.outputs.installed == 'true'
+        id: signing-paths
+        shell: pwsh
+        run: |
+          $az = (Get-Command az.cmd -ErrorAction SilentlyContinue).Source
+          if (-not $az) { $az = (Get-Command az -ErrorAction SilentlyContinue).Source }
+          if ($az) { Write-Host "Resolved az CLI: $az" } else { Write-Host "::warning::az CLI not found on PATH" }
+          echo "az_path=$az" >> $env:GITHUB_OUTPUT
+
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if ($signtool) { Write-Host "Resolved signtool: $signtool" } else { Write-Host "::warning::signtool.exe not found under Windows Kits 10" }
+          echo "sign_tool_path=$signtool" >> $env:GITHUB_OUTPUT
+
       - name: Build and release (macOS/Linux)
         if: matrix.platform != 'windows-latest'
         uses: tauri-apps/tauri-action@v1
@@ -200,15 +237,23 @@ jobs:
           VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Read by trusted-signing-cli's Azure SDK EnvironmentCredential when
-          # Tauri's bundler shells out to the windows.signCommand below.
+          # Read by trusted-signing-cli when Tauri's bundler shells out to the
+          # windows.signCommand below (az login --service-principal).
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # Overrides trusted-signing-cli's hardcoded default tool paths. GitHub
+          # Actions env: always sets the key (even to ""), which clap treats as
+          # an explicit empty value rather than "unset" - so fall back to the
+          # tool's own hardcoded defaults verbatim when resolution above found
+          # nothing, instead of exporting an empty string.
+          AZURE_CLI_PATH: ${{ steps.signing-paths.outputs.az_path || 'C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd' }}
+          SIGNTOOL_PATH: ${{ steps.signing-paths.outputs.sign_tool_path || 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe' }}
         with:
           projectPath: apps/desktop
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: >-
+            -v
             ${{ steps.trusted-signing-cli.outputs.installed == 'true' && format('--config {{"bundle":{{"windows":{{"signCommand":"trusted-signing-cli -e {0} -a {1} -c {2} %1"}}}}}}', secrets.AZURE_TRUSTED_SIGNING_ENDPOINT, secrets.AZURE_TRUSTED_SIGNING_ACCOUNT, secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE) || '' }}
 
   publish-release:
