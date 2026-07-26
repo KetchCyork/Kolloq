@@ -20,8 +20,26 @@ name: Desktop release
 #   APPLE_ID                             - Apple ID used for notarization
 #   APPLE_PASSWORD                       - app-specific password for the Apple ID
 #   APPLE_TEAM_ID                        - Apple Developer Team ID
-#   WINDOWS_CERTIFICATE                  - base64 .pfx code-signing certificate
-#   WINDOWS_CERTIFICATE_PASSWORD         - password for the .pfx
+#
+# Windows signing uses Azure Trusted Signing (publicly-trusted Windows certs
+# have required HSM-backed key storage since 2023, ruling out a plain
+# downloadable .pfx for CI) via the `trusted-signing-cli` tool, which is
+# installed on the Windows runner and invoked by Tauri's bundler as a custom
+# windows.signCommand. It needs:
+#   AZURE_TENANT_ID                      - Azure AD tenant ID
+#   AZURE_CLIENT_ID / AZURE_CLIENT_SECRET - service principal with the
+#                                          "Trusted Signing Certificate
+#                                          Profile Signer" role on the
+#                                          Trusted Signing account (read by
+#                                          trusted-signing-cli's Azure SDK
+#                                          EnvironmentCredential)
+#   AZURE_TRUSTED_SIGNING_ACCOUNT        - Trusted Signing account name
+#   AZURE_TRUSTED_SIGNING_ENDPOINT       - account's region endpoint URL
+#   AZURE_TRUSTED_SIGNING_CERT_PROFILE   - the certificate PROFILE name (the
+#                                          short identifier chosen when
+#                                          creating the profile in the Azure
+#                                          Portal) - NOT the certificate
+#                                          Subject/DN
 #
 # Without these secrets the workflow still builds *unsigned* installers (Tauri
 # falls back gracefully), which is fine for internal test builds but should
@@ -118,21 +136,31 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Import Windows code-signing certificate
-        if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
-        id: windows-cert
-        shell: pwsh
+      - name: Install trusted-signing-cli
+        # Only attempt Windows signing once every credential it needs is
+        # present - a partial set would build a broken signCommand (e.g. an
+        # empty -c) and fail the whole release instead of falling back to an
+        # unsigned build like the other platforms do when secrets are absent.
+        if: >-
+          matrix.platform == 'windows-latest' &&
+          env.AZURE_TRUSTED_SIGNING_ACCOUNT != '' &&
+          env.AZURE_TRUSTED_SIGNING_ENDPOINT != '' &&
+          env.AZURE_TRUSTED_SIGNING_CERT_PROFILE != '' &&
+          env.AZURE_TENANT_ID != '' &&
+          env.AZURE_CLIENT_ID != '' &&
+          env.AZURE_CLIENT_SECRET != ''
+        id: trusted-signing-cli
         env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_CERT_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        shell: bash
         run: |
-          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
-          $certPath = "$env:RUNNER_TEMP\cert.pfx"
-          [IO.File]::WriteAllBytes($certPath, $bytes)
-          $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
-          $cert = Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword
-          Remove-Item $certPath
-          echo "thumbprint=$($cert.Thumbprint)" >> $env:GITHUB_OUTPUT
+          cargo install trusted-signing-cli --locked
+          echo "installed=true" >> "$GITHUB_OUTPUT"
 
       - name: Build and release (macOS/Linux)
         if: matrix.platform != 'windows-latest'
@@ -166,11 +194,16 @@ jobs:
           VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Read by trusted-signing-cli's Azure SDK EnvironmentCredential when
+          # Tauri's bundler shells out to the windows.signCommand below.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           projectPath: apps/desktop
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: >-
-            ${{ steps.windows-cert.outputs.thumbprint != '' && format('--config {{"bundle":{{"windows":{{"certificateThumbprint":"{0}","digestAlgorithm":"sha256","timestampUrl":"http://timestamp.digicert.com"}}}}}}', steps.windows-cert.outputs.thumbprint) || '' }}
+            ${{ steps.trusted-signing-cli.outputs.installed == 'true' && format('--config {{"bundle":{{"windows":{{"signCommand":"trusted-signing-cli -e {0} -a {1} -c {2} %1"}}}}}}', secrets.AZURE_TRUSTED_SIGNING_ENDPOINT, secrets.AZURE_TRUSTED_SIGNING_ACCOUNT, secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE) || '' }}
 
   publish-release:
     needs: [create-release, build]
