@@ -66,5 +66,8 @@ it is durable and pushed.
 
 ## Naming / visibility
 
-Board-directed 2026-07-17: project name is **Kolloq**. Repo is private; flips
+Board-directed 2026-07-17: project name is **Open Work**. Repo is private; flips
 public at Phase 5 launch.
+
+Board-directed 2026-07-26 (NEW-241/NEW-243): renamed to **Kolloq** over a
+trademark/brand conflict on the prior name. See NEW-243 for the full rebrand sweep.

@@ -67,6 +67,7 @@ const EXEMPT_LINE_PATTERNS = [
   /Open-Work\.git/,
   /OpenWork-QA-Builds/, // qa-build.sh's literal DEST_DIR folder name, not a display rename of "Open Work"
   /Claude Cowork/, // Anthropic's actual product, referenced for feature-parity comparison in the docs — not our old branding
+  /Board-directed 2026-07-17/, // PROJECT.md's historical record of the pre-rebrand name — see the NEW-243 line right after it
   /ai\.newvector\.cowork/, // the internal Tauri bundle identifier, kept stable for auto-update + code-signing continuity
 ];
 
