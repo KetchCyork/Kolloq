@@ -35,7 +35,7 @@
  *     issuer/audience/nonce/expiry/email_verified.
  */
 import { isTauriRuntime } from "./credentials";
-import { persistAppSession, type AppSession } from "./openWorkAccount";
+import type { AppSession } from "./openWorkAccount";
 
 const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -258,6 +258,5 @@ export async function runGoogleSignIn(session: GoogleAuthSession): Promise<AppSe
     nonce: session.nonce,
   });
   const appSession: AppSession = { email, method: "google", signedInAt: Date.now() };
-  persistAppSession(appSession);
   return appSession;
 }

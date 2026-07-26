@@ -11,13 +11,14 @@ import { SettingsView } from "./components/SettingsView";
 import { SignInScreen } from "./components/SignInScreen";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
-import { loadAppSession, signOut, type AppSession } from "./openWorkAccount";
+import type { AppSession } from "./openWorkAccount";
 import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
   // Open Work account gate (spec §8.1) — separate from the LLM provider connections in `store.tsx`.
-  const [appSession, setAppSession] = useState<AppSession | null>(() => loadAppSession());
+  // Session lives in memory only: every launch must show the sign-in screen (board directive, NEW-132).
+  const [appSession, setAppSession] = useState<AppSession | null>(null);
 
   const {
     ready,
@@ -81,7 +82,6 @@ export function App() {
   const accountEmail = appSession.email;
 
   function handleSignOut() {
-    signOut();
     setAppSession(null);
   }
 

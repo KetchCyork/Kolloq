@@ -4,13 +4,14 @@
  * (an `Account` there is a provider credential, not an Open Work login). Conversations and files
  * stay local regardless of sign-in state; this only gates what the app is allowed to do.
  *
- * There is no backend yet, so sign-in is stubbed: every method below mints a session locally and
- * persists it to `localStorage`. Swap the bodies of `signInWithPassword`/`signInWithOAuth` for real
- * network calls once a backend exists — the signatures and `AppSession` shape are the seam, so
- * nothing else in the app (the gate in `App.tsx`, the sign-out in `PreferencesPanel`) needs to change.
+ * The session lives only in React state for the lifetime of the running app — it is never written
+ * to or read from disk. Every launch must show the sign-in screen (board directive, NEW-132); do
+ * not reintroduce a persisted/auto-restored session without that decision being revisited.
+ *
+ * There is no backend yet, so sign-in is stubbed: `signInWithPassword` mints a session locally.
+ * Swap its body for a real network call once a backend exists — the `AppSession` shape is the
+ * seam, so nothing else in the app (the gate in `App.tsx`) needs to change.
  */
-
-const SESSION_KEY = "openwork.account.session.v1";
 
 export type SignInMethod = "password" | "google" | "apple" | "sso";
 
@@ -18,36 +19,6 @@ export interface AppSession {
   email: string;
   method: SignInMethod;
   signedInAt: number;
-}
-
-function isValidSession(value: unknown): value is AppSession {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<AppSession>;
-  return typeof candidate.email === "string" && typeof candidate.method === "string" && typeof candidate.signedInAt === "number";
-}
-
-export function loadAppSession(): AppSession | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return isValidSession(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Persists a session to local storage. Used by the email/password form and the real Google flow
- * (see openWorkGoogleAuth.ts), which produces its session from a Google-verified id_token. */
-export function persistAppSession(session: AppSession): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-}
-
-export function signOut(): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.removeItem(SESSION_KEY);
 }
 
 // Google "Continue with Google" is a real OpenID Connect sign-in — see openWorkGoogleAuth.ts.
@@ -59,7 +30,5 @@ export function signOut(): void {
 export function signInWithPassword(email: string): AppSession {
   const trimmed = email.trim();
   if (!trimmed) throw new Error("Enter your email address.");
-  const session: AppSession = { email: trimmed, method: "password", signedInAt: Date.now() };
-  persistAppSession(session);
-  return session;
+  return { email: trimmed, method: "password", signedInAt: Date.now() };
 }
