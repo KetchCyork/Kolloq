@@ -252,7 +252,7 @@ export function SettingsAccountPlanPane({
             <h3>
               {accountEmail} <span className={planBadgeClass(currentPlan, currentStatus)}>{currentPlan.toUpperCase()}</span>
             </h3>
-            <div className="settings-card-sub">Open Work account</div>
+            <div className="settings-card-sub">Kolloq account</div>
           </div>
           <div className="spacer" />
           {nextTier && (

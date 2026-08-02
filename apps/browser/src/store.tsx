@@ -167,7 +167,7 @@ export interface LiveTurn {
   error?: string;
 }
 
-/** Top-level sidebar nav areas from the Open Work mockup/spec (§3.2). */
+/** Top-level sidebar nav areas from the Kolloq mockup/spec (§3.2). */
 export type WorkspaceView = "chat" | "projects" | "council" | "agents" | "settings";
 
 /** Left-nav tabs inside the Settings view (spec §7). */

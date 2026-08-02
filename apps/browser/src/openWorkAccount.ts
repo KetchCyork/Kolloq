@@ -1,7 +1,7 @@
 /**
- * Open Work account gate (product spec §8.1) — the account that plans/entitlements attach to.
+ * Kolloq account gate (product spec §8.1) — the account that plans/entitlements attach to.
  * This is intentionally separate from the LLM provider connections managed in `store.tsx`/`types.ts`
- * (an `Account` there is a provider credential, not an Open Work login). Conversations and files
+ * (an `Account` there is a provider credential, not a Kolloq login). Conversations and files
  * stay local regardless of sign-in state; this only gates what the app is allowed to do.
  *
  * The session lives only in React state for the lifetime of the running app — it is never written
@@ -28,7 +28,7 @@ export interface AppSession {
 }
 
 // Google "Continue with Google" is a real OpenID Connect sign-in — see openWorkGoogleAuth.ts.
-// Apple and company-SSO have no real path without an Open Work backend, so the UI disables those
+// Apple and company-SSO have no real path without a Kolloq backend, so the UI disables those
 // buttons rather than minting a fake session (the previous stub here did the latter, which is what
 // made "Continue with Google" drop straight into the app without verifying anything).
 

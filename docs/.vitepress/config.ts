@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "Open Work",
+  title: "Kolloq",
   description: "AI agent harness for any LLM — Anthropic, OpenAI, Gemini, Ollama, OpenRouter",
   themeConfig: {
     nav: [

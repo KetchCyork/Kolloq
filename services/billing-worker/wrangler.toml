@@ -4,7 +4,7 @@ compatibility_date = "2026-07-01"
 
 # Non-secret configuration. Stripe Price IDs are not secrets (see
 # services/billing-worker/README.md); the Google OAuth Client ID is public by
-# design (it is echoed in the authorize URL of every Open Work sign-in).
+# design (it is echoed in the authorize URL of every Kolloq sign-in).
 [vars]
 GOOGLE_OAUTH_CLIENT_ID = "582168889348-saprf1jsc5qpengcsjshvvlpnmsiodn9.apps.googleusercontent.com"
 DEFAULT_CHECKOUT_SUCCESS_URL = "https://app.newvector.ai/settings/account?checkout=success"

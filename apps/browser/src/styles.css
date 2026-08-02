@@ -8,7 +8,7 @@
   --border: #2b3242;
   --text: #e6e9f0;
   --text-dim: #8a92a6;
-  --accent: #1fc29c;
+  --accent: #14b8a6;
   --accent-soft: #14332b;
   --on-accent: #06231b;
   --green: #6fce8f;
@@ -33,7 +33,7 @@
   --border: #dcdfe6;
   --text: #1a2744;
   --text-dim: #5f6b85;
-  --accent: #12a184;
+  --accent: #0d9488;
   --accent-soft: #d8f3ea;
   --on-accent: #ffffff;
   --green: #2e7d4b;
@@ -779,7 +779,7 @@ select {
   text-align: center;
 }
 
-/* Empty-session hero: greeting + centered composer, Cowork-home-style. */
+/* Empty-session hero: greeting + centered composer, Kolloq-home-style. */
 .empty-hero {
   flex: 1;
   display: flex;
@@ -1584,7 +1584,7 @@ select {
 }
 
 /* Generic badge/hint/meter primitives shared by the setup, live, and Decision Brief views
- * (ported from the Open Work mockup, docs/openwork-mockup.html, onto this app's own token names). */
+ * (ported from the Kolloq mockup, docs/openwork-mockup.html, onto this app's own token names). */
 .badge {
   font-size: 11px;
   padding: 2px 9px;
@@ -1619,6 +1619,10 @@ select {
   font-size: 12px;
   color: var(--text-dim);
   margin-top: 5px;
+}
+
+.hint.council-alignment-fallback {
+  color: var(--amber);
 }
 
 .meter {
@@ -2524,7 +2528,7 @@ select {
   gap: 8px;
 }
 
-/* Open Work sign-in (account gate, spec §8.1) */
+/* Kolloq sign-in (account gate, spec §8.1) */
 .signin-overlay {
   position: fixed;
   inset: 0;

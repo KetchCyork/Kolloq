@@ -1,13 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1024 1024">
-  <!-- Open Work mark — OW monogram on transparent, reads on light or dark. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 400 400">
+  <!-- Kolloq mark — self-contained council-ring badge (navy square + ring + k). No separate transparent
+       variant was provided in the brand kit, so this badge is reused wherever a small in-app mark is
+       needed; it reads consistently on both light and dark app surfaces because its background travels
+       with it. See NEW-243. -->
   <defs>
-    <linearGradient id="teal" x1="0.12" y1="0.05" x2="0.9" y2="1">
-      <stop offset="0" stop-color="#41E8C6"/>
-      <stop offset="1" stop-color="#14B487"/>
+    <linearGradient id="ring" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#4ade80"/>
     </linearGradient>
   </defs>
-  <circle cx="512" cy="512" r="270" fill="none" stroke="url(#teal)" stroke-width="58"/>
-  <path d="M 384 432 L 456 604 L 512 500 L 568 604 L 640 432"
-        fill="none" stroke="url(#teal)" stroke-width="52"
-        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="400" height="400" rx="80" fill="#0b1220"/>
+  <circle cx="200" cy="200" r="105" fill="none" stroke="url(#ring)" stroke-width="10" stroke-dasharray="92 40" stroke-linecap="round" transform="rotate(-90 200 200)"/>
+  <g fill="url(#ring)">
+    <circle cx="200" cy="95" r="17"/>
+    <circle cx="300" cy="168" r="17"/>
+    <circle cx="262" cy="285" r="17"/>
+    <circle cx="138" cy="285" r="17"/>
+    <circle cx="100" cy="168" r="17"/>
+  </g>
+  <text x="200" y="248" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="130" fill="#ffffff">k</text>
 </svg>

@@ -47,7 +47,7 @@ export function SettingsGeneralPane() {
 
       <div className="settings-card">
         <h3>Appearance</h3>
-        <div className="settings-card-sub">Choose how Open Work looks. "Match system" follows your OS setting.</div>
+        <div className="settings-card-sub">Choose how Kolloq looks. "Match system" follows your OS setting.</div>
         <div className="settings-theme-row">
           {THEME_OPTIONS.map((opt) => (
             <button

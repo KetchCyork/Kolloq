@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Builds a QA/dev copy of the desktop app that cannot collide with the
-# canonical /Applications/Open Work.app install.
+# canonical /Applications/Kolloq.app install.
 #
 # The default `tauri build` uses the release identifier (ai.newvector.cowork)
-# and product name ("Open Work"), so any agent building from any branch and
+# and product name ("Kolloq"), so any agent building from any branch and
 # copying the result to /Applications overwrites whatever verified build was
 # there and, because LaunchServices resolves by bundle identifier, can even
-# redirect launches of the *existing* /Applications/Open Work.app to a
+# redirect launches of the *existing* /Applications/Kolloq.app to a
 # worktree's build output (see NEW-160).
 #
 # This script instead builds with a branch-suffixed identifier and product
@@ -29,7 +29,7 @@ SLUG="${SLUG:-unknown}"
 # productName feeds tauri.conf.json's `^[^/:*?"<>|]+$` validation (and macOS
 # file/path rules), so it must use the sanitized slug, not the raw branch
 # name (branches routinely contain "/").
-PRODUCT_NAME="Open Work (QA ${SLUG})"
+PRODUCT_NAME="Kolloq (QA ${SLUG})"
 IDENTIFIER="ai.newvector.cowork.qa.${SLUG}"
 
 BUNDLE_SUBDIR="release"
@@ -72,5 +72,5 @@ rm -rf "$DEST"
 cp -R "$BUNDLE_SRC" "$DEST"
 
 echo "==> QA build installed at: ${DEST}"
-echo "==> This does NOT touch /Applications/Open Work.app (different bundle id)."
+echo "==> This does NOT touch /Applications/Kolloq.app (different bundle id)."
 echo "==> Open with: open \"${DEST}\""

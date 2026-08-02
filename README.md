@@ -1,4 +1,4 @@
-# Open Work
+# Kolloq
 
 A Claude Code–style AI agent harness that runs on any LLM — Anthropic, OpenAI, Google Gemini, Ollama (local), or OpenRouter. Run agents in the browser, from the desktop app, or headless from the CLI.
 

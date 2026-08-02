@@ -69,7 +69,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: AppSession)
         <div className="signin-logo">
           <img src="/logo-mark.svg" alt="" width={52} height={52} />
         </div>
-        <h1>Open Work</h1>
+        <h1>Kolloq</h1>
         <div className="signin-tag">Every model. One workspace. Better decisions.</div>
 
         <button

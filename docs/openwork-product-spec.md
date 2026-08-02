@@ -1,4 +1,4 @@
-# Open Work — Product Specification
+# Kolloq — Product Specification
 
 **Version:** 1.0 (Draft for review)
 **Date:** July 19, 2026
@@ -9,12 +9,12 @@
 
 ## 1. Product Vision
 
-Open Work is an AI workspace — delivered in the browser and as desktop apps for macOS, Windows, and Linux — modeled on Claude Chat and Claude Cowork, with one defining difference: it is **model-agnostic and multi-agent**. Users connect any LLM provider (Anthropic, OpenAI, Google, xAI, Mistral, DeepSeek, local models via Ollama, and others) using an API key. Each connection powers one or more user-defined **Agents** — named personas with a model, system prompt, skills, and tool access.
+Kolloq is an AI workspace — delivered in the browser and as desktop apps for macOS, Windows, and Linux — modeled on Claude Chat and Claude Cowork, with one defining difference: it is **model-agnostic and multi-agent**. Users connect any LLM provider (Anthropic, OpenAI, Google, xAI, Mistral, DeepSeek, local models via Ollama, and others) using an API key. Each connection powers one or more user-defined **Agents** — named personas with a model, system prompt, skills, and tool access.
 
 Agents can be used three ways:
 
 1. **Chat** — pick any agent for a one-on-one conversation (parity with Claude Chat).
-2. **Projects** — assign multiple agents to a shared workspace with files, tasks, and project knowledge (parity with Cowork), so different agents handle different work in the same project.
+2. **Projects** — assign multiple agents to a shared workspace with files, tasks, and project knowledge (parity with Claude Cowork), so different agents handle different work in the same project.
 3. **Advisory Council** — a new capability: pose a challenge to up to five agents, who debate in moderated rounds until they align on a recommended path forward.
 
 The core bet: no single model is best at everything, and the most valuable answers come from structured disagreement between strong models — not from a single oracle.
@@ -37,7 +37,7 @@ Representative use cases:
 
 ### 3.1 Platforms
 
-Open Work ships on four platforms to maximize reach: a **browser app** (Chrome, Edge, Safari, Firefox) and **native desktop apps for macOS, Windows, and Linux**. All platforms share one account, one feature set, and one UI, with platform-appropriate differences:
+Kolloq ships on four platforms to maximize reach: a **browser app** (Chrome, Edge, Safari, Firefox) and **native desktop apps for macOS, Windows, and Linux**. All platforms share one account, one feature set, and one UI, with platform-appropriate differences:
 
 - **Desktop (macOS / Windows / Linux):** the full experience. Unrestricted working-folder access for Projects, credentials in the OS keychain (Keychain / Credential Manager / Secret Service), background scheduled tasks, auto-update.
 - **Browser:** the entry point and trial surface — nothing to install, works from a link, ideal for Free-tier acquisition and Enterprise SSO rollouts. Chat, Agents, Advisory Council, and Settings are at full parity. **Honest constraint:** project working-folder access in the browser depends on the File System Access API, which is well-supported in Chrome and Edge but limited in Safari and Firefox; there, Projects fall back to uploaded knowledge files and downloadable outputs, with a prompt to get the desktop app for full folder access. Browser-entered API keys are held in encrypted browser storage scoped to the signed-in account (or the Enterprise tenant vault), not an OS keychain.
@@ -47,29 +47,29 @@ The desktop apps are built from the same codebase as the web app (wrapper approa
 
 ### 3.2 Application structure
 
-On first launch the user signs in to an **Open Work account** (see §8) before reaching the workspace; the app then opens to a left sidebar navigation with five top-level areas:
+On first launch the user signs in to an **Kolloq account** (see §8) before reaching the workspace; the app then opens to a left sidebar navigation with five top-level areas:
 
 | Area | Purpose |
 |---|---|
 | **Chat** | Conversations with a single agent. Conversation history list, search, pinning. |
-| **Projects** | Cowork-style workspaces: connected folder, files, tasks, project knowledge, multiple assigned agents. |
+| **Projects** | Claude Cowork-style workspaces: connected folder, files, tasks, project knowledge, multiple assigned agents. |
 | **Advisory Council** | Create and run multi-agent debates; browse past council sessions and their decision briefs. |
 | **Agents** | Create, edit, duplicate, and archive agents. |
 | **Settings** | Account & Plan, Connections, Skills, Plugins, Integrations, General, Usage & Billing. |
 
 Global elements: model/agent switcher in the chat composer, universal search (Cmd/Ctrl-K), a status tray showing connection health for each provider, and a plan badge in the sidebar footer (Free / Pro / Max / Enterprise) that doubles as the upgrade entry point.
 
-**Visual design direction:** dark theme by default — near-black blue-gray surfaces with the **brand teal** as the interactive accent (buttons, badges, meters, selection states). **Brand:** the Open Work mark is a teal-to-green gradient ring enclosing a "w", with a bold white sans-serif wordmark on dark surfaces and a dark navy wordmark on light surfaces, per the brand sheet. **Appearance setting:** Dark (default), Light (light surfaces, navy text, darker teal accent for contrast), or Match system (follows the OS and switches live when the OS changes). Enterprise tenants can override logo and accent — see §8.4.
+**Visual design direction:** dark theme by default — near-black blue-gray surfaces with the **brand teal** as the interactive accent (buttons, badges, meters, selection states). **Brand:** the Kolloq mark is a teal-to-green gradient ring enclosing a "w", with a bold white sans-serif wordmark on dark surfaces and a dark navy wordmark on light surfaces, per the brand sheet. **Appearance setting:** Dark (default), Light (light surfaces, navy text, darker teal accent for contrast), or Match system (follows the OS and switches live when the OS changes). Enterprise tenants can override logo and accent — see §8.4.
 
 ---
 
-## 4. Feature Set — Parity with Claude Chat / Cowork
+## 4. Feature Set — Parity with Claude Chat / Claude Cowork
 
 These behaviors replicate the reference apps and are table stakes:
 
 **Chat.** Streaming responses; markdown rendering; code blocks with copy; file and image attachments; artifacts (rendered HTML/React/SVG/documents in a side panel); response regeneration; edit-and-resend; conversation renaming, pinning, deletion; export to Markdown/PDF. Each conversation is bound to one agent but the user can switch agents mid-conversation (a divider notes the switch, and full history is passed to the new agent).
 
-**Projects (Cowork parity).** Every project has a **working folder** — a local folder the project's agents can read and write. Folder selection is explicit and visible: creating a project prompts for a folder via the OS folder picker (or "start without a folder" for knowledge-only projects); the connected path is always displayed at the top of the project workspace with **Change** and **Disconnect** actions; changing the folder warns that agents lose access to the old path immediately. Access is scoped to the selected folder and its subfolders only — agents cannot touch anything outside it. Also included: project instructions (persistent system-level guidance); project knowledge files; a task list widget with statuses; scheduled tasks; artifacts persisted per project. **Open Work extension:** a project has an *agent roster* — any number of assigned agents. The composer in a project shows an agent picker; tasks can be assigned to specific agents; any agent in the roster shares the project's context (instructions, knowledge, files).
+**Projects (Claude Cowork parity).** Every project has a **working folder** — a local folder the project's agents can read and write. Folder selection is explicit and visible: creating a project prompts for a folder via the OS folder picker (or "start without a folder" for knowledge-only projects); the connected path is always displayed at the top of the project workspace with **Change** and **Disconnect** actions; changing the folder warns that agents lose access to the old path immediately. Access is scoped to the selected folder and its subfolders only — agents cannot touch anything outside it. Also included: project instructions (persistent system-level guidance); project knowledge files; a task list widget with statuses; scheduled tasks; artifacts persisted per project. **Kolloq extension:** a project has an *agent roster* — any number of assigned agents. The composer in a project shows an agent picker; tasks can be assigned to specific agents; any agent in the roster shares the project's context (instructions, knowledge, files).
 
 **Skills.** Installable instruction packages (SKILL.md-style) that shape how an agent performs a category of task (e.g., "Board memo format," "Our brand voice"). Skills are installed globally in Settings and attached per-agent or per-project.
 
@@ -83,9 +83,9 @@ These behaviors replicate the reference apps and are table stakes:
 
 ### 5.1 Connections
 
-*Terminology note: this section covers connecting **LLM providers** to Open Work. The user's own **Open Work account** sign-in and subscription tiers are separate — see §8.*
+*Terminology note: this section covers connecting **LLM providers** to Kolloq. The user's own **Kolloq account** sign-in and subscription tiers are separate — see §8.*
 
-A **Connection** is authenticated access to an LLM provider, established with an **API key** (or endpoint + key for OpenAI-compatible/local servers). Open Work validates the key with a test call, then lists the models the key can access. Keys are stored in the OS keychain and never displayed again after entry (masked, with "Replace key" action). *(Board decision, 2026-07-22: subscription login — signing in with an existing consumer plan such as Claude Pro/Max or ChatGPT Plus — was considered and explicitly withdrawn; API keys are the only connection method.)*
+A **Connection** is authenticated access to an LLM provider, established with an **API key** (or endpoint + key for OpenAI-compatible/local servers). Kolloq validates the key with a test call, then lists the models the key can access. Keys are stored in the OS keychain and never displayed again after entry (masked, with "Replace key" action). *(Board decision, 2026-07-22: subscription login — signing in with an existing consumer plan such as Claude Pro/Max or ChatGPT Plus — was considered and explicitly withdrawn; API keys are the only connection method.)*
 
 Connection card shows: provider, status (Connected / Error / Rate limited), models available, monthly spend, and actions (Test, Replace credentials, Remove).
 
@@ -157,9 +157,9 @@ No parallel sub-debates, no agent-to-agent private channels, no tool use by agen
 
 ## 8. Accounts, Subscription Tiers & Enterprise
 
-### 8.1 Open Work account and sign-in
+### 8.1 Kolloq account and sign-in
 
-Open Work requires authentication on first launch. Sign-in options: email + password (with verification), Google/Apple OAuth, or — for Enterprise tenants — the organization's SSO (§8.4). The account is what plans, entitlements, and (v2) sync attach to. Conversations and files remain local; the account governs *what the app is allowed to do*, not where data lives.
+Kolloq requires authentication on first launch. Sign-in options: email + password (with verification), Google/Apple OAuth, or — for Enterprise tenants — the organization's SSO (§8.4). The account is what plans, entitlements, and (v2) sync attach to. Conversations and files remain local; the account governs *what the app is allowed to do*, not where data lives.
 
 ### 8.2 Tiers and entitlements
 
@@ -189,7 +189,7 @@ Tier behavior rules: hitting a limit never blocks viewing existing work — it b
 For organizations, sold per-seat with an annual contract:
 
 - **Single sign-on:** SAML 2.0 and OIDC against the customer's IdP (Okta, Entra ID, Google Workspace); enforced domain capture (users with a claimed domain must go through SSO); SCIM provisioning/deprovisioning.
-- **Custom branding:** tenant logo replaces the Open Work mark in the sidebar and sign-in screen; tenant accent color; optional custom app name in title bars ("Acme Advisor, powered by Open Work").
+- **Custom branding:** tenant logo replaces the Kolloq mark in the sidebar and sign-in screen; tenant accent color; optional custom app name in title bars ("Acme Advisor, powered by Kolloq").
 - **Admin console (web):** seat management, provider allowlist (e.g., "no data to xAI"), mandatory org-wide connections (company API keys so employees never handle keys), usage and cost reporting by team, private skill/plugin catalog, data-retention policy for transcripts.
 - **Security posture:** org-managed keys stored server-side in the tenant vault rather than personal keychains; audit log of council sessions and integration grants; no training on customer data — contractual.
 
@@ -214,7 +214,7 @@ Mobile apps; shared/collaborative workspaces (Enterprise v1 is per-seat with cen
 3. Council pricing UX: hard budget cap default value ($5? $20?) — needs user testing.
 4. Do project tasks auto-route to the "best" agent, or is assignment always manual? (Spec assumes manual in v1.)
 5. Final tier limit values and price points for Free / Pro / Max (§8.2 numbers are placeholders).
-6. Does Free tier require the user's own LLM keys only, or does Open Work bundle a small metered allowance of hosted model calls to remove the cold-start problem? (Bundling changes cost structure materially.)
+6. Does Free tier require the user's own LLM keys only, or does Kolloq bundle a small metered allowance of hosted model calls to remove the cold-start problem? (Bundling changes cost structure materially.)
 
 ---
 
