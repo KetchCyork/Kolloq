@@ -40,7 +40,7 @@ NEW-120). Two things make that diagnosable:
   build/dev time; Settings → General → **About** renders them. Read that
   before assuming a change didn't ship.
 - **`pnpm desktop:install`** is the one command that rebuilds the desktop
-  bundle and installs it to `/Applications/Open Work.app`
+  bundle and installs it to `/Applications/Kolloq.app`
   (`apps/desktop/scripts/install.sh`). It refuses (exits non-zero) if the
   checkout is dirty, on a branch other than `main`, or behind
   `origin/main` — `/Applications` is the single shared canonical install
@@ -50,7 +50,7 @@ NEW-120). Two things make that diagnosable:
 
 ## QA / dev builds vs. the canonical `/Applications` install
 
-`/Applications/Open Work.app` (identifier `ai.newvector.cowork`) is the
+`/Applications/Kolloq.app` (identifier `ai.newvector.cowork`) is the
 **canonical, `main`-only build the board verifies against**. Only write it
 when you are explicitly refreshing that canonical build (e.g. installing a
 signed release, or a `main`-branch build for board verification) — say so in
@@ -58,11 +58,11 @@ the issue when you do, since it replaces whatever was previously installed
 there.
 
 **Per-issue pinned copies in `/Applications` (e.g.
-`/Applications/Open Work (NEW-<id> QA).app`) are prohibited**, not merely
+`/Applications/Kolloq (NEW-<id> QA).app`) are prohibited**, not merely
 discouraged — every such bundle still carries the `ai.newvector.cowork`
 family of identifiers, so pinning one there just renames the collision
 instead of removing it. Use `qa-build` below instead. The sole exception is
-`/Applications/Open Work (NEW-42 QA).app`, a pre-convention artifact that
+`/Applications/Kolloq (NEW-42 QA).app`, a pre-convention artifact that
 stays only until NEW-42 leaves `in_review`, at which point QA removes it.
 
 Every other desktop build — local dev, QA verification builds, anything run
@@ -73,13 +73,13 @@ pnpm --filter @newvector/desktop qa-build [--debug]
 ```
 
 This builds with a **branch-suffixed identifier and product name**
-(`ai.newvector.cowork.qa.<branch-slug>`, `Open Work (QA <branch>)`) and
+(`ai.newvector.cowork.qa.<branch-slug>`, `Kolloq (QA <branch>)`) and
 installs the result to `~/Desktop/OpenWork-QA-Builds/<branch-slug>/` —
 never to `/Applications`. Because the bundle identifier differs from the
-canonical one, a QA build can never overwrite `/Applications/Open Work.app`
+canonical one, a QA build can never overwrite `/Applications/Kolloq.app`
 or hijack what LaunchServices resolves `ai.newvector.cowork` to, no matter
 how many worktrees have one installed at once. Run it, then `open` the
-printed path directly rather than launching "Open Work" from Spotlight/Dock
+printed path directly rather than launching "Kolloq" from Spotlight/Dock
 (that always resolves to the canonical build).
 
 `pnpm dev` / `pnpm build` / `qa-build` all run

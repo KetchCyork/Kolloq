@@ -54,5 +54,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running the Open Work desktop app");
+        .expect("error while running the Kolloq desktop app");
 }

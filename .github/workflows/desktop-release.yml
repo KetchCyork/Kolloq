@@ -106,13 +106,24 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // A tag push gives a real `desktop-v*` tag to release under. A
+            // manual workflow_dispatch run (e.g. to test a CI fix without
+            // cutting a release) has no tag - context.ref is refs/heads/<branch>
+            // in that case, and GitHub rejects tag names starting with
+            // "refs/" once publish-release tries to un-draft the release.
+            // Fall back to a synthetic, run-scoped tag so dispatch runs still
+            // produce a valid (if throwaway) draft release.
+            const isTagPush = context.eventName === 'push' && context.ref.startsWith('refs/tags/');
+            const tag_name = isTagPush
+              ? context.ref.replace('refs/tags/', '')
+              : `desktop-manual-${context.runNumber}`;
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: context.ref.replace('refs/tags/', ''),
-              name: `Open Work ${context.ref.replace('refs/tags/desktop-v', '')}`,
+              tag_name,
+              name: isTagPush ? `Kolloq ${tag_name.replace('desktop-v', '')}` : `Kolloq (manual run ${context.runNumber})`,
               draft: true,
-              prerelease: false,
+              prerelease: !isTagPush,
             });
             return data.id;
 
@@ -258,14 +269,37 @@ jobs:
 
   publish-release:
     needs: [create-release, build]
+    # Publish even when a build leg fails (e.g. Windows code signing, tracked
+    # separately in NEW-43) so a green macOS/Linux build still reaches users
+    # instead of sitting in an unpublished draft forever. Only skip if the run
+    # was cancelled or the draft was never created.
+    if: ${{ !cancelled() && needs.create-release.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v7
         with:
           script: |
+            const release_id = ${{ needs.create-release.outputs.release_id }};
+            // Never promote a draft that's missing the macOS build — a release
+            // that looks published but has no .dmg is worse than an unpublished
+            // one. Require the aarch64 dmg before flipping draft:false.
+            const { data: assets } = await github.rest.repos.listReleaseAssets({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id,
+            });
+            const names = assets.map((a) => a.name);
+            const hasMacDmg = names.some((n) => n.endsWith('aarch64.dmg'));
+            if (!hasMacDmg) {
+              core.setFailed(
+                `Refusing to publish: draft ${release_id} has no macOS .dmg (assets: ${names.join(', ') || 'none'}).`,
+              );
+              return;
+            }
+            core.info(`Publishing release ${release_id} with assets: ${names.join(', ')}`);
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: ${{ needs.create-release.outputs.release_id }},
+              release_id,
               draft: false,
             });

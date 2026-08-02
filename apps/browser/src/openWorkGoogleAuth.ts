@@ -1,5 +1,5 @@
 /**
- * Real "Continue with Google" sign-in for the Open Work account gate.
+ * Real "Continue with Google" sign-in for the Kolloq account gate.
  *
  * This replaces the previous stub (openWorkAccount.signInWithOAuth) that minted a fake local
  * session without ever contacting Google. Google Sign-In is OpenID Connect on top of OAuth 2.0
@@ -46,7 +46,7 @@ const GOOGLE_REDIRECT_URI = `http://127.0.0.1:${GOOGLE_LOOPBACK_PORT}`;
 const GOOGLE_SCOPES = ["openid", "email", "profile"];
 
 /**
- * Open Work's Google OAuth Client ID. Safe to commit: a Client ID is a public identifier that Google
+ * Kolloq's Google OAuth Client ID. Safe to commit: a Client ID is a public identifier that Google
  * echoes in the authorize URL of every sign-in, and it is useless without the paired secret.
  */
 const DEFAULT_GOOGLE_CLIENT_ID = "582168889348-saprf1jsc5qpengcsjshvvlpnmsiodn9.apps.googleusercontent.com";
@@ -93,7 +93,7 @@ export function googleSignInAvailable(): boolean {
 
 /** Human-readable reason Google sign-in is unavailable, or null if it is available. */
 export function googleUnavailableReason(): string | null {
-  if (!isTauriRuntime()) return "Google sign-in is only available in the Open Work desktop app.";
+  if (!isTauriRuntime()) return "Google sign-in is only available in the Kolloq desktop app.";
   if (!googleClientId()) return "Google sign-in isn't configured yet (missing OAuth Client ID).";
   if (!googleClientSecret()) return "Google sign-in isn't configured yet (missing OAuth Client Secret).";
   return null;
@@ -222,7 +222,7 @@ export function googleTokenErrorMessage(status: number, payload: GoogleTokenPayl
  * `googleSignInAvailable`).
  */
 export async function runGoogleSignIn(session: GoogleAuthSession): Promise<AppSession> {
-  if (!isTauriRuntime()) throw new Error("Google sign-in is only available in the Open Work desktop app.");
+  if (!isTauriRuntime()) throw new Error("Google sign-in is only available in the Kolloq desktop app.");
   const { invoke } = await import("@tauri-apps/api/core");
 
   // Bind the loopback listener first (the command awaits the redirect), then open the consent page.

@@ -16,7 +16,7 @@ import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
 
 export function App() {
-  // Open Work account gate (spec §8.1) — separate from the LLM provider connections in `store.tsx`.
+  // Kolloq account gate (spec §8.1) — separate from the LLM provider connections in `store.tsx`.
   // Session lives in memory only: every launch must show the sign-in screen (board directive, NEW-132).
   const [appSession, setAppSession] = useState<AppSession | null>(null);
 

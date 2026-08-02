@@ -225,7 +225,7 @@ export function OnboardingWizard() {
     <div className="onboarding-overlay">
       <div className="onboarding-card">
         <div className="onboarding-step-label">Step 1 of 2</div>
-        <h1>Welcome to Open Work</h1>
+        <h1>Welcome to Kolloq</h1>
         <p className="onboarding-sub">
           Pick your first AI provider to get started. You can add more accounts later.
         </p>

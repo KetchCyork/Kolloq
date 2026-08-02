@@ -187,8 +187,12 @@ export function applyCouncilEvent(
         })),
         average: event.average,
       };
-      return { ...turn, alignmentScores: [...turn.alignmentScores, alignment] };
+      // A real score resolved — clear any earlier round's fallback reason so a stale warning
+      // doesn't linger once the meter is showing a genuine 0-10 value again.
+      return { ...turn, alignmentScores: [...turn.alignmentScores, alignment], alignmentError: undefined };
     }
+    case "alignment-score-error":
+      return { ...turn, alignmentError: event.error };
     case "consensus":
       return { ...turn, consensusReached: true };
     case "budget-exceeded":

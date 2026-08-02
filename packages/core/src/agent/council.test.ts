@@ -44,7 +44,7 @@ describe("Council", () => {
     const providerA = new StubProvider("A", [
       "Answer A0",
       "CONCUR I agree with B",
-      "A: 9/10 - fully aligned\nB: 8/10 - minor wording difference",
+      "Seat 1: 9/10 - fully aligned\nSeat 2: 8/10 - minor wording difference",
       "Final synthesized answer",
     ]);
     const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
@@ -95,7 +95,7 @@ describe("Council", () => {
     const providerA = new StubProvider("A", [
       "Answer A0",
       "DISSENT: not convinced\nStill think X is risky",
-      "A: 3/10 - still dissenting\nB: 4/10 - different proposal",
+      "Seat 1: 3/10 - still dissenting\nSeat 2: 4/10 - different proposal",
       "Best-effort synthesis noting dissent",
     ]);
     const providerB = new StubProvider("B", ["Answer B0", "DISSENT: prefer Y\nY is safer"]);
@@ -124,8 +124,8 @@ describe("Council", () => {
     const providerA = new StubProvider("A", [
       "A initial",
       "__throw__",
-      "B: 4/10 - still dissenting",
-      "B: 10/10 - resolved",
+      "Seat 1: 4/10 - still dissenting",
+      "Seat 1: 10/10 - resolved",
       "A synthesis final answer",
     ]);
     const providerB = new StubProvider("B", [
@@ -171,7 +171,7 @@ describe("Council", () => {
     const providerA = new StubProvider("A", [
       "Answer A0",
       "CONCUR I agree with B",
-      "A: 10/10 - full agreement\nB: 10/10 - full agreement",
+      "Seat 1: 10/10 - full agreement\nSeat 2: 10/10 - full agreement",
       "__throw__",
     ]);
     const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
@@ -250,7 +250,7 @@ describe("Council", () => {
     const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
     const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
     const moderatorProvider = new StubProvider("Mod", [
-      "A: 9/10 - aligned\nB: 9/10 - aligned",
+      "Seat 1: 9/10 - aligned\nSeat 2: 9/10 - aligned",
       "Recommendation: do X",
     ]);
 
@@ -346,7 +346,7 @@ describe("Council", () => {
       const providerA = new StubProvider("A", [
         "Answer A0",
         "CONCUR agreed",
-        "A: 10/10 - aligned\nB: 10/10 - aligned",
+        "Seat 1: 10/10 - aligned\nSeat 2: 10/10 - aligned",
         "Final answer",
       ]);
       const providerB = new StubProvider("B", ["Answer B0", "CONCUR agreed too"]);
@@ -387,26 +387,37 @@ describe("Council", () => {
 
       expect(result.alignmentScores).toEqual([]);
       expect(events.some((event) => event.type === "alignment-scores")).toBe(false);
+      // The failure is surfaced (not silently swallowed) so the fallback to the concur/dissent
+      // proxy is diagnosable — NEW-252.
+      expect(result.alignmentScoreErrors).toHaveLength(1);
+      expect(result.alignmentScoreErrors[0]?.round).toBe(1);
+      expect(result.alignmentScoreErrors[0]?.error).toBeTruthy();
+      expect(events.some((event) => event.type === "alignment-score-error" && event.round === 1)).toBe(true);
       // The judge call failing must not derail the (separate) synthesis call after it.
       expect(result.answer).toBe("Recommendation: do X");
     });
 
-    it("ignores a judge response that doesn't follow the requested scoring format, without adding a score", async () => {
+    it("ignores a judge response that doesn't follow the requested scoring format, but surfaces the reason", async () => {
       const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
       const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
       const moderatorProvider = new StubProvider("Mod", ["I'm not going to score this.", "Recommendation: do X"]);
 
+      const events: CouncilEvent[] = [];
       const council = new Council({
         members: [
           { name: "A", provider: providerA },
           { name: "B", provider: providerB },
         ],
         moderator: { name: "Moderator", provider: moderatorProvider },
+        onEvent: (event) => events.push(event),
       });
 
       const result = await council.run("Should we do X?");
 
       expect(result.alignmentScores).toEqual([]);
+      expect(result.alignmentScoreErrors).toHaveLength(1);
+      expect(result.alignmentScoreErrors[0]?.error).toContain("parseable");
+      expect(events.some((event) => event.type === "alignment-score-error" && event.round === 1)).toBe(true);
       expect(result.answer).toBe("Recommendation: do X");
     });
 
@@ -414,7 +425,7 @@ describe("Council", () => {
       const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
       const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
       const moderatorProvider = new StubProvider("Mod", [
-        "A: 12/10 - overshot\nB: 9/10 - aligned",
+        "Seat 1: 12/10 - overshot\nSeat 2: 9/10 - aligned",
         "Recommendation: do X",
       ]);
 
@@ -431,13 +442,16 @@ describe("Council", () => {
       expect(result.alignmentScores[0]?.scores.find((score) => score.member === "A")?.score).toBe(10);
     });
 
-    it("never embeds a member's opaque id in the alignment-scoring prompt", async () => {
+    it("identifies participants by seat number only in the alignment-scoring prompt — no id or name/label", async () => {
+      // The scoring prompt refers to seats by number, not name: asking a judge model to echo back a
+      // punctuation-heavy display label verbatim is unreliable (see NEW-82 QA repro below), so seat
+      // numbers avoid the problem entirely rather than just working around it.
       const idA = "11111111-1111-1111-1111-111111111111";
       const idB = "22222222-2222-2222-2222-222222222222";
       const providerA = new StubProvider(idA, ["Answer A0", "CONCUR I agree with B"]);
       const providerB = new StubProvider(idB, ["Answer B0", "CONCUR sounds good"]);
       const moderatorProvider = new StubProvider("Mod", [
-        "Skeptic Bot: 9/10 - aligned\nOptimist Bot: 9/10 - aligned",
+        "Seat 1: 9/10 - aligned\nSeat 2: 9/10 - aligned",
         "Recommendation: do X",
       ]);
 
@@ -454,8 +468,75 @@ describe("Council", () => {
       const scoringPromptText = moderatorProvider.requests[0]!.messages.map((message) => message.content).join("\n");
       expect(scoringPromptText).not.toContain(idA);
       expect(scoringPromptText).not.toContain(idB);
-      expect(scoringPromptText).toContain("Skeptic Bot");
-      expect(scoringPromptText).toContain("Optimist Bot");
+      expect(scoringPromptText).not.toContain("Skeptic Bot");
+      expect(scoringPromptText).not.toContain("Optimist Bot");
+      expect(scoringPromptText).toContain("Seat 1");
+      expect(scoringPromptText).toContain("Seat 2");
+    });
+
+    it("parses seat-numbered scores out of realistic prose even when the judge paraphrases member names", async () => {
+      // Regression fixture for NEW-82's QA repro: a real moderator model echoed short paraphrased
+      // names ("Ollama", "qwen") instead of the exact compound label, so label-based matching parsed
+      // zero scores. Seat-number matching must tolerate a preamble and per-line name paraphrasing.
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", [
+        "The leading proposal is the first position, which favors a careful, incremental approach.\n\n" +
+          "Here are the ratings for each participant:\n\n" +
+          "Seat 1: 8/10 - Ollama agrees with the need for careful consideration.\n" +
+          "Seat 2: 9/10 - qwen fully supports the leading proposal.",
+        "Recommendation: do X",
+      ]);
+
+      const council = new Council({
+        members: [
+          { name: "A", label: "Ollama (local) account · llama3.1:8b", provider: providerA },
+          { name: "B", label: "Ollama qwen · qwen:latest", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+      });
+
+      const result = await council.run("Should we migrate our database?");
+
+      expect(result.alignmentScores).toEqual([
+        {
+          round: 1,
+          scores: [
+            { member: "A", label: "Ollama (local) account · llama3.1:8b", score: 8, justification: "Ollama agrees with the need for careful consideration." },
+            { member: "B", label: "Ollama qwen · qwen:latest", score: 9, justification: "qwen fully supports the leading proposal." },
+          ],
+          average: 8.5,
+        },
+      ]);
+    });
+
+    it("parses scores despite markdown emphasis and a label/aside between the seat and the score", async () => {
+      // Regression fixture for NEW-252's live repro: a real moderator model bolds the seat header
+      // and slips the paraphrased member label between the colon and the score
+      // ("**Seat 1:** Assistant A — 8/10"). PR #65's stricter regex required the score to
+      // immediately follow the colon, so every real reply fell through to the concur/dissent proxy.
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", [
+        "The leading proposal is the incremental approach.\n\n" +
+          "**Seat 1:** Assistant A — 8/10 - aligns closely with the leading proposal.\n" +
+          "*Seat 2*: 9/10 — strongly supports it.",
+        "Recommendation: do X",
+      ]);
+
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+      });
+
+      const result = await council.run("Should we migrate our database?");
+
+      expect(result.alignmentScoreErrors).toEqual([]);
+      expect(result.alignmentScores[0]?.scores.map((score) => score.score)).toEqual([8, 9]);
+      expect(result.alignmentScores[0]?.average).toBe(8.5);
     });
   });
 
@@ -464,7 +545,7 @@ describe("Council", () => {
       const providerA = new StubProvider("A", [
         "Answer A0",
         "CONCUR agree",
-        "A: 10/10 - aligned\nB: 10/10 - aligned",
+        "Seat 1: 10/10 - aligned\nSeat 2: 10/10 - aligned",
         "Final synthesized answer",
       ]);
       const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
@@ -597,7 +678,7 @@ describe("Council", () => {
     const providerA = new StubProvider("A", [
       "Answer A0",
       "DISSENT: not convinced\nStill dissenting round 1",
-      "A: 3/10 - still apart\nB: 3/10 - still apart",
+      "Seat 1: 3/10 - still apart\nSeat 2: 3/10 - still apart",
       "Best-effort synthesis under budget",
     ]);
     const providerB = new StubProvider("B", ["Answer B0", "DISSENT: prefer Y\nStill dissenting round 1"]);

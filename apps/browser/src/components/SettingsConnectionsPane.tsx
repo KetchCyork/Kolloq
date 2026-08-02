@@ -287,7 +287,7 @@ export function SettingsConnectionsPane() {
             </div>
           </div>
           <div className="settings-note">
-            Open Work validates the key with a test call, then lists the models you can use. Keys never leave this device.
+            Kolloq validates the key with a test call, then lists the models you can use. Keys never leave this device.
           </div>
         </div>
       )}

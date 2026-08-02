@@ -1,0 +1,25 @@
+name = "newvector-billing-worker"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# Non-secret configuration. Stripe Price IDs are not secrets (see
+# services/billing-worker/README.md); the Google OAuth Client ID is public by
+# design (it is echoed in the authorize URL of every Kolloq sign-in).
+[vars]
+GOOGLE_OAUTH_CLIENT_ID = "582168889348-saprf1jsc5qpengcsjshvvlpnmsiodn9.apps.googleusercontent.com"
+DEFAULT_CHECKOUT_SUCCESS_URL = "https://app.newvector.ai/settings/account?checkout=success"
+DEFAULT_CHECKOUT_CANCEL_URL = "https://app.newvector.ai/settings/account?checkout=cancelled"
+DEFAULT_PORTAL_RETURN_URL = "https://app.newvector.ai/settings/account"
+
+# Filled in after running:
+#   wrangler kv namespace create BILLING_KV
+# See README.md "Deploy (Chris — one-time)" for the exact steps.
+[[kv_namespaces]]
+binding = "BILLING_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets (never committed — set via `wrangler secret put <NAME>`):
+#   STRIPE_SECRET_KEY            TEST-mode Stripe secret/restricted key (sk_test_... or rk_test_...)
+#   STRIPE_WEBHOOK_SECRET        Signing secret from the Stripe webhook endpoint (whsec_...)
+#   ENTITLEMENT_SIGNING_SECRET   Our own HMAC secret for signing entitlement tokens (generate with
+#                                `openssl rand -base64 32`; not a Stripe value)

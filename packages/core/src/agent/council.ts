@@ -66,6 +66,15 @@ export interface RoundAlignment {
   average: number;
 }
 
+/** Why a round's alignment-judging call produced no usable score — either the moderator's provider
+ * call itself errored, or it returned a response that didn't parse into any "Seat N: score/10"
+ * line. Surfaced so a fallback to the concur/dissent proxy is diagnosable instead of silent (see
+ * `Council.scoreAlignment` and NEW-252). */
+export interface AlignmentScoreError {
+  round: number;
+  error: string;
+}
+
 export interface CouncilOptions {
   members: CouncilMember[];
   /** Optional distinct, non-debating moderator that only synthesizes the final answer and never
@@ -90,6 +99,7 @@ export type CouncilEvent =
   | { type: "member-position"; round: number; position: MemberPosition }
   | { type: "member-dropped"; round: number; member: string; label: string; error: string }
   | { type: "alignment-scores"; round: number; scores: AlignmentScore[]; average: number }
+  | { type: "alignment-score-error"; round: number; error: string }
   | { type: "consensus"; round: number }
   | { type: "budget-exceeded"; round: number; spent: number; cap: number }
   | { type: "moderator-synthesis"; content: string }
@@ -118,6 +128,9 @@ export interface CouncilResult {
   /** One entry per round (>0) whose alignment-judging call succeeded; rounds where the judge call
    * failed, or round 0, are simply absent — a failure here never fails or discards the debate. */
   alignmentScores: RoundAlignment[];
+  /** One entry per round (>0) whose alignment-judging call produced no score — the provider error
+   * or unparseable-response reason the round silently fell back to the concur/dissent proxy for. */
+  alignmentScoreErrors: AlignmentScoreError[];
   /** True if `CouncilController.forceVote()` cut the debate short before consensus or the round cap. */
   forcedVote?: boolean;
 }
@@ -238,6 +251,7 @@ export class Council {
     const rounds: MemberPosition[][] = [];
     const dropped: DroppedMember[] = [];
     const alignmentScores: RoundAlignment[] = [];
+    const alignmentScoreErrors: AlignmentScoreError[] = [];
     let active = this.members;
     let consensusReached = false;
     let budgetExceeded = false;
@@ -294,10 +308,13 @@ export class Council {
       // Round 0 is independent first answers — there's no leading proposal yet to judge agreement
       // against, so alignment scoring starts at round 1, same as the stance-based consensus check below.
       if (round > 0 && positions.length > 0) {
-        const alignment = await this.scoreAlignment(question, round, positions);
+        const { alignment, error } = await this.scoreAlignment(question, round, positions);
         if (alignment) {
           alignmentScores.push(alignment);
           this.onEvent?.({ type: "alignment-scores", round, scores: alignment.scores, average: alignment.average });
+        } else if (error) {
+          alignmentScoreErrors.push({ round, error });
+          this.onEvent?.({ type: "alignment-score-error", round, error });
         }
       }
 
@@ -340,6 +357,7 @@ export class Council {
       answer,
       moderatorError,
       alignmentScores,
+      alignmentScoreErrors,
       forcedVote,
     };
   }
@@ -440,15 +458,19 @@ export class Council {
    * with it 0-10, per the product spec's convergence check. Best-effort like `synthesize`'s Decision
    * Brief format — no structured-output contract is enforced, so a provider error or an answer that
    * doesn't follow the requested format just yields no score for this round rather than failing the
-   * round (or the whole debate).
+   * round (or the whole debate) — but the reason is always returned alongside the (null) alignment
+   * so the caller can surface it instead of silently falling back to the concur/dissent proxy.
    */
   private async scoreAlignment(
     question: string,
     round: number,
     positions: MemberPosition[],
-  ): Promise<RoundAlignment | null> {
+  ): Promise<{ alignment: RoundAlignment | null; error?: string }> {
     const labeled = positions
-      .map((position) => `${position.label}${position.role ? ` (${position.role})` : ""}: ${position.content}`)
+      .map(
+        (position, index) =>
+          `Seat ${index + 1}${position.role ? ` (${position.role})` : ""}: ${position.content}`,
+      )
       .join("\n\n");
     const prompt = [
       `Question: ${question}`,
@@ -456,42 +478,63 @@ export class Council {
       `Round ${round} positions:`,
       labeled,
       "",
-      "Identify the leading proposal among these positions. Then, for each participant listed above, rate how " +
+      "Identify the leading proposal among these positions. Then, for each seat listed above, rate how " +
         "closely its position aligns with that leading proposal, from 0 (strongly disagrees) to 10 (fully " +
-        'agrees). Respond with exactly one line per participant, in this format: "<name>: <score>/10 - ' +
-        '<one-line reason>", using each participant\'s name exactly as given above.',
+        'agrees). Respond with exactly one line per seat, in this format: "Seat <number>: <score>/10 - ' +
+        '<one-line reason>". Refer to each seat only by its number (e.g. "Seat 1"), never by name.',
     ].join("\n");
 
     let content: string;
     try {
       const response = await this.moderator.provider.chat({ messages: this.buildMessages(this.moderator, prompt) });
       content = response.message.content;
-    } catch {
-      return null;
+    } catch (error) {
+      return { alignment: null, error: classifyProviderError(error).reason };
     }
 
-    const scores = positions
-      .map((position) => this.parseAlignmentScore(position, content))
-      .filter((score): score is AlignmentScore => score !== null);
-    if (scores.length === 0) return null;
+    const scores = this.parseAlignmentScores(positions, content);
+    if (scores.length === 0) {
+      return {
+        alignment: null,
+        error: 'Moderator response didn\'t contain any parseable "Seat N: score/10" line.',
+      };
+    }
 
     const average = scores.reduce((sum, score) => sum + score.score, 0) / scores.length;
-    return { round, scores, average };
+    return { alignment: { round, scores, average } };
   }
 
-  private parseAlignmentScore(position: MemberPosition, content: string): AlignmentScore | null {
-    const escaped = position.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = new RegExp(`${escaped}\\s*:\\s*(\\d{1,2})\\s*/\\s*10\\s*[-–—:]*\\s*(.*)`, "i").exec(content);
-    if (!match) return null;
-    const score = Number(match[1]);
-    if (Number.isNaN(score)) return null;
-    const justification = match[2]?.trim();
-    return {
-      member: position.member,
-      label: position.label,
-      score: Math.max(0, Math.min(10, score)),
-      justification: justification || undefined,
-    };
+  /** Parses "Seat <n>: <score>/10 - <reason>" lines, keyed by seat position rather than by name —
+   * models reliably echo back a bare number mid-prose but routinely paraphrase or shorten a
+   * punctuation-heavy display label, which made name-based matching silently parse zero scores in
+   * live use (see NEW-82 QA repro). Tolerates markdown emphasis around "Seat N" (real moderator
+   * models routinely bold seat headers) and a short label/aside between the colon and the score
+   * (e.g. "Seat 1: Assistant A — 8/10 - reason") — a live moderator reply essentially never matches
+   * the requested format byte-for-byte, and requiring the score to immediately follow the colon
+   * made every real call fall through to the concur/dissent proxy (see NEW-252). Duplicate seat
+   * numbers keep only the first match. */
+  private parseAlignmentScores(positions: MemberPosition[], content: string): AlignmentScore[] {
+    const pattern = /\*{0,2}\s*seat\s*#?\s*\*{0,2}\s*(\d+)\s*\*{0,2}\s*[:.\-–—]\s*[^\n]*?\b(\d{1,2})\s*\/\s*10\b\s*[-–—:]*\s*(.*)/gi;
+    const scores: AlignmentScore[] = [];
+    const seen = new Set<number>();
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      const seatIndex = Number(match[1]) - 1;
+      if (seen.has(seatIndex)) continue;
+      const position = positions[seatIndex];
+      if (!position) continue;
+      const score = Number(match[2]);
+      if (Number.isNaN(score)) continue;
+      seen.add(seatIndex);
+      const justification = match[3]?.trim();
+      scores.push({
+        member: position.member,
+        label: position.label,
+        score: Math.max(0, Math.min(10, score)),
+        justification: justification || undefined,
+      });
+    }
+    return scores;
   }
 
   private async synthesize(

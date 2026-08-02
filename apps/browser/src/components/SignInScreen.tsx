@@ -2,6 +2,29 @@ import { useState } from "react";
 import { signInWithPassword, type AppSession } from "../openWorkAccount";
 import { beginGoogleSignIn, googleSignInAvailable, googleUnavailableReason, runGoogleSignIn } from "../openWorkGoogleAuth";
 
+/**
+ * Coerce any thrown value into a human-readable message. Tauri's `invoke` rejects with a plain
+ * string (the Rust `Err(String)`), not an `Error`, so an `err instanceof Error` check alone would
+ * discard every OAuth failure the desktop shell reports — port-in-use, loopback timeout,
+ * `access_denied`, `redirect_uri_mismatch` — and leave the user staring at a generic message with
+ * no way to tell us what actually broke. Surface the real reason instead.
+ */
+export function describeSignInError(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === "string" && err.trim()) return err;
+  if (err && typeof err === "object") {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+    try {
+      const json = JSON.stringify(err);
+      if (json && json !== "{}") return json;
+    } catch {
+      /* fall through to the fallback */
+    }
+  }
+  return fallback;
+}
+
 const TIERS = [
   { name: "Free", detail: "2 agents · 1 project", detail2: "1 council/mo" },
   { name: "Pro", detail: "10 agents · 10 projects", detail2: "25 councils/mo" },
@@ -24,7 +47,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: AppSession)
       const signedIn = await runGoogleSignIn(session);
       onSignedIn(signedIn);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Google sign-in failed.");
+      setError(describeSignInError(err, "Google sign-in failed."));
     } finally {
       setBusy(false);
     }
@@ -36,7 +59,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: AppSession)
     try {
       onSignedIn(signInWithPassword(email));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(describeSignInError(err, "Sign-in failed."));
     }
   }
 
@@ -46,7 +69,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (session: AppSession)
         <div className="signin-logo">
           <img src="/logo-mark.svg" alt="" width={52} height={52} />
         </div>
-        <h1>Open Work</h1>
+        <h1>Kolloq</h1>
         <div className="signin-tag">Every model. One workspace. Better decisions.</div>
 
         <button
