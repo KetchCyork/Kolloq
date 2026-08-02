@@ -512,9 +512,17 @@ export class Council {
    * (e.g. "Seat 1: Assistant A — 8/10 - reason") — a live moderator reply essentially never matches
    * the requested format byte-for-byte, and requiring the score to immediately follow the colon
    * made every real call fall through to the concur/dissent proxy (see NEW-252). Duplicate seat
-   * numbers keep only the first match. */
+   * numbers keep only the first match.
+   *
+   * The seat→score search is deliberately confined to the rest of the *same line*: a live moderator
+   * routinely opens with a preamble sentence naming the leading seat ("The leading proposal is Seat
+   * 2.") before the itemized breakdown. A bare `.` counted as a valid seat/score separator, and the
+   * whitespace after it could cross the blank line into the next paragraph, so that preamble sentence
+   * matched as if it were a scored line and stole the *next* seat's real score/justification — see
+   * NEW-252's second QA pass. Requiring same-line whitespace (no `\n`) and dropping `.` from the
+   * separator class stops the preamble from ever reaching another seat's score. */
   private parseAlignmentScores(positions: MemberPosition[], content: string): AlignmentScore[] {
-    const pattern = /\*{0,2}\s*seat\s*#?\s*\*{0,2}\s*(\d+)\s*\*{0,2}\s*[:.\-–—]\s*[^\n]*?\b(\d{1,2})\s*\/\s*10\b\s*[-–—:]*\s*(.*)/gi;
+    const pattern = /\*{0,2}\s*seat\s*#?\s*\*{0,2}\s*(\d+)\s*\*{0,2}\s*[:\-–—][ \t]*[^\n]*?\b(\d{1,2})\s*\/\s*10\b\s*[-–—:]*\s*(.*)/gi;
     const scores: AlignmentScore[] = [];
     const seen = new Set<number>();
     let match: RegExpExecArray | null;
