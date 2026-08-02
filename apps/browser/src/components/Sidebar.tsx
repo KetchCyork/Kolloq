@@ -1,4 +1,5 @@
 import { alertDialog } from "../dialogs";
+import { useLimitGate } from "../entitlement";
 import { useStore, type WorkspaceView } from "../store";
 import type { AgentSession, CouncilSession, Project } from "../types";
 import { councilListSubtitle, councilListTitle } from "../utils";
@@ -84,18 +85,25 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
     setCurrentView,
     setSettingsTab,
   } = useStore();
+  const gate = useLimitGate();
 
   function openAccountPlan() {
     setSettingsTab("account");
     setCurrentView("settings");
   }
 
-  function handleNewCouncil() {
+  async function handleNewAgent() {
+    if (!(await gate("agents", sessions.length))) return;
+    createSession();
+  }
+
+  async function handleNewCouncil() {
     if (accounts.length < 2) {
       void alertDialog("A council needs at least 2 accounts, each on its own provider/model. Add another account first.");
       openAccountsManager();
       return;
     }
+    if (!(await gate("councilSessions", councilSessions.length))) return;
     createCouncilSession(accounts.slice(0, 2).map((account) => ({ accountId: account.id })));
   }
 
@@ -117,10 +125,10 @@ export function Sidebar({ accountEmail = PLACEHOLDER_ACCOUNT_EMAIL }: { accountE
         <span className="sidebar-brand-name">Kolloq</span>
       </div>
 
-      <button className="sidebar-new-btn" onClick={() => createSession()}>
+      <button className="sidebar-new-btn" onClick={() => void handleNewAgent()}>
         <span className="sidebar-new-btn-icon">+</span> New agent
       </button>
-      <button className="sidebar-new-btn sidebar-new-council-btn" onClick={handleNewCouncil}>
+      <button className="sidebar-new-btn sidebar-new-council-btn" onClick={() => void handleNewCouncil()}>
         <span className="sidebar-new-btn-icon">+</span> New council
       </button>
       <button className="sidebar-new-btn sidebar-new-council-btn" onClick={() => createProject()}>

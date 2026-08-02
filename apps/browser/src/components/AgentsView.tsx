@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getAgentStatus } from "../agentStatus";
+import { useLimitGate } from "../entitlement";
 import { activeSkillCountForAgent } from "../skills";
 import { useStore } from "../store";
 import type { AgentSession } from "../types";
@@ -11,8 +12,10 @@ type DrawerState = { agentId: string; mode: "create" | "edit" };
 export function AgentsView() {
   const { sessions, accounts, skills, createSession, setCurrentView } = useStore();
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  const gate = useLimitGate();
 
-  function openCreateDrawer() {
+  async function openCreateDrawer() {
+    if (!(await gate("agents", sessions.length))) return;
     const session = createSession();
     // createSession() also switches to the Chat view (its normal sidebar behavior) — stay put here.
     setCurrentView("agents");
@@ -28,7 +31,7 @@ export function AgentsView() {
       <div className="chat-header">
         <span>Agents</span>
         <div style={{ flex: 1 }} />
-        <button className="primary-btn" onClick={openCreateDrawer}>
+        <button className="primary-btn" onClick={() => void openCreateDrawer()}>
           + New agent
         </button>
       </div>
@@ -65,7 +68,7 @@ export function AgentsView() {
             );
           })}
 
-          <button className="agent-card agent-card-template" onClick={openCreateDrawer}>
+          <button className="agent-card agent-card-template" onClick={() => void openCreateDrawer()}>
             + Create from template
           </button>
         </div>
