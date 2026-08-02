@@ -1621,6 +1621,10 @@ select {
   margin-top: 5px;
 }
 
+.council-align-fallback {
+  color: var(--danger, #d97706);
+}
+
 .meter {
   height: 10px;
   border-radius: 10px;

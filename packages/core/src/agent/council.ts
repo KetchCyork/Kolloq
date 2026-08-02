@@ -90,6 +90,12 @@ export type CouncilEvent =
   | { type: "member-position"; round: number; position: MemberPosition }
   | { type: "member-dropped"; round: number; member: string; label: string; error: string }
   | { type: "alignment-scores"; round: number; scores: AlignmentScore[]; average: number }
+  /** The moderator's alignment-judging call for this round failed, so the round has no per-agent
+   * 0-10 scores and the UI falls back to the concur/dissent proxy. `cause` distinguishes a provider
+   * error (`provider-error`, `reason` already classified) from a judge response that produced no
+   * parseable "Seat <n>: <score>/10" lines (`unparsed-response`). Emitted so the fallback is never
+   * silent — see NEW-252. */
+  | { type: "alignment-error"; round: number; cause: "provider-error" | "unparsed-response"; reason: string }
   | { type: "consensus"; round: number }
   | { type: "budget-exceeded"; round: number; spent: number; cap: number }
   | { type: "moderator-synthesis"; content: string }
@@ -469,12 +475,23 @@ export class Council {
     try {
       const response = await this.moderator.provider.chat({ messages: this.buildMessages(this.moderator, prompt) });
       content = response.message.content;
-    } catch {
+    } catch (error) {
+      // Surface the provider error instead of silently degrading to the concur/dissent proxy — this
+      // silent fallback is exactly what made NEW-82's real score "never render in live use" (NEW-252).
+      this.onEvent?.({ type: "alignment-error", round, cause: "provider-error", reason: classifyProviderError(error).reason });
       return null;
     }
 
     const scores = this.parseAlignmentScores(positions, content);
-    if (scores.length === 0) return null;
+    if (scores.length === 0) {
+      this.onEvent?.({
+        type: "alignment-error",
+        round,
+        cause: "unparsed-response",
+        reason: "The moderator's judging reply contained no parseable \"Seat <n>: <score>/10\" lines.",
+      });
+      return null;
+    }
 
     const average = scores.reduce((sum, score) => sum + score.score, 0) / scores.length;
     return { round, scores, average };

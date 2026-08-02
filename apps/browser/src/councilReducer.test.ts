@@ -169,6 +169,32 @@ describe("applyCouncilEvent", () => {
     ]);
   });
 
+  it("records an alignment-error reason, then clears it once real scores land", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    turn = applyCouncilEvent(
+      turn,
+      { type: "alignment-error", round: 1, cause: "provider-error", reason: "Rate limited" },
+      members,
+      accounts,
+    );
+    expect(turn.alignmentError).toBe("Rate limited");
+    expect(turn.alignmentScores).toEqual([]);
+
+    turn = applyCouncilEvent(
+      turn,
+      {
+        type: "alignment-scores",
+        round: 2,
+        scores: [{ member: "m1", label: "Claude · claude-3-5-sonnet-20241022", score: 9 }],
+        average: 9,
+      },
+      members,
+      accounts,
+    );
+    expect(turn.alignmentError).toBeUndefined();
+    expect(turn.alignmentScores).toHaveLength(1);
+  });
+
   it("toggles paused on paused/resumed events", () => {
     let turn = initialLiveCouncilTurn("Q", 4);
     expect(turn.paused).toBe(false);

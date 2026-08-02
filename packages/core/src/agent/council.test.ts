@@ -387,6 +387,10 @@ describe("Council", () => {
 
       expect(result.alignmentScores).toEqual([]);
       expect(events.some((event) => event.type === "alignment-scores")).toBe(false);
+      // The fallback must not be silent — a classified provider-error must be surfaced (NEW-252).
+      expect(
+        events.some((event) => event.type === "alignment-error" && event.cause === "provider-error" && event.round === 1),
+      ).toBe(true);
       // The judge call failing must not derail the (separate) synthesis call after it.
       expect(result.answer).toBe("Recommendation: do X");
     });
@@ -396,17 +400,23 @@ describe("Council", () => {
       const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
       const moderatorProvider = new StubProvider("Mod", ["I'm not going to score this.", "Recommendation: do X"]);
 
+      const events: CouncilEvent[] = [];
       const council = new Council({
         members: [
           { name: "A", provider: providerA },
           { name: "B", provider: providerB },
         ],
         moderator: { name: "Moderator", provider: moderatorProvider },
+        onEvent: (event) => events.push(event),
       });
 
       const result = await council.run("Should we do X?");
 
       expect(result.alignmentScores).toEqual([]);
+      // An unparseable judge reply must surface an unparsed-response error, not silently fall back (NEW-252).
+      expect(
+        events.some((event) => event.type === "alignment-error" && event.cause === "unparsed-response" && event.round === 1),
+      ).toBe(true);
       expect(result.answer).toBe("Recommendation: do X");
     });
 

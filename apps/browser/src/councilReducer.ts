@@ -187,8 +187,11 @@ export function applyCouncilEvent(
         })),
         average: event.average,
       };
-      return { ...turn, alignmentScores: [...turn.alignmentScores, alignment] };
+      // Real scores landed this round — clear any earlier round's fallback notice.
+      return { ...turn, alignmentScores: [...turn.alignmentScores, alignment], alignmentError: undefined };
     }
+    case "alignment-error":
+      return { ...turn, alignmentError: event.reason };
     case "consensus":
       return { ...turn, consensusReached: true };
     case "budget-exceeded":

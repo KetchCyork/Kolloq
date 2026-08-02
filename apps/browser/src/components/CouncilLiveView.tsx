@@ -174,6 +174,11 @@ export function CouncilLiveView({ session, live }: { session: CouncilSession; li
                 ? "Waiting for round 1 rebuttals — round 0 is independent, nothing to agree on yet."
                 : `${alignmentPercent}% of round ${currentRound} respondents concur.`}
           </div>
+          {!latestAlignment && live.alignmentError && (
+            <div className="hint council-align-fallback">
+              Showing the concur/dissent proxy — the moderator's 0-10 scoring didn't land: {live.alignmentError}
+            </div>
+          )}
 
           <div className="council-side-h">{latestAlignment ? "Alignment score" : "Latest stance"}</div>
           {session.members.map((member, index) => {

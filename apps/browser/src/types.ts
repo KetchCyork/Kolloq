@@ -194,6 +194,10 @@ export interface LiveCouncilTurn {
   moderatorError?: string;
   finished: boolean;
   alignmentScores: CouncilRoundAlignment[];
+  /** Latest reason the moderator's alignment-judging call failed, so the sidebar meter can say why
+   * it's showing the concur/dissent proxy instead of real 0-10 scores (see NEW-252). Cleared once a
+   * later round produces real scores. */
+  alignmentError?: string;
   /** True between a `paused` event and the following `resumed` event (see `CouncilController`). */
   paused: boolean;
   /** True once a `force-vote` event has landed — the debate is wrapping up early instead of running
