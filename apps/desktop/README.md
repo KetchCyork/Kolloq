@@ -242,8 +242,8 @@ remaining repository secrets are required:
 | `AZURE_TRUSTED_SIGNING_ACCOUNT` | Windows code signing — Trusted Signing account name | Azure Portal | ✅ set (2026-07-24), value `NewVentureAI` |
 | `AZURE_TRUSTED_SIGNING_ENDPOINT` | Windows code signing — account's region endpoint | Azure Portal | ✅ set (2026-07-24), value `https://eus.codesigning.azure.net/` |
 | `AZURE_TRUSTED_SIGNING_CERT_PROFILE` | Windows code signing — certificate **profile name** (the short identifier chosen when creating the profile, *not* the certificate Subject/DN) | Azure Portal → Trusted Signing account → Certificate Profiles | ✅ set (2026-07-24), value `openwork` |
-| `AZURE_CLIENT_ID` | Windows code signing — service principal auth for CI (Trusted Signing has no interactive login) | Azure Portal → Microsoft Entra ID → App registrations → new registration, then assign it the "Trusted Signing Certificate Profile Signer" role on the Trusted Signing account | ✅ confirmed correct (2026-07-26) — same run, same reasoning as `AZURE_TENANT_ID` above. |
-| `AZURE_CLIENT_SECRET` | Windows code signing — service principal password for the app above | Azure Portal → the App Registration → Certificates & secrets → new client secret → copy the **Value** column immediately (shown once, at creation time only) | ❌ still wrong (2026-07-26) — the 2026-07-26 15:50 UTC run now fails inside `az login --service-principal` itself with `AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID`. The GitHub secret currently holds the **Secret ID** (a GUID, visible any time in the Certificates & secrets list) instead of the **Secret Value** (a longer opaque string, shown by Azure only once, right after the secret is created, and never retrievable again). To fix: in Azure Portal → the App Registration → Certificates & secrets, create a **new client secret**, immediately copy its **Value** field (not the "Secret ID" column), then `gh secret set AZURE_CLIENT_SECRET --repo KetchCyork/Open-Work` with that value before closing the Azure tab. This is a one-way door if missed — if the tab is closed before copying, the value is gone and a new secret must be created again. |
+| `AZURE_CLIENT_ID` | Windows code signing — service principal auth for CI (Trusted Signing has no interactive login) | Azure Portal → Microsoft Entra ID → App registrations → new registration, then assign it the "Trusted Signing Certificate Profile Signer" role on the Trusted Signing account | ✅ confirmed correct (2026-07-26) — same run, same reasoning as `AZURE_TENANT_ID` above. Also needs **Reader** at subscription/resource-group scope (see below) — `az login --service-principal` fails with "No subscriptions found" without it, independent of the Signer role. ✅ Reader granted 2026-08-02. |
+| `AZURE_CLIENT_SECRET` | Windows code signing — service principal password for the app above | Azure Portal → the App Registration → Certificates & secrets → new client secret → copy the **Value** column immediately (shown once, at creation time only) | ✅ fixed (2026-07-26) — was the Secret ID instead of the Secret Value; corrected via `gh secret set`. |
 
 Windows signing uses [Azure Trusted Signing](https://learn.microsoft.com/en-us/azure/trusted-signing/) rather than a
 downloadable `.pfx`: a 2023 CA/Browser Forum rule moved publicly-trusted
@@ -272,3 +272,32 @@ Once those exist, hand the values to this agent (or add the secrets
 directly via `gh secret set <NAME> --repo KetchCyork/Open-Work`) and the
 release workflow will start producing fully signed Windows installers with
 no further code changes.
+
+**Current blocker (2026-08-02):** with every secret above correct and the
+Reader role granted, `az login --service-principal` now succeeds (it lists
+"Azure subscription 1") and the build reaches the actual signing call —
+progress past every previous failure. But `trusted-signing-cli` /
+`signtool.exe` now fails with a generic Trusted Signing service error:
+
+```
+Azure.RequestFailedException: Service request failed.
+Error information: "Error: SignerSign() failed." (-2147467259/0x80004005)
+```
+
+This HRESULT (`E_FAIL`) from the Trusted Signing backend is not
+credential-related — auth already succeeded — and no code path in this repo
+constructs or touches the signing request beyond invoking the CLI (see
+`.github/workflows/desktop-release.yml`, "Build and release (Windows)"
+step). The most common cause when this fires immediately after fixing auth
+is that the certificate profile's **identity validation** is still
+"Submitted"/"In Review" rather than "Completed" — Microsoft manually reviews
+Public Trust signing identities (can take a few business days) and the
+signing API rejects requests until that review finishes, with this same
+generic error. Action needed (portal access, can't be delegated to an
+agent): Azure Portal → Trusted Signing Accounts → `NewVentureAI` →
+**Identity validations** (or the `openwork` certificate profile's detail
+page) → check the validation status. If it's not yet "Completed", the fix is
+to wait for Microsoft's review — nothing on the code or secrets side can
+speed that up. If it already says "Completed", report back and this needs a
+fresh look (possibly an Azure support case, since the CLI's own error
+message gives no further detail).
