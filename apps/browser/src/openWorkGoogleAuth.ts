@@ -257,6 +257,6 @@ export async function runGoogleSignIn(session: GoogleAuthSession): Promise<AppSe
     clientId: googleClientId(),
     nonce: session.nonce,
   });
-  const appSession: AppSession = { email, method: "google", signedInAt: Date.now() };
+  const appSession: AppSession = { email, method: "google", signedInAt: Date.now(), idToken: payload.id_token };
   return appSession;
 }
