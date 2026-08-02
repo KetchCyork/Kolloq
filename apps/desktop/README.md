@@ -301,3 +301,43 @@ to wait for Microsoft's review — nothing on the code or secrets side can
 speed that up. If it already says "Completed", report back and this needs a
 fresh look (possibly an Azure support case, since the CLI's own error
 message gives no further detail).
+
+**Update (2026-08-02, run [30765198982](https://github.com/KetchCyork/Open-Work/actions/runs/30765198982)):**
+CEO confirmed identity validation shows "Completed" in the portal. The
+2026-08-02 20:15 UTC run's full (non-truncated) error trace narrows this
+past the generic `SignerSign() failed` line above — the underlying Azure SDK
+exception is explicit:
+
+```
+Azure.RequestFailedException: Service request failed.
+Status: 403 (Forbidden)
+   at Azure.CodeSigning.CertificateProfileRestClient.SignAsync(...)
+   at Azure.CodeSigning.CertificateProfileClient.StartSignAsync(...)
+```
+
+A **403 on the `SignAsync` call itself** (as opposed to a 409/423-style
+"not ready" response) is Azure's generic shape for "this principal is not
+authorized for this operation on this resource" — i.e. an RBAC problem, not
+a provisioning/identity-validation one. Since identity validation is
+confirmed done, the next things to check (portal access, can't be delegated
+to an agent):
+
+1. **Role scope, not just role presence.** Azure Portal → Trusted Signing
+   account `NewVentureAI` → **Access control (IAM)** → Role assignments →
+   confirm the `AZURE_CLIENT_ID` app has **"Trusted Signing Certificate
+   Profile Signer"** assigned *at the account level* (the account blade's
+   own IAM, not a subscription- or resource-group-level assignment — those
+   don't automatically inherit down to this resource type the way they do
+   for e.g. Reader).
+2. **Certificate profile status independent of identity validation.** The
+   `openwork` certificate profile itself (Trusted Signing account →
+   Certificate Profiles → `openwork`) has its own state separate from the
+   identity validation record — confirm it shows **Active**, not
+   `Creating`/`Disabled`.
+3. **Propagation lag.** If the role assignment in (1) looks correct but was
+   added recently, Azure RBAC changes can take 5–15 minutes (occasionally
+   longer) to propagate to this resource provider; re-run
+   `gh workflow run desktop-release.yml --repo KetchCyork/Open-Work` after a
+   short wait rather than assuming the assignment is wrong.
+4. If (1)–(3) all check out and 403 persists, this is likely an Azure
+   support case — the CLI/SDK surface no more detail than the trace above.
