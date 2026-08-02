@@ -1621,6 +1621,10 @@ select {
   margin-top: 5px;
 }
 
+.hint.council-alignment-fallback {
+  color: var(--amber);
+}
+
 .meter {
   height: 10px;
   border-radius: 10px;

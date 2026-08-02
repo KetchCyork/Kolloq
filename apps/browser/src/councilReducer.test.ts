@@ -110,6 +110,26 @@ describe("applyCouncilEvent", () => {
     expect(turn.dropped).toEqual([{ memberId: "m1", label: "Claude · claude-3-5-sonnet-20241022", round: 1, error: "boom" }]);
   });
 
+  it("records an alignment-score-error so the proxy fallback is diagnosable, then clears it when a real score resolves", () => {
+    let turn = initialLiveCouncilTurn("Q", 4);
+    turn = applyCouncilEvent(
+      turn,
+      { type: "alignment-score-error", round: 1, error: "judge returned no parseable score" },
+      members,
+      accounts,
+    );
+    expect(turn.alignmentError).toBe("judge returned no parseable score");
+
+    turn = applyCouncilEvent(
+      turn,
+      { type: "alignment-scores", round: 2, scores: [{ member: "m1", label: "m1", score: 8 }], average: 8 },
+      members,
+      accounts,
+    );
+    expect(turn.alignmentError).toBeUndefined();
+    expect(turn.alignmentScores).toHaveLength(1);
+  });
+
   it("marks consensusReached on a consensus event without finishing the turn", () => {
     let turn = initialLiveCouncilTurn("Q", 4);
     turn = applyCouncilEvent(turn, { type: "consensus", round: 1 }, members, accounts);
