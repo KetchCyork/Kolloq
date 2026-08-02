@@ -38,6 +38,20 @@ Schema and migrations live in `src/db/schema.ts` / `drizzle/`, managed with
   }'
   ```
 
+- `POST /webhooks/stripe` keeps `subscriptions.status`/`current_period_end` in sync with
+  Stripe as the source of truth. It verifies the `Stripe-Signature` header (HMAC-SHA256,
+  `src/webhookSignature.ts`) and rejects anything unsigned or invalid, then handles:
+
+  - `customer.subscription.updated` — sync `status` + `current_period_end`.
+  - `customer.subscription.deleted` — set `status: "canceled"`.
+  - `invoice.paid` — set `status: "active"` and sync `current_period_end` from the invoice.
+  - `invoice.payment_failed` — set `status: "past_due"` (leaves `current_period_end` as-is).
+
+  All four match on `subscriptions.stripe_subscription_id`; an event for an unknown
+  subscription (e.g. arriving before signup/NEW-228 creates the row) is a no-op, not an
+  error. Requires `STRIPE_WEBHOOK_SECRET` in the environment (see `.env.example`) — get one
+  locally via `stripe listen --forward-to localhost:$PORT/webhooks/stripe`.
+
 ## Local setup
 
 ```bash

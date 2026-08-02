@@ -538,6 +538,37 @@ describe("Council", () => {
       expect(result.alignmentScores[0]?.scores.map((score) => score.score)).toEqual([8, 9]);
       expect(result.alignmentScores[0]?.average).toBe(8.5);
     });
+
+    it("doesn't let a preamble naming a seat number steal the next seat's score (NEW-252)", async () => {
+      // Regression fixture for NEW-252's second QA pass: real moderators open with a preamble
+      // sentence that names the leading seat directly ("The leading proposal is Seat 2.") before the
+      // itemized breakdown. A bare "." previously counted as a valid seat/score separator, and the
+      // whitespace after it could cross the blank line into the next paragraph — so this preamble
+      // matched as if it were a scored line and stole Seat 1's real score/justification, silently
+      // dropping Seat 1 (no score at all) while showing Seat 2's badge as Seat 1's number.
+      const providerA = new StubProvider("A", ["Answer A0", "CONCUR I agree with B"]);
+      const providerB = new StubProvider("B", ["Answer B0", "CONCUR sounds good"]);
+      const moderatorProvider = new StubProvider("Mod", [
+        "The leading proposal is Seat 2.\n\n" +
+          "Seat 1: 4/10 - This position prioritizes ease of management.\n\n" +
+          "Seat 2: 9/10 - This position directly addresses the benefits.",
+        "Recommendation: do X",
+      ]);
+
+      const council = new Council({
+        members: [
+          { name: "A", provider: providerA },
+          { name: "B", provider: providerB },
+        ],
+        moderator: { name: "Moderator", provider: moderatorProvider },
+      });
+
+      const result = await council.run("Should we migrate our database?");
+
+      expect(result.alignmentScoreErrors).toEqual([]);
+      expect(result.alignmentScores[0]?.scores.map((score) => score.score)).toEqual([4, 9]);
+      expect(result.alignmentScores[0]?.average).toBe(6.5);
+    });
   });
 
   describe("CouncilController", () => {

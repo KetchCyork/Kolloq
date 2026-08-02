@@ -5,6 +5,7 @@ import { createDb } from "./db/client.js";
 import { registerSignupRoute } from "./handlers/signup.js";
 import { HttpError } from "./httpError.js";
 import { assertTestModeKey } from "./stripeClient.js";
+import { registerStripeWebhookRoute } from "./routes/stripeWebhook.js";
 
 function requireStripeSecretKey(): string {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -38,6 +39,7 @@ app.get("/health", async () => {
 });
 
 registerSignupRoute(app, { db, stripeSecretKey });
+registerStripeWebhookRoute(app, db);
 
 const port = Number(process.env.PORT ?? 3100);
 
