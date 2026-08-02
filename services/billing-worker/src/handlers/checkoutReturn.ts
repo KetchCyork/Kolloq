@@ -1,7 +1,7 @@
 /**
  * Public (unauthenticated) landing page for Stripe redirects.
  *
- * The Open Work client is a desktop app with no web server of its own (see product spec — Checkout
+ * The Kolloq client is a desktop app with no web server of its own (see product spec — Checkout
  * and the Customer Portal are opened in the user's system browser via `openExternalUrl`, same as
  * Google sign-in in NEW-195). Stripe still needs a real `https://` URL to redirect back to when the
  * user finishes or cancels, and there's nothing else deployed yet to host that page, so the worker
@@ -11,15 +11,15 @@
 const STATUS_COPY: Record<string, { title: string; body: string }> = {
   success: {
     title: "You're upgraded",
-    body: "Your subscription is active. Close this tab and switch back to Open Work — your plan updates automatically.",
+    body: "Your subscription is active. Close this tab and switch back to Kolloq — your plan updates automatically.",
   },
   cancelled: {
     title: "Checkout cancelled",
-    body: "No changes were made. Close this tab and switch back to Open Work whenever you're ready.",
+    body: "No changes were made. Close this tab and switch back to Kolloq whenever you're ready.",
   },
   portal: {
     title: "Billing updated",
-    body: "Close this tab and switch back to Open Work — any changes update automatically.",
+    body: "Close this tab and switch back to Kolloq — any changes update automatically.",
   },
 };
 
@@ -29,7 +29,7 @@ function page(title: string, body: string): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${title} — Open Work</title>
+<title>${title} — Kolloq</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #0b1512; color: #eef2f0; display: flex;
     align-items: center; justify-content: center; height: 100vh; margin: 0; }

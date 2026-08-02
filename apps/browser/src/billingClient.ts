@@ -2,7 +2,7 @@
  * Client for the billing worker (services/billing-worker, NEW-232 Phase 2). Every route it calls is
  * authorized by `Authorization: Bearer <Google id_token>` — the same id_token
  * openWorkGoogleAuth.ts's runGoogleSignIn already gets from Google Sign-In, carried on
- * `AppSession.idToken`. There is no separate Open Work account backend, so billing only works for a
+ * `AppSession.idToken`. There is no separate Kolloq account backend, so billing only works for a
  * real Google-signed-in session (see openWorkAccount.ts).
  *
  * `base` (the worker's deployed URL) is threaded through as an explicit argument rather than read

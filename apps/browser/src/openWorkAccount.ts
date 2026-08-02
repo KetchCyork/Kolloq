@@ -21,7 +21,7 @@ export interface AppSession {
   signedInAt: number;
   /**
    * Google's OIDC id_token, kept only for `method: "google"` sessions. This is the bearer credential
-   * the billing worker verifies (services/billing-worker/README.md) — there is no separate Open Work
+   * the billing worker verifies (services/billing-worker/README.md) — there is no separate Kolloq
    * account backend, so billing is only reachable for a real Google sign-in, not the password stub.
    */
   idToken?: string;

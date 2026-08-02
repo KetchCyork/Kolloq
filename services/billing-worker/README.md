@@ -14,7 +14,7 @@ Every endpoint except the webhook is authorized by `Authorization: Bearer <Googl
 | POST | `/portal-session` | `{ returnUrl? }` | `{ url }` — 404 `no_billing_account` if the user has never checked out |
 | GET | `/checkout/return?status=success\|cancelled\|portal` | — | static HTML landing page (unauthenticated) |
 
-`/checkout/return` exists because the Open Work client (Phase 3, [NEW-233](/NEW/issues/NEW-233)) is a desktop app with no web server of its own — Checkout/Portal open in the system browser (like Google sign-in, NEW-195) and Stripe needs a real `https://` URL to send that browser back to. The frontend passes `${apiBase}/checkout/return?status=...` as `successUrl`/`cancelUrl`/`returnUrl`; the app itself never sees that navigation and instead re-fetches `/entitlement` when its window regains focus.
+`/checkout/return` exists because the Kolloq client (Phase 3, [NEW-233](/NEW/issues/NEW-233)) is a desktop app with no web server of its own — Checkout/Portal open in the system browser (like Google sign-in, NEW-195) and Stripe needs a real `https://` URL to send that browser back to. The frontend passes `${apiBase}/checkout/return?status=...` as `successUrl`/`cancelUrl`/`returnUrl`; the app itself never sees that navigation and instead re-fetches `/entitlement` when its window regains focus.
 
 `priceId` must be one of the Price IDs in `src/config.ts` (Pro/Max, monthly/annual — from [NEW-231](/NEW/issues/NEW-231)'s Stripe TEST-mode setup). `token` from `/entitlement` is a short-lived (24h) HS256 JWT signed with `ENTITLEMENT_SIGNING_SECRET`, carrying `{ sub: email, plan, status }` (product spec §8.3: "verified server-side... short-lived signed token").
 
