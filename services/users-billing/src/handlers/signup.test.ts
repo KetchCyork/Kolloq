@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDb } from "../db/client.js";
@@ -76,9 +76,13 @@ describe.skipIf(!DATABASE_URL)("POST /signup", () => {
     await migrate(ctx.db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
     app = Fastify();
     registerSignupRoute(app, { db: ctx.db, stripeSecretKey: "sk_test_fixture" });
-    app.setErrorHandler((error, _request, reply) => {
+    app.setErrorHandler<FastifyError | HttpError>((error, _request, reply) => {
       if (error instanceof HttpError) {
         reply.code(error.status).send({ error: error.message });
+        return;
+      }
+      if (typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500) {
+        reply.code(error.statusCode).send({ error: error.message });
         return;
       }
       reply.code(500).send({ error: "internal_error" });
@@ -144,6 +148,21 @@ describe.skipIf(!DATABASE_URL)("POST /signup", () => {
       method: "POST",
       url: "/signup",
       payload: { firstName: "", lastName: "B", email: "a@example.com", paymentMethodId: "pm_1", priceId: PRICE_ID },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 (not 500) for malformed JSON without calling Stripe", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/signup",
+      headers: { "content-type": "application/json" },
+      payload: "{not valid json",
     });
 
     expect(response.statusCode).toBe(400);

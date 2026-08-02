@@ -1,5 +1,5 @@
 import "dotenv/config";
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import { sql } from "drizzle-orm";
 import { createDb } from "./db/client.js";
 import { registerSignupRoute } from "./handlers/signup.js";
@@ -19,9 +19,13 @@ const { db } = createDb();
 const stripeSecretKey = requireStripeSecretKey();
 const app = Fastify({ logger: true });
 
-app.setErrorHandler((error, _request, reply) => {
+app.setErrorHandler<FastifyError | HttpError>((error, _request, reply) => {
   if (error instanceof HttpError) {
     reply.code(error.status).send({ error: error.message });
+    return;
+  }
+  if (typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500) {
+    reply.code(error.statusCode).send({ error: error.message });
     return;
   }
   app.log.error(error);
