@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { isTauriRuntime } from "../credentials";
 import { confirmDialog } from "../dialogs";
+import { useLimitGate } from "../entitlement";
 import { DEFAULT_OLLAMA_BASE_URL, useOllamaModels } from "../ollamaDiscovery";
 import { useStore } from "../store";
 import type { Account, ProviderName } from "../types";
@@ -46,8 +47,10 @@ export function SettingsConnectionsPane() {
   const [draft, setDraft] = useState<DraftAccount>(blankDraft());
   const [saveBusy, setSaveBusy] = useState(false);
   const ollama = useOllamaModels();
+  const gate = useLimitGate();
 
-  function startAdd() {
+  async function startAdd() {
+    if (!(await gate("connections", accounts.length))) return;
     setDraft(blankDraft());
     setEditingId(null);
     ollama.reset();
@@ -125,7 +128,7 @@ export function SettingsConnectionsPane() {
         <h3>LLM Connections</h3>
         <div className="spacer" />
         {!adding && (
-          <button type="button" className="primary-btn" onClick={startAdd}>
+          <button type="button" className="primary-btn" onClick={() => void startAdd()}>
             + Add connection
           </button>
         )}

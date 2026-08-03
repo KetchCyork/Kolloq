@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentsView } from "./components/AgentsView";
 import { ChatPanel } from "./components/ChatPanel";
 import { ComingSoonView } from "./components/ComingSoonView";
@@ -11,6 +11,7 @@ import { SettingsView } from "./components/SettingsView";
 import { SignInScreen } from "./components/SignInScreen";
 import { Sidebar } from "./components/Sidebar";
 import { setupDesktopIntegration } from "./desktopIntegration";
+import { EntitlementProvider, useLimitGate } from "./entitlement";
 import type { AppSession } from "./openWorkAccount";
 import { matchesBinding } from "./preferences";
 import { useStore } from "./store";
@@ -20,8 +21,24 @@ export function App() {
   // Session lives in memory only: every launch must show the sign-in screen (board directive, NEW-132).
   const [appSession, setAppSession] = useState<AppSession | null>(null);
 
+  if (!appSession) {
+    return <SignInScreen onSignedIn={setAppSession} />;
+  }
+
+  // EntitlementProvider wraps everything below the sign-in gate (not just Settings) so plan/limit
+  // checks (NEW-234) are available wherever an agent/connection/council session gets created —
+  // AppShell's own keybinding/native-menu handlers included.
+  return (
+    <EntitlementProvider idToken={appSession.idToken}>
+      <AppShell appSession={appSession} onSignOut={() => setAppSession(null)} />
+    </EntitlementProvider>
+  );
+}
+
+function AppShell({ appSession, onSignOut }: { appSession: AppSession; onSignOut: () => void }) {
   const {
     ready,
+    sessions,
     accounts,
     createSession,
     councilSessions,
@@ -32,9 +49,23 @@ export function App() {
     setCurrentView,
     setSettingsTab,
   } = useStore();
+  const gate = useLimitGate();
+
+  // Native menu items and global keybindings fire from long-lived listeners, not renders — refs
+  // keep those listeners' closures reading the *current* session count and gate without forcing
+  // the listeners themselves to be torn down and re-registered every time a session is created.
+  const sessionCountRef = useRef(sessions.length);
+  sessionCountRef.current = sessions.length;
+  const gateRef = useRef(gate);
+  gateRef.current = gate;
+
+  async function gatedCreateSession() {
+    if (!(await gateRef.current("agents", sessionCountRef.current))) return;
+    createSession();
+  }
 
   useEffect(() => {
-    const teardown = setupDesktopIntegration({ onNewSession: () => createSession() });
+    const teardown = setupDesktopIntegration({ onNewSession: () => void gatedCreateSession() });
     return () => {
       void teardown.then((unsubscribe) => unsubscribe());
     };
@@ -47,7 +78,7 @@ export function App() {
       const { keybindings } = preferences;
       if (matchesBinding(event, keybindings.newAgent)) {
         event.preventDefault();
-        createSession();
+        void gatedCreateSession();
       } else if (matchesBinding(event, keybindings.togglePreferences)) {
         event.preventDefault();
         if (currentView === "settings") {
@@ -65,10 +96,6 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [preferences, currentView, createSession, setCurrentView, setSettingsTab]);
 
-  if (!appSession) {
-    return <SignInScreen onSignedIn={setAppSession} />;
-  }
-
   if (!ready) {
     return <div className="no-session">Loading sessions…</div>;
   }
@@ -82,10 +109,6 @@ export function App() {
   const accountEmail = appSession.email;
   const accountIdToken = appSession.idToken;
 
-  function handleSignOut() {
-    setAppSession(null);
-  }
-
   function renderMain() {
     switch (currentView) {
       case "council":
@@ -95,7 +118,7 @@ export function App() {
       case "agents":
         return <AgentsView />;
       case "settings":
-        return <SettingsView accountEmail={accountEmail} idToken={accountIdToken} onSignOut={handleSignOut} />;
+        return <SettingsView accountEmail={accountEmail} idToken={accountIdToken} onSignOut={onSignOut} />;
       case "chat":
       default:
         return <ChatPanel />;
