@@ -87,10 +87,60 @@ unit tests always run:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/users_billing pnpm test
 ```
 
+## Deploy (Chris — one-time, needs a Neon account + a Render account)
+
+Same handoff pattern as the Stripe/Cloudflare step in NEW-232: I own the code,
+you own the two interactive signups that need *your* accounts (I don't have a
+way to complete a browser-based signup on your behalf). Nothing below is a
+secret except where noted, and secrets go straight into Render's dashboard env
+vars — never into a comment, file, or back to me.
+
+1. **Neon** (managed Postgres, free tier — already covered by
+   [NEW-4](/NEW/issues/NEW-4)'s pre-approval):
+   - Sign up / log in at [console.neon.tech](https://console.neon.tech) (GitHub login is fastest).
+   - Create a project (any region); the default database is fine.
+   - Copy the connection string from the dashboard (looks like
+     `postgres://<user>:<pass>@<host>/<db>?sslmode=require`) — this is `DATABASE_URL`.
+   - Run the migration once from your machine before the first deploy:
+     ```bash
+     cd services/users-billing
+     pnpm install
+     DATABASE_URL='<paste-the-neon-url>' pnpm db:migrate
+     ```
+
+2. **Render** (hosting, free tier):
+   - Sign up / log in at [dashboard.render.com](https://dashboard.render.com) (GitHub login is fastest).
+   - New -> Blueprint -> point it at this repo; it reads `render.yaml` at the
+     repo root and offers to create the `newvector-users-billing` web service.
+   - Before the first deploy, fill in the env vars it leaves blank:
+     - `DATABASE_URL` — the Neon connection string from step 1.
+     - `STRIPE_SECRET_KEY` — the TEST-mode key from NEW-231's setup run
+       (`sk_test_...` / `rk_test_...`). The server refuses anything that isn't
+       TEST-mode.
+     - `STRIPE_WEBHOOK_SECRET` — leave blank for now, see step 3.
+   - Deploy. Render prints the live URL (`https://newvector-users-billing.onrender.com`).
+
+3. **Point a Stripe TEST webhook at the real URL:**
+   - Stripe Dashboard (TEST mode) -> Developers -> Webhooks -> Add endpoint ->
+     `<deployed-url>/webhooks/stripe`.
+   - Events: `customer.subscription.updated`, `customer.subscription.deleted`,
+     `invoice.paid`, `invoice.payment_failed`.
+   - Copy the signing secret (`whsec_...`) into Render's `STRIPE_WEBHOOK_SECRET`
+     env var, then trigger a manual redeploy (env var changes need a restart).
+
+4. **Reply on NEW-230 with just the deployed base URL** (not a secret) — I'll
+   run the signup -> subscription -> webhook smoke test against it and report
+   back.
+
+Free-tier caveat: Render free instances spin down after 15 min idle and take
+30-50s to wake on the next request — expected on the first smoke-test hit
+after a quiet period, not a bug.
+
 ## Scope note
 
 This is code + local verification only — no infrastructure has been
 provisioned and no live secrets exist. `.env` is gitignored; `.env.example`
 holds placeholders only. `POST /signup` talks to Stripe's real TEST-mode API
 (no paid provisioning) and to a local Postgres — nothing here reaches a live
-Stripe account or a deployed database.
+Stripe account or a deployed database. Actual Neon/Render provisioning needs
+Chris's accounts — see "Deploy" above.
