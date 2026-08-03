@@ -85,7 +85,7 @@ jobs:
     outputs:
       release_id: ${{ steps.create.outputs.result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Fail before the draft release exists (and before ~20 min of Rust builds)
       # if a build-time secret is missing. Vite bakes VITE_ vars in at build time,
@@ -103,7 +103,7 @@ jobs:
 
       - name: Create draft release
         id: create
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             // A tag push gives a real `desktop-v*` tag to release under. A
@@ -142,7 +142,7 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -151,16 +151,23 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential libssl-dev
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        # dtolnay/rust-toolchain intentionally has no version tags - the ref
+        # itself ("stable") selects which Rust toolchain gets installed, and
+        # is moved forward by the upstream maintainer's bot as new stable
+        # Rust releases ship. Pinning to a SHA here freezes the Rust version
+        # this pin resolves to, trading "always latest stable" for supply-
+        # chain safety - bump this SHA periodically (e.g. quarterly) to pick
+        # up new stable Rust releases.
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable, as of 2026-08-03
 
       - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2 (2.9.1)
         with:
           workspaces: apps/desktop/src-tauri -> target
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: pnpm
@@ -218,7 +225,7 @@ jobs:
 
       - name: Build and release (macOS/Linux)
         if: matrix.platform != 'windows-latest'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Inlined into the web bundle by Vite via tauri.conf.json's
@@ -241,7 +248,7 @@ jobs:
 
       - name: Build and release (Windows)
         if: matrix.platform == 'windows-latest'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BUILD: "1"
@@ -276,7 +283,7 @@ jobs:
     if: ${{ !cancelled() && needs.create-release.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const release_id = ${{ needs.create-release.outputs.release_id }};
