@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: newvector-users-billing
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: "corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile && pnpm --filter @newvector/users-billing-service build"
+    startCommand: "pnpm --filter @newvector/users-billing-service start"
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PORT
+        value: 3100
