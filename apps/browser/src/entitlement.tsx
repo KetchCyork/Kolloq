@@ -19,17 +19,30 @@ export type PlanLimits = (typeof PLAN_LIMITS)["free"];
 
 export const PLAN_LABELS: Record<Plan, string> = { free: "Free", pro: "Pro", max: "Max" };
 
+const VALID_PLANS = new Set<Plan>(["free", "pro", "max"]);
+
 /**
  * Pure fail-closed resolver, pulled out of the provider so it's unit-testable without a DOM (this
  * repo's tests exercise plain functions, not rendered React trees — see entitlement.test.ts). A
  * `null` entitlement (never fetched, or every fetch so far failed) and an entitlement whose own
  * `expiresAt` has passed both resolve to Free — never to whatever plan was last seen.
+ *
+ * `billingFetch` casts the response body to `Entitlement` without runtime validation (NEW-293), so
+ * a malformed response can reach here with an `expiresAt` that isn't a finite number (missing,
+ * NaN, Infinity) or a `plan` outside the known set. Both fail closed to Free rather than trusting
+ * (or crashing on) the bad value — an unbounded `expiresAt` in particular would otherwise grant an
+ * entitlement that never expires, and an unrecognized `plan` would throw when `PLAN_LIMITS[plan]`
+ * is read downstream.
  */
 export function resolveEntitlementState(entitlement: Entitlement | null, nowMs: number): { plan: Plan; status: string } {
-  if (entitlement !== null && entitlement.expiresAt * 1000 <= nowMs) {
+  if (entitlement === null) {
+    return { plan: "free", status: "active" };
+  }
+  if (!Number.isFinite(entitlement.expiresAt) || entitlement.expiresAt * 1000 <= nowMs) {
     return { plan: "free", status: "expired" };
   }
-  return { plan: entitlement?.plan ?? "free", status: entitlement?.status ?? "active" };
+  const plan = VALID_PLANS.has(entitlement.plan) ? entitlement.plan : "free";
+  return { plan, status: entitlement.status ?? "active" };
 }
 
 export type GatedResource = "agents" | "connections" | "councilSessions";
