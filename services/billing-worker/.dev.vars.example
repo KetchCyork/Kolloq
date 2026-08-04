@@ -1,0 +1,20 @@
+# Local TEST-mode overrides for `pnpm dev` (wrangler dev --local).
+# Copy to `.dev.vars` (gitignored) and fill in your Stripe TEST-mode values.
+# NEVER commit `.dev.vars` and never paste these into a Paperclip comment.
+#
+#   cp .dev.vars.example .dev.vars
+#
+# STRIPE_SECRET_KEY: from Stripe dashboard with "Test mode" ON ->
+#   Developers -> API keys (sk_test_...), or a restricted key (rk_test_...).
+#   The worker refuses anything not starting sk_test_/rk_test_, so a live key
+#   fails loudly instead of taking a real charge.
+STRIPE_SECRET_KEY=sk_test_...
+
+# STRIPE_WEBHOOK_SECRET: printed by the Stripe CLI when you run
+#   stripe listen --forward-to localhost:8787/stripe-webhook
+# (this whsec_ is different from the one shown in the dashboard webhook page).
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# ENTITLEMENT_SIGNING_SECRET: our own HMAC secret, not a Stripe value.
+#   Any random string is fine locally; generate one with: openssl rand -base64 32
+ENTITLEMENT_SIGNING_SECRET=any-random-string-for-local-testing
