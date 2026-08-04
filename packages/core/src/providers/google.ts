@@ -25,7 +25,9 @@ export async function listGoogleModels(config: GoogleProviderConfig = {}): Promi
   url.searchParams.set("key", config.apiKey);
   url.searchParams.set("pageSize", "1000");
 
-  const response = await fetch(url.toString());
+  // Route through `config.fetchImpl` (the desktop Rust relay) when provided so this works on
+  // Windows WebView2, where a direct browser-origin model-list request is CORS-blocked (NEW-316).
+  const response = await (config.fetchImpl ?? fetch)(url.toString());
   if (!response.ok) {
     throw new Error(`Google model list request failed: ${response.status} ${response.statusText}`);
   }

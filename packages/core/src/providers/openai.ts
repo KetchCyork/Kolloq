@@ -25,7 +25,9 @@ export async function listOpenAiModels(config: OpenAiProviderConfig = {}): Promi
     throw new Error("An API key is required to list OpenAI models.");
   }
   const baseURL = (config.baseURL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  const response = await fetch(`${baseURL}/models`, {
+  // Route through `config.fetchImpl` (the desktop Rust relay) when provided so this works on
+  // Windows WebView2, where a direct browser-origin `GET /v1/models` is CORS-blocked (NEW-316).
+  const response = await (config.fetchImpl ?? fetch)(`${baseURL}/models`, {
     headers: { authorization: `Bearer ${config.apiKey}` },
   });
   if (!response.ok) {

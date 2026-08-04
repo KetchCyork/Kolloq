@@ -98,10 +98,14 @@ function createSubscriptionAnthropic(accessToken: string, baseURL?: string, fetc
 
 /**
  * Lists the models available to this account via `GET /v1/models`, so callers can offer a
- * dropdown instead of a free-text model field. Includes
- * `anthropic-dangerous-direct-browser-access` because this fetch runs directly from renderer/
- * browser JS (no backend proxy exists for provider calls in this app) and Anthropic's API
- * otherwise rejects browser-origin requests.
+ * dropdown instead of a free-text model field.
+ *
+ * Uses `config.fetchImpl` (the Tauri-backed Rust relay) when provided, exactly like the chat path —
+ * the desktop shell MUST route this through Rust to bypass webview CORS. The `anthropic-dangerous-
+ * direct-browser-access` header alone is enough on macOS WKWebView but NOT on Windows WebView2,
+ * where the direct browser-origin `GET /v1/models` is still blocked (surfaces as "failed to download
+ * model list" / "Authentication failed"). Falling back to the global `fetch` only applies to the
+ * plain browser build, which has no native relay (NEW-316).
  */
 export async function listAnthropicModels(config: AnthropicProviderConfig = {}): Promise<ModelOption[]> {
   const baseURL = (config.baseURL ?? "https://api.anthropic.com/v1").replace(/\/$/, "");
@@ -118,7 +122,7 @@ export async function listAnthropicModels(config: AnthropicProviderConfig = {}):
     throw new Error("An API key (or subscription sign-in) is required to list Anthropic models.");
   }
 
-  const response = await fetch(`${baseURL}/models?limit=1000`, { headers });
+  const response = await (config.fetchImpl ?? fetch)(`${baseURL}/models?limit=1000`, { headers });
   if (!response.ok) {
     throw new Error(`Anthropic model list request failed: ${response.status} ${response.statusText}`);
   }
