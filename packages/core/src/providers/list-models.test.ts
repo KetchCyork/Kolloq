@@ -158,6 +158,58 @@ describe("listOpenRouterModels", () => {
   });
 });
 
+describe("fetchImpl relay routing (NEW-316)", () => {
+  // The desktop shell passes a Tauri-backed `fetch` that relays through Rust to bypass webview
+  // CORS. Every model-list request MUST use it when provided — without it the request fires from
+  // the webview and is CORS-blocked on Windows WebView2 ("failed to download model list").
+  const globalFetch = vi.fn();
+  const relayFetch = vi.fn();
+  beforeEach(() => {
+    globalFetch.mockReset();
+    relayFetch.mockReset();
+    vi.stubGlobal("fetch", globalFetch);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("listAnthropicModels uses the injected fetchImpl, not the global fetch", async () => {
+    relayFetch.mockResolvedValue(jsonResponse({ data: [{ id: "claude-sonnet-5" }] }));
+
+    const models = await listAnthropicModels({ apiKey: "sk-ant", fetchImpl: relayFetch as unknown as typeof fetch });
+
+    expect(relayFetch).toHaveBeenCalledTimes(1);
+    expect(globalFetch).not.toHaveBeenCalled();
+    expect(relayFetch.mock.calls[0][0]).toBe("https://api.anthropic.com/v1/models?limit=1000");
+    expect(models).toEqual([{ id: "claude-sonnet-5", label: undefined }]);
+  });
+
+  it("listOpenAiModels uses the injected fetchImpl, not the global fetch", async () => {
+    relayFetch.mockResolvedValue(jsonResponse({ data: [{ id: "gpt-4o" }] }));
+
+    await listOpenAiModels({ apiKey: "sk", fetchImpl: relayFetch as unknown as typeof fetch });
+
+    expect(relayFetch).toHaveBeenCalledTimes(1);
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("listGoogleModels uses the injected fetchImpl, not the global fetch", async () => {
+    relayFetch.mockResolvedValue(jsonResponse({ models: [] }));
+
+    await listGoogleModels({ apiKey: "goog", fetchImpl: relayFetch as unknown as typeof fetch });
+
+    expect(relayFetch).toHaveBeenCalledTimes(1);
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the global fetch when no fetchImpl is given (plain browser build)", async () => {
+    globalFetch.mockResolvedValue(jsonResponse({ data: [] }));
+
+    await listAnthropicModels({ apiKey: "sk-ant" });
+
+    expect(globalFetch).toHaveBeenCalledTimes(1);
+    expect(relayFetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("listModels dispatcher", () => {
   const fetchMock = vi.fn();
   beforeEach(() => {

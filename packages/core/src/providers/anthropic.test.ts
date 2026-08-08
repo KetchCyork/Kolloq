@@ -1,5 +1,49 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { browserAccessFetch, stripDeprecatedSamplingParams } from "./anthropic.js";
+import { browserAccessFetch, stripDeprecatedSamplingParams, stripReasoningStreamMiddleware } from "./anthropic.js";
+
+/** Collects every part a ReadableStream emits into an array. */
+async function drain<T>(stream: ReadableStream<T>): Promise<T[]> {
+  const out: T[] = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    out.push(value);
+  }
+  return out;
+}
+
+describe("stripReasoningStreamMiddleware", () => {
+  it("drops reasoning / reasoning-signature / redacted-reasoning parts and keeps the rest", async () => {
+    // Reproduces the NEW-316 crash shape: a thinking-block signature streamed with no accompanying
+    // reasoning text would make ai@4's core throw "reasoning-signature without reasoning" and fail
+    // the turn. Stripping the reasoning parts leaves only the visible answer.
+    const source = new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: "reasoning-signature", signature: "sig-abc" });
+        controller.enqueue({ type: "redacted-reasoning", data: "opaque" });
+        controller.enqueue({ type: "reasoning", textDelta: "hmm" });
+        controller.enqueue({ type: "text-delta", textDelta: "Hello" });
+        controller.enqueue({ type: "text-delta", textDelta: " world" });
+        controller.enqueue({ type: "finish", finishReason: "stop", usage: { promptTokens: 1, completionTokens: 2 } });
+        controller.close();
+      },
+    });
+
+    const doStream = vi.fn().mockResolvedValue({ stream: source, rawCall: { rawPrompt: null, rawSettings: {} } });
+    const result = await stripReasoningStreamMiddleware.wrapStream!({
+      doStream,
+      doGenerate: vi.fn(),
+      params: {} as never,
+      model: {} as never,
+    });
+
+    const parts = await drain(result.stream);
+    expect(parts.map((p) => (p as { type: string }).type)).toEqual(["text-delta", "text-delta", "finish"]);
+    // Non-stream metadata (rawCall, etc.) is passed through untouched.
+    expect(result).toHaveProperty("rawCall");
+  });
+});
 
 describe("browserAccessFetch", () => {
   const fetchMock = vi.fn();

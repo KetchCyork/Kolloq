@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { wrapLanguageModel, type LanguageModelV1Middleware } from "ai";
 import { AiSdkChatProvider } from "./ai-sdk-adapter.js";
 import type { ChatProvider, ModelOption } from "./types.js";
 
@@ -19,8 +20,40 @@ export function createAnthropicProvider(config: AnthropicProviderConfig = {}): C
   const anthropic = useSubscription
     ? createSubscriptionAnthropic(config.accessToken as string, config.baseURL, config.fetchImpl)
     : createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL, fetch: withBrowserAccessHeader(config.fetchImpl) });
-  return new AiSdkChatProvider("anthropic", model, anthropic(model));
+  const wrapped = wrapLanguageModel({ model: anthropic(model), middleware: stripReasoningStreamMiddleware });
+  return new AiSdkChatProvider("anthropic", model, wrapped);
 }
+
+/**
+ * Drops every reasoning stream part (`reasoning`, `reasoning-signature`,
+ * `redacted-reasoning`) before the AI SDK core records it.
+ *
+ * Newer Anthropic models — especially over the Claude Pro/Max subscription OAuth path, which
+ * behaves like Claude Code — can stream a thinking-block `signature_delta` even though this app
+ * never requests extended thinking. When that signature arrives without any accompanying thinking
+ * text, `ai@4`'s stream transform throws `InvalidStreamPart: "reasoning-signature without
+ * reasoning"` and kills the entire turn (the user sees "turn failed — signature without reasoning",
+ * NEW-316). This app neither displays nor replays reasoning (`AiSdkChatProvider` ignores those
+ * parts, and `toCoreMessages` never sends them back), so stripping them at the source is lossless
+ * for the visible answer and makes the dangling-signature crash impossible regardless of why the
+ * model emitted thinking. Exported for unit testing.
+ */
+export const stripReasoningStreamMiddleware: LanguageModelV1Middleware = {
+  middlewareVersion: "v1",
+  async wrapStream({ doStream }) {
+    const { stream, ...rest } = await doStream();
+    const filtered = stream.pipeThrough(
+      new TransformStream({
+        transform(part, controller) {
+          const type = (part as { type?: string }).type;
+          if (type === "reasoning" || type === "reasoning-signature" || type === "redacted-reasoning") return;
+          controller.enqueue(part);
+        },
+      }),
+    );
+    return { stream: filtered, ...rest };
+  },
+};
 
 /**
  * Newer Anthropic models (Claude Sonnet 5, Opus 5/4.8/4.7, Fable 5, ...) reject the
@@ -98,10 +131,14 @@ function createSubscriptionAnthropic(accessToken: string, baseURL?: string, fetc
 
 /**
  * Lists the models available to this account via `GET /v1/models`, so callers can offer a
- * dropdown instead of a free-text model field. Includes
- * `anthropic-dangerous-direct-browser-access` because this fetch runs directly from renderer/
- * browser JS (no backend proxy exists for provider calls in this app) and Anthropic's API
- * otherwise rejects browser-origin requests.
+ * dropdown instead of a free-text model field.
+ *
+ * Uses `config.fetchImpl` (the Tauri-backed Rust relay) when provided, exactly like the chat path —
+ * the desktop shell MUST route this through Rust to bypass webview CORS. The `anthropic-dangerous-
+ * direct-browser-access` header alone is enough on macOS WKWebView but NOT on Windows WebView2,
+ * where the direct browser-origin `GET /v1/models` is still blocked (surfaces as "failed to download
+ * model list" / "Authentication failed"). Falling back to the global `fetch` only applies to the
+ * plain browser build, which has no native relay (NEW-316).
  */
 export async function listAnthropicModels(config: AnthropicProviderConfig = {}): Promise<ModelOption[]> {
   const baseURL = (config.baseURL ?? "https://api.anthropic.com/v1").replace(/\/$/, "");
@@ -118,7 +155,7 @@ export async function listAnthropicModels(config: AnthropicProviderConfig = {}):
     throw new Error("An API key (or subscription sign-in) is required to list Anthropic models.");
   }
 
-  const response = await fetch(`${baseURL}/models?limit=1000`, { headers });
+  const response = await (config.fetchImpl ?? fetch)(`${baseURL}/models?limit=1000`, { headers });
   if (!response.ok) {
     throw new Error(`Anthropic model list request failed: ${response.status} ${response.statusText}`);
   }

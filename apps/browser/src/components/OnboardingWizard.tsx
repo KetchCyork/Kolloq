@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ModelOption } from "@newvector/core";
 import { listModels } from "@newvector/core";
+import { getProviderFetch } from "../providerFetch";
 import { useStore } from "../store";
 import { capture } from "../telemetry";
 import type { ProviderName } from "../types";
@@ -71,6 +72,10 @@ export function OnboardingWizard() {
         // only ever edited via the Ollama-specific field below), so only forward it for Ollama —
         // otherwise every other provider's list request gets misrouted to the local Ollama server.
         baseURL: provider === "ollama" ? baseURL.trim() || undefined : undefined,
+        // Route the list request through the desktop Rust relay (like chat) so provider model
+        // lists load on Windows WebView2, where a direct browser-origin call is CORS-blocked and
+        // fails as "failed to download model list" / "Authentication failed" (NEW-316).
+        fetchImpl: getProviderFetch(),
       })
         .then((models) => {
           if (cancelled) return;
