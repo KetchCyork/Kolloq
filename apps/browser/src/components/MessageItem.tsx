@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { FileArtifact } from "@newvector/core";
 import { attachmentDataUrl } from "../attachments";
+import { copyText } from "../clipboard";
 import { alertDialog } from "../dialogs";
 import { artifactFilename, canDownloadArtifact, downloadFileArtifact, formatBytes } from "../fileArtifact";
 import { useStore } from "../store";
@@ -43,6 +45,31 @@ function ArtifactDownload({ artifact, sessionId }: { artifact: FileArtifact; ses
         Download
       </button>
     </div>
+  );
+}
+
+/** Copy a message's text to the clipboard, with transient "Copied" feedback. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    try {
+      await copyText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      await alertDialog(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return (
+    <button
+      type="button"
+      className="message-copy-btn"
+      onClick={handleCopy}
+      aria-label="Copy message text"
+      title="Copy message text"
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
   );
 }
 
@@ -107,7 +134,10 @@ export function MessageItem({ message, sessionId }: { message: StoredMessage; se
             )}
           </div>
         ) : null}
-        <div className="message-meta">{formatTime(message.createdAt)}</div>
+        <div className="message-meta">
+          <span>{formatTime(message.createdAt)}</span>
+          {message.content ? <CopyButton text={message.content} /> : null}
+        </div>
       </div>
     </div>
   );
