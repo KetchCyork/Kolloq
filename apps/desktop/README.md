@@ -198,25 +198,34 @@ updater.
 
 ### Build-time app secrets
 
-Separate from code signing, some app features need a secret **at build
+Separate from code signing, some app features need a value **at build
 time**: Vite inlines `VITE_`-prefixed vars into the web bundle, so a var
 that is missing from the build job's environment is baked in as empty and
-the feature ships silently disabled.
+the feature ships silently disabled. Most of these are real secrets from
+the repo's secret store; `VITE_BILLING_API_URL` is not sensitive (it's the
+billing worker's public URL) and is baked into
+`.github/workflows/desktop-release.yml` as a literal instead.
 
-| Secret | Purpose | Source | Status |
+| Var | Purpose | Source | Status |
 | --- | --- | --- | --- |
 | `VITE_GOOGLE_OAUTH_CLIENT_SECRET` | "Continue with Google" on the account gate; without it `googleSignInConfigured()` is false and the button ships disabled | Google Cloud Console → APIs & Services → Credentials → the OAuth client in project `openwork-503111` | ✅ set (2026-07-22) |
+| `VITE_BILLING_API_URL` | Plan/upgrade/portal buttons on Account & Plan; without it `billingConfigured()` is false and they ship disabled (NEW-235) | `https://newvector-billing-worker.kolloq.workers.dev` — live billing worker (`services/billing-worker`), not a secret | ✅ wired into desktop-release.yml (2026-08-09) |
 
 Two guards make a missing value a loud failure instead of a degraded
 binary:
 
 - the workflow's **`Preflight - required build secrets`** step fails the
-  run before the draft release is created, and
+  run before the draft release is created, for the actual secret
+  (`VITE_GOOGLE_OAUTH_CLIENT_SECRET`) — `VITE_BILLING_API_URL` is a literal
+  in the workflow, not a secret, so there's nothing for this step to check;
+  and
 - `apps/browser/vite.config.ts` throws when `RELEASE_BUILD=1` (which the
-  workflow sets on the build step) and a required var is empty.
+  workflow sets on the build step) and *any* required var is empty,
+  including `VITE_BILLING_API_URL` — this is the guard that would have
+  caught NEW-235 had it existed then.
 
-A plain `pnpm build` by a contributor without the secret still succeeds —
-it only warns — so only release builds are gated. Locally the value comes
+A plain `pnpm build` by a contributor without these still succeeds — it
+only warns — so only release builds are gated. Locally the values come
 from the untracked `apps/browser/.env`.
 
 Note: the account gate that reads this secret is not on `main` yet — it
