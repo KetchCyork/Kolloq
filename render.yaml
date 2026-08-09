@@ -9,6 +9,8 @@ services:
     startCommand: "pnpm --filter @newvector/users-billing-service start"
     healthCheckPath: /health
     envVars:
+      - key: NODE_VERSION
+        value: 20
       - key: DATABASE_URL
         sync: false
       - key: STRIPE_SECRET_KEY
