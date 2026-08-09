@@ -66,7 +66,7 @@ export function ChatPanel() {
       {isEmpty ? (
         <div className="empty-hero">
           <h1>{session.identity.name}</h1>
-          <p>Start a conversation — messages stream live and tool calls show inline.</p>
+          <p>Start a conversation — messages stream live as {session.identity.name} works.</p>
           <div className="empty-hero-composer">{composer}</div>
         </div>
       ) : (
