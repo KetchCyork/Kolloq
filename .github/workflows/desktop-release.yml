@@ -10,6 +10,13 @@ name: Desktop release
 #                                          it into the bundle at build time, and
 #                                          "Continue with Google" is disabled without it
 #
+# VITE_BILLING_API_URL is baked into the build env below as a literal, not a repo
+# secret - it's the billing worker's public URL (services/billing-worker), not
+# sensitive. Vite still inlines it at build time same as the vars above, so it's
+# also in apps/browser/vite.config.ts's RELEASE_REQUIRED_ENV: forgetting to wire it
+# into a build step here ships every plan/upgrade/portal button on Account & Plan
+# permanently disabled (NEW-235) rather than failing the build loudly.
+#
 # Requires these repository secrets to produce SIGNED artifacts (see
 # apps/desktop/README.md for how to generate each one):
 #   TAURI_SIGNING_PRIVATE_KEY            - updater signing key (tauri signer generate)
@@ -233,6 +240,8 @@ jobs:
           # rather than emit a bundle with Google sign-in disabled.
           RELEASE_BUILD: "1"
           VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
+          # Public billing worker URL, not a secret - see the header comment above.
+          VITE_BILLING_API_URL: "https://newvector-billing-worker.kolloq.workers.dev"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -253,6 +262,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BUILD: "1"
           VITE_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_SECRET }}
+          # Public billing worker URL, not a secret - see the header comment above.
+          VITE_BILLING_API_URL: "https://newvector-billing-worker.kolloq.workers.dev"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Read by trusted-signing-cli when Tauri's bundler shells out to the

@@ -61,6 +61,8 @@ function buildProvenance() {
 const RELEASE_REQUIRED_ENV: Record<string, string> = {
   VITE_GOOGLE_OAUTH_CLIENT_SECRET:
     'Google OAuth Client Secret. Without it googleSignInConfigured() is false and "Continue with Google" ships disabled.',
+  VITE_BILLING_API_URL:
+    "Billing worker URL (not a secret, just easy to forget). Without it billingConfigured() is false and every plan/upgrade/portal button on Account & Plan ships disabled.",
 };
 
 /**
