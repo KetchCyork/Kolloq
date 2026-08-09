@@ -526,9 +526,28 @@ select {
 }
 
 .message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 10px;
   color: var(--text-dim);
   margin-top: 4px;
+}
+
+.message-copy-btn {
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.message-copy-btn:hover {
+  background: var(--panel-alt);
+  color: var(--text);
 }
 
 .tool-card {
