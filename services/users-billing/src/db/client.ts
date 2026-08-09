@@ -11,6 +11,12 @@ function requireDatabaseUrl(): string {
 }
 
 export function createDb(connectionString: string = requireDatabaseUrl()) {
-  const pool = new Pool({ connectionString });
+  // Without a timeout, an unreachable/misconfigured DB host hangs the pool's
+  // connect attempt forever instead of rejecting — health checks then time out
+  // silently with no error ever reaching the logger.
+  const pool = new Pool({ connectionString, connectionTimeoutMillis: 10_000 });
+  pool.on("error", (err) => {
+    console.error("Unexpected error on idle Postgres client", err);
+  });
   return { db: drizzle(pool, { schema }), pool };
 }
