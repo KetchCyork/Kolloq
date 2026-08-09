@@ -15,7 +15,7 @@ export function MessageList({ session, live }: { session: AgentSession; live?: L
     return (
       <div className="messages">
         <div className="empty-state">
-          Start a conversation with {session.identity.name}. Messages stream live and tool calls are shown inline.
+          Start a conversation with {session.identity.name}. Messages stream live as they work.
         </div>
       </div>
     );
