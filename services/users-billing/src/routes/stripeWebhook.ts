@@ -10,7 +10,10 @@ interface StripeSubscriptionObject {
 }
 
 interface StripeInvoiceObject {
-  subscription: string | null;
+  subscription?: string | null;
+  // Stripe's 2025 API versions moved the subscription reference off the invoice's top level
+  // into this nested "parent" shape — same event types, same webhook secret, different body.
+  parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null;
   period_end: number | null;
   lines?: { data: Array<{ period?: { end: number } }> };
 }
@@ -26,6 +29,14 @@ function toDate(seconds: number | null | undefined): Date | null {
 
 function invoicePeriodEnd(invoice: StripeInvoiceObject): number | null {
   return invoice.period_end ?? invoice.lines?.data?.[0]?.period?.end ?? null;
+}
+
+function invoiceSubscriptionId(invoice: StripeInvoiceObject): string | null {
+  if (typeof invoice.subscription === "string") return invoice.subscription;
+  const nested = invoice.parent?.subscription_details?.subscription;
+  if (typeof nested === "string") return nested;
+  if (nested && typeof nested === "object" && typeof nested.id === "string") return nested.id;
+  return null;
 }
 
 export interface WebhookLogEntry {
@@ -82,15 +93,17 @@ export function registerStripeWebhookRoute(app: FastifyInstance, db: ReturnType<
         }
         case "invoice.paid": {
           const invoice = event.data.object as StripeInvoiceObject;
-          if (invoice.subscription) {
-            await syncSubscriptionByStripeId(db, invoice.subscription, { status: "active", currentPeriodEnd: toDate(invoicePeriodEnd(invoice)) });
+          const subscriptionId = invoiceSubscriptionId(invoice);
+          if (subscriptionId) {
+            await syncSubscriptionByStripeId(db, subscriptionId, { status: "active", currentPeriodEnd: toDate(invoicePeriodEnd(invoice)) });
           }
           break;
         }
         case "invoice.payment_failed": {
           const invoice = event.data.object as StripeInvoiceObject;
-          if (invoice.subscription) {
-            await syncSubscriptionByStripeId(db, invoice.subscription, { status: "past_due" });
+          const subscriptionId = invoiceSubscriptionId(invoice);
+          if (subscriptionId) {
+            await syncSubscriptionByStripeId(db, subscriptionId, { status: "past_due" });
           }
           break;
         }

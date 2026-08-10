@@ -94,6 +94,25 @@ describe("registerStripeWebhookRoute", () => {
     });
   });
 
+  it("invoice.paid resolves the subscription id from the 2025-API nested parent shape", async () => {
+    const app = buildApp();
+    const response = await post(app, {
+      type: "invoice.paid",
+      data: {
+        object: {
+          subscription: null,
+          parent: { subscription_details: { subscription: "sub_new_schema" } },
+          period_end: 1_900_222_222,
+        },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(syncSubscriptionByStripeId).toHaveBeenCalledWith(expect.anything(), "sub_new_schema", {
+      status: "active",
+      currentPeriodEnd: new Date(1_900_222_222 * 1000),
+    });
+  });
+
   it("invoice.payment_failed marks the subscription past_due without touching current_period_end", async () => {
     const app = buildApp();
     const response = await post(app, {
