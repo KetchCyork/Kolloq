@@ -2,13 +2,15 @@ import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import type { createDb } from "../db/client.js";
 import { subscriptions } from "../db/schema.js";
+import { webhookLog } from "./stripeWebhook.js";
 
 /**
- * Temporary diagnostic for the NEW-230 deploy smoke test: confirms a webhook actually synced
- * `status` without needing DB or Stripe-dashboard access. No auth token by design — the
- * capability is knowing the Stripe subscription id (a high-entropy `sub_...` value returned
- * only from a completed /signup call), and the response leaks nothing beyond a status enum.
- * Remove this route once the smoke test is verified; it isn't meant to be permanent surface.
+ * Temporary diagnostics for the NEW-230 deploy smoke test — confirms a webhook actually
+ * reached this service and synced `status`, without needing DB or Stripe-dashboard access.
+ * No auth token by design: /internal/subscriptions/:id's capability is knowing the Stripe
+ * subscription id itself (high-entropy `sub_...`, only obtainable from a completed /signup
+ * call); /internal/webhook-log exposes only receipt timestamps/event types, no payloads or
+ * secrets. Remove both routes once the smoke test is verified — not meant to be permanent.
  */
 export function registerInternalStatusRoute(app: FastifyInstance, db: ReturnType<typeof createDb>["db"]): void {
   app.get("/internal/subscriptions/:stripeSubscriptionId", async (request, reply) => {
@@ -24,4 +26,7 @@ export function registerInternalStatusRoute(app: FastifyInstance, db: ReturnType
     }
     return sub;
   });
+
+  // Same temporary NEW-230 smoke-test scope as the route above — see its docstring.
+  app.get("/internal/webhook-log", async () => webhookLog);
 }

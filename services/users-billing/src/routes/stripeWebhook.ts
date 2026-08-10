@@ -28,6 +28,21 @@ function invoicePeriodEnd(invoice: StripeInvoiceObject): number | null {
   return invoice.period_end ?? invoice.lines?.data?.[0]?.period?.end ?? null;
 }
 
+export interface WebhookLogEntry {
+  receivedAt: string;
+  verified: boolean;
+  eventType?: string;
+}
+
+/** Temporary NEW-230 smoke-test diagnostic — ring buffer, no PII/secrets, cleared on restart. */
+export const webhookLog: WebhookLogEntry[] = [];
+const WEBHOOK_LOG_LIMIT = 20;
+
+function recordWebhookLog(entry: WebhookLogEntry): void {
+  webhookLog.push(entry);
+  if (webhookLog.length > WEBHOOK_LOG_LIMIT) webhookLog.shift();
+}
+
 export function registerStripeWebhookRoute(app: FastifyInstance, db: ReturnType<typeof createDb>["db"]): void {
   // Encapsulated so this raw-body parser only applies to this route, not the rest of the app.
   app.register(async (instance) => {
@@ -47,10 +62,12 @@ export function registerStripeWebhookRoute(app: FastifyInstance, db: ReturnType<
       const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
 
       if (!verifyStripeSignature(rawBody, signature, secret)) {
+        recordWebhookLog({ receivedAt: new Date().toISOString(), verified: false });
         return reply.code(400).send({ error: "invalid_signature" });
       }
 
       const event = JSON.parse(rawBody) as StripeEvent;
+      recordWebhookLog({ receivedAt: new Date().toISOString(), verified: true, eventType: event.type });
 
       switch (event.type) {
         case "customer.subscription.updated": {
