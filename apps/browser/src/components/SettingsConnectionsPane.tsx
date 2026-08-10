@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ModelOption } from "@newvector/core";
+import { listModels } from "@newvector/core";
 import { isTauriRuntime } from "../credentials";
 import { confirmDialog } from "../dialogs";
 import { useLimitGate } from "../entitlement";
 import { DEFAULT_OLLAMA_BASE_URL, useOllamaModels } from "../ollamaDiscovery";
+import { getProviderFetch } from "../providerFetch";
 import { useStore } from "../store";
 import type { Account, ProviderName } from "../types";
-import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES } from "../utils";
+import { PROVIDER_DEFAULT_MODELS, PROVIDER_LABELS, PROVIDER_NAMES, reconcileModelSelection } from "../utils";
+
+/** Debounce before firing a live model-list request after the provider/key settle. */
+const MODEL_LIST_DEBOUNCE_MS = 500;
 
 /**
  * API-key-only by design (board decision, 2026-07-22 — see NEW-76/NEW-69): subscription sign-in is
@@ -46,8 +52,75 @@ export function SettingsConnectionsPane() {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState<DraftAccount>(blankDraft());
   const [saveBusy, setSaveBusy] = useState(false);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
   const ollama = useOllamaModels();
   const gate = useLimitGate();
+
+  // Live model discovery for API-key providers (Ollama has its own discovery flow below): while the
+  // add/edit form is open, refetch the provider's catalog whenever the provider or key settle so the
+  // "Default model" field is a dropdown of real models instead of a free-typed guess (NEW-368). Only
+  // OpenRouter can list without a key; the others need the key, so nothing loads until it's entered
+  // (e.g. when editing, until the key is re-typed) — the current model stays selectable regardless.
+  useEffect(() => {
+    if (!adding || draft.provider === "ollama") {
+      setModelOptions([]);
+      setModelsError(null);
+      setModelsLoading(false);
+      return;
+    }
+    const key = draft.apiKey.trim();
+    const canList = draft.provider === "openrouter" || !!key;
+    if (!canList) {
+      setModelOptions([]);
+      setModelsError(null);
+      setModelsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setModelsLoading(true);
+    setModelsError(null);
+    const timer = setTimeout(() => {
+      listModels({
+        provider: draft.provider,
+        apiKey: key || undefined,
+        // Route through the desktop Rust relay (like chat) so model lists load on Windows WebView2,
+        // where a direct browser-origin request is CORS-blocked (NEW-316).
+        fetchImpl: getProviderFetch(),
+      })
+        .then((models) => {
+          if (cancelled) return;
+          setModelOptions(models);
+          setModelsLoading(false);
+          // Snap the selection onto the live catalog so a retired hardcoded default doesn't stay
+          // selected and 404 on the first chat.
+          setDraft((current) => ({
+            ...current,
+            model: reconcileModelSelection(
+              current.model,
+              models.map((m) => m.id),
+              PROVIDER_DEFAULT_MODELS[current.provider],
+            ),
+          }));
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setModelOptions([]);
+          setModelsError(err instanceof Error ? err.message : "Could not load models.");
+          setModelsLoading(false);
+        });
+    }, MODEL_LIST_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // draft.model is intentionally omitted: refetch only when the provider or key changes, not on
+    // every dropdown pick (which would re-run discovery and fight the user's selection).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adding, draft.provider, draft.apiKey]);
 
   async function startAdd() {
     if (!(await gate("connections", accounts.length))) return;
@@ -195,10 +268,42 @@ export function SettingsConnectionsPane() {
             </div>
 
             {draft.provider === "ollama" ? null : (
-              <div className="field">
-                <label htmlFor="conn-model">Default model</label>
-                <input id="conn-model" value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })} />
-              </div>
+              (() => {
+                // Always keep the current model selectable even if it isn't (yet) in the live list —
+                // while discovery is loading, when it failed, or before a key unlocks the catalog.
+                const baseOptions =
+                  modelOptions.length > 0 ? modelOptions : [{ id: PROVIDER_DEFAULT_MODELS[draft.provider] }];
+                const selectOptions = baseOptions.some((opt) => opt.id === draft.model)
+                  ? baseOptions
+                  : [{ id: draft.model }, ...baseOptions];
+                const needsKey = draft.provider !== "openrouter" && !draft.apiKey.trim();
+                return (
+                  <div className="field">
+                    <label htmlFor="conn-model">Default model</label>
+                    <select
+                      id="conn-model"
+                      value={draft.model}
+                      disabled={modelsLoading}
+                      onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                    >
+                      {selectOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label && opt.label !== opt.id ? `${opt.label} (${opt.id})` : opt.id}
+                        </option>
+                      ))}
+                    </select>
+                    {modelsLoading && <div className="settings-note">Loading available models…</div>}
+                    {!modelsLoading && needsKey && (
+                      <div className="settings-note">Enter the API key to list this provider's models.</div>
+                    )}
+                    {modelsError && !modelsLoading && (
+                      <div className="ollama-status error">
+                        Couldn't load live models ({modelsError}). Showing the default.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             )}
 
             {draft.provider === "ollama" ? (
