@@ -76,12 +76,16 @@ export function registerSignupRoute(app: FastifyInstance, deps: SignupDeps): voi
       email: input.email,
       name: `${input.firstName} ${input.lastName}`,
     });
-    await stripeClient.attachPaymentMethod(deps.stripeSecretKey, input.paymentMethodId, customer.id);
-    await stripeClient.setDefaultPaymentMethod(deps.stripeSecretKey, customer.id, input.paymentMethodId);
+    // Use the ID Stripe returns from attach, not the client-supplied one: Stripe's
+    // test-mode "magic" PaymentMethod IDs (e.g. pm_card_visa) mint a fresh, distinct
+    // PaymentMethod on every /attach call, so reusing the input ID for the follow-up
+    // calls references a PM that was never actually attached to this customer.
+    const attached = await stripeClient.attachPaymentMethod(deps.stripeSecretKey, input.paymentMethodId, customer.id);
+    await stripeClient.setDefaultPaymentMethod(deps.stripeSecretKey, customer.id, attached.id);
     const subscription = await stripeClient.createSubscription(deps.stripeSecretKey, {
       customerId: customer.id,
       priceId: input.priceId,
-      paymentMethodId: input.paymentMethodId,
+      paymentMethodId: attached.id,
     });
 
     try {
@@ -101,7 +105,7 @@ export function registerSignupRoute(app: FastifyInstance, deps: SignupDeps): voi
             stripeCustomerId: customer.id,
             stripeSubscriptionId: subscription.id,
             stripePriceId: input.priceId,
-            defaultPaymentMethodId: input.paymentMethodId,
+            defaultPaymentMethodId: attached.id,
           })
           .returning();
 
