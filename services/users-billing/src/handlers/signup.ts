@@ -7,6 +7,9 @@ import { HttpError } from "../httpError.js";
 import * as stripeClient from "../stripeClient.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Strict charset (no "/" or ".") so this can never be used to path-traverse the
+// Stripe request URL built in stripeClient.ts (e.g. "pm_x/../../customers/cus_X").
+const PAYMENT_METHOD_ID_RE = /^pm_[A-Za-z0-9]+$/;
 
 export interface SignupBody {
   firstName?: unknown;
@@ -38,7 +41,7 @@ export function validateSignupBody(body: unknown): SignupInput {
   }
   // The card itself never reaches this backend — the client collects it via Stripe.js /
   // Payment Element and hands us only the resulting PaymentMethod reference.
-  if (typeof paymentMethodId !== "string" || !paymentMethodId.startsWith("pm_")) {
+  if (typeof paymentMethodId !== "string" || !PAYMENT_METHOD_ID_RE.test(paymentMethodId)) {
     throw new HttpError(400, "payment_method_id_required");
   }
   if (typeof priceId !== "string" || !(priceId in PRICE_PLAN)) {
@@ -63,7 +66,12 @@ export interface SignupDeps {
 }
 
 export function registerSignupRoute(app: FastifyInstance, deps: SignupDeps): void {
-  app.post("/signup", async (request, reply) => {
+  app.post(
+    "/signup",
+    // Tighter than the app-wide default (see index.ts) — /signup's 409 response is an
+    // email-enumeration oracle, and each call also drives real Stripe API requests.
+    { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
+    async (request, reply) => {
     const input = validateSignupBody(request.body);
     const plan = PRICE_PLAN[input.priceId];
 
@@ -136,5 +144,6 @@ export function registerSignupRoute(app: FastifyInstance, deps: SignupDeps): voi
       }
       throw err;
     }
-  });
+    },
+  );
 }

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import Fastify, { type FastifyError } from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import { sql } from "drizzle-orm";
 import { createDb } from "./db/client.js";
 import { registerSignupRoute } from "./handlers/signup.js";
@@ -19,6 +20,18 @@ function requireStripeSecretKey(): string {
 const { db } = createDb();
 const stripeSecretKey = requireStripeSecretKey();
 const app = Fastify({ logger: true });
+
+// Stripe's webhook signature check already authenticates /webhooks/stripe, and
+// bursts of legitimate retries from Stripe's own infra shouldn't get throttled.
+await app.register(rateLimit, {
+  max: 300,
+  timeWindow: "1 minute",
+  allowList: ["/health", "/webhooks/stripe"],
+});
+
+app.addHook("onSend", async (_request, reply) => {
+  reply.header("X-Content-Type-Options", "nosniff");
+});
 
 app.setErrorHandler<FastifyError | HttpError>((error, _request, reply) => {
   if (error instanceof HttpError) {
