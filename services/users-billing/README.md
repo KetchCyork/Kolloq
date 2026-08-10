@@ -95,25 +95,50 @@ way to complete a browser-based signup on your behalf). Nothing below is a
 secret except where noted, and secrets go straight into Render's dashboard env
 vars — never into a comment, file, or back to me.
 
+> **Never paste a full `DATABASE_URL` (or any connection string with a
+> password in it) into a board comment, even while troubleshooting a failed
+> deploy.** It's publicly reachable on `:5432` the moment it exists, so
+> pasting it anywhere outside Render's env vars exposes the live DB to
+> anyone who can read the thread. If a deploy fails, describe the symptom
+> (status code, log line, error text) — that's enough for a diagnosis
+> without ever including the credential itself.
+
 1. **Neon** (managed Postgres, free tier — already covered by
    [NEW-4](/NEW/issues/NEW-4)'s pre-approval):
    - Sign up / log in at [console.neon.tech](https://console.neon.tech) (GitHub login is fastest).
    - Create a project (any region); the default database is fine.
-   - Copy the connection string from the dashboard (looks like
-     `postgres://<user>:<pass>@<host>/<db>?sslmode=require`) — this is `DATABASE_URL`.
+   - Copy the **owner** connection string from the dashboard (looks like
+     `postgres://neondb_owner:<pass>@<host>/<db>?sslmode=require`) — use it
+     **locally only**, for the one-time migration + role setup below. It
+     never goes into Render.
    - Run the migration once from your machine before the first deploy:
      ```bash
      cd services/users-billing
      pnpm install
-     DATABASE_URL='<paste-the-neon-url>' pnpm db:migrate
+     DATABASE_URL='<paste-the-neon-owner-url>' pnpm db:migrate
      ```
+   - Create the least-privilege app role the deployed service will actually
+     use (`scripts/create-app-role.sql` — read it first, it needs a
+     generated password dropped in):
+     ```bash
+     psql '<paste-the-neon-owner-url>' -f scripts/create-app-role.sql
+     ```
+   - Build that role's connection string (same host/db, `users_billing_app`
+     user, the password you generated, `?sslmode=require`) — **this** is the
+     `DATABASE_URL` for step 2, not the owner string.
+   - If your Neon plan has **Settings -> IP Allow** (a paid-tier feature —
+     may not show up on the free tier this project uses), restrict it to
+     Render's egress IPs (Render dashboard -> service -> Connect for the
+     current list) so the DB only accepts connections from the deployed app.
 
 2. **Render** (hosting, free tier):
    - Sign up / log in at [dashboard.render.com](https://dashboard.render.com) (GitHub login is fastest).
    - New -> Blueprint -> point it at this repo; it reads `render.yaml` at the
      repo root and offers to create the `newvector-users-billing` web service.
    - Before the first deploy, fill in the env vars it leaves blank:
-     - `DATABASE_URL` — the Neon connection string from step 1.
+     - `DATABASE_URL` — the `users_billing_app` connection string from step 1
+       (not the owner's — the deployed service should never hold owner
+       credentials).
      - `STRIPE_SECRET_KEY` — the TEST-mode key from NEW-231's setup run
        (`sk_test_...` / `rk_test_...`). The server refuses anything that isn't
        TEST-mode.

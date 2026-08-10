@@ -31,6 +31,11 @@ describe("validateSignupBody", () => {
     ["invalid email", { ...valid, email: "not-an-email" }, "valid_email_required"],
     ["missing payment method", { ...valid, paymentMethodId: "" }, "payment_method_id_required"],
     ["payment method not pm_-prefixed", { ...valid, paymentMethodId: "tok_123" }, "payment_method_id_required"],
+    [
+      "payment method with path-traversal characters",
+      { ...valid, paymentMethodId: "pm_x/../../customers/cus_X" },
+      "payment_method_id_required",
+    ],
     ["unknown price id", { ...valid, priceId: "price_does_not_exist" }, "unknown_price_id"],
   ])("rejects %s", (_label, body, expectedMessage) => {
     let caught: unknown;
