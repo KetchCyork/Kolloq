@@ -29,16 +29,18 @@ const VALID_PLANS = new Set<Plan>(["free", "pro", "max"]);
  *
  * `billingFetch` casts the response body to `Entitlement` without runtime validation (NEW-293), so
  * a malformed response can reach here with an `expiresAt` that isn't a finite number (missing,
- * NaN, Infinity) or a `plan` outside the known set. Both fail closed to Free rather than trusting
- * (or crashing on) the bad value — an unbounded `expiresAt` in particular would otherwise grant an
- * entitlement that never expires, and an unrecognized `plan` would throw when `PLAN_LIMITS[plan]`
- * is read downstream.
+ * NaN, Infinity, or a huge-but-finite value like `1e306` that overflows to Infinity once scaled to
+ * milliseconds — NEW-376) or a `plan` outside the known set. Both fail closed to Free rather than
+ * trusting (or crashing on) the bad value — an unbounded `expiresAt` in particular would otherwise
+ * grant an entitlement that never expires, and an unrecognized `plan` would throw when
+ * `PLAN_LIMITS[plan]` is read downstream.
  */
 export function resolveEntitlementState(entitlement: Entitlement | null, nowMs: number): { plan: Plan; status: string } {
   if (entitlement === null) {
     return { plan: "free", status: "active" };
   }
-  if (!Number.isFinite(entitlement.expiresAt) || entitlement.expiresAt * 1000 <= nowMs) {
+  const expiresAtMs = entitlement.expiresAt * 1000;
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
     return { plan: "free", status: "expired" };
   }
   const plan = VALID_PLANS.has(entitlement.plan) ? entitlement.plan : "free";

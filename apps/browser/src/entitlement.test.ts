@@ -44,6 +44,14 @@ describe("resolveEntitlementState", () => {
     expect(result).toEqual({ plan: "free", status: "expired" });
   });
 
+  it("fails closed to Free when a huge but finite expiresAt overflows to Infinity once scaled to ms (NEW-376)", () => {
+    // 1e306 passes Number.isFinite on its own, but 1e306 * 1000 overflows past Number.MAX_VALUE to
+    // Infinity, and `Infinity <= nowMs` is false — the pre-NEW-376 check would have granted a
+    // never-expiring plan here.
+    const result = resolveEntitlementState(entitlement({ plan: "max", expiresAt: 1e306 }), 1_000_000);
+    expect(result).toEqual({ plan: "free", status: "expired" });
+  });
+
   it("fails closed to Free when expiresAt is missing from a malformed response", () => {
     const malformed = entitlement({ plan: "max" }) as Partial<Entitlement> as Entitlement;
     delete (malformed as { expiresAt?: number }).expiresAt;

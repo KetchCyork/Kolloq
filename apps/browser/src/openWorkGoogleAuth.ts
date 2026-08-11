@@ -27,6 +27,16 @@
  *     `{"error":"invalid_request","error_description":"client_secret is missing."}`. Google's own
  *     docs describe this value as not-really-secret for installed apps (it ships inside the
  *     binary), but it is still kept out of source control here.
+ *   - NEW-376: confirmed this client is Google's "Desktop app" (installed/native) OAuth client
+ *     type, not "Web application" — a Web-application client's redirect URI must match a
+ *     console-registered value exactly, but Google accepts *any* port on this flow's
+ *     `http://127.0.0.1` redirect (see `GOOGLE_REDIRECT_URI` below), which is loopback-IP behavior
+ *     Google documents as exclusive to Desktop-app clients (RFC 8252). The flow working in
+ *     production against the live endpoint is itself proof of the client type, independent of
+ *     reading the Cloud Console. Only `.github/workflows/desktop-release.yml` (the Tauri installed-
+ *     app build) consumes `VITE_GOOGLE_OAUTH_CLIENT_SECRET` — there is no separate browser-web
+ *     deploy workflow that would inline it into a publicly-served bundle beyond the installed-app
+ *     population Google already treats this secret as non-confidential to.
  *   - Only works in the Tauri desktop shell: the loopback capture and the CORS-free token exchange
  *     both live in Rust. In a plain browser build `googleSignInAvailable()` is false.
  *   - The id_token is read (not cryptographically re-verified) because it is received directly from
