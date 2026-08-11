@@ -3,7 +3,7 @@ import type { Entitlement } from "./billingClient";
 import { isAtLimit, PLAN_LIMITS, resolveEntitlementState } from "./entitlement";
 
 function entitlement(overrides: Partial<Entitlement> = {}): Entitlement {
-  return { token: "jwt", plan: "pro", status: "active", currentPeriodEnd: null, expiresAt: 2_000, ...overrides };
+  return { plan: "pro", status: "active", currentPeriodEnd: null, expiresAt: 2_000, ...overrides };
 }
 
 describe("resolveEntitlementState", () => {
@@ -32,6 +32,36 @@ describe("resolveEntitlementState", () => {
   it("stays on the paid plan one millisecond before expiry", () => {
     const result = resolveEntitlementState(entitlement({ plan: "pro", expiresAt: 100 }), 99_999);
     expect(result).toEqual({ plan: "pro", status: "active" });
+  });
+
+  it("fails closed to Free when expiresAt is NaN", () => {
+    const result = resolveEntitlementState(entitlement({ plan: "max", expiresAt: NaN }), 1_000_000);
+    expect(result).toEqual({ plan: "free", status: "expired" });
+  });
+
+  it("fails closed to Free when expiresAt is Infinity (never trust a non-expiring grant)", () => {
+    const result = resolveEntitlementState(entitlement({ plan: "max", expiresAt: Infinity }), 1_000_000);
+    expect(result).toEqual({ plan: "free", status: "expired" });
+  });
+
+  it("fails closed to Free when expiresAt is missing from a malformed response", () => {
+    const malformed = entitlement({ plan: "max" }) as Partial<Entitlement> as Entitlement;
+    delete (malformed as { expiresAt?: number }).expiresAt;
+    const result = resolveEntitlementState(malformed, 1_000_000);
+    expect(result).toEqual({ plan: "free", status: "expired" });
+  });
+
+  it("falls back to Free when plan is not a recognized value, without touching status", () => {
+    const malformed = entitlement({ plan: "enterprise" as unknown as Entitlement["plan"], status: "active" });
+    const result = resolveEntitlementState(malformed, 1_000_000);
+    expect(result).toEqual({ plan: "free", status: "active" });
+  });
+
+  it("falls back to Free when plan is missing from a malformed response", () => {
+    const malformed = entitlement() as Partial<Entitlement> as Entitlement;
+    delete (malformed as { plan?: Entitlement["plan"] }).plan;
+    const result = resolveEntitlementState(malformed, 1_000_000);
+    expect(result.plan).toBe("free");
   });
 });
 

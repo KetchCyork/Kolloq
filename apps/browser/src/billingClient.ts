@@ -91,8 +91,16 @@ export function createPortalSession(base: string, idToken: string): Promise<Port
 
 export type Plan = "free" | "pro" | "max";
 
+/**
+ * No `token` field here (NEW-293): the worker's GET /entitlement response includes one, but it's
+ * signed HS256 with a secret only the worker holds, so the browser has no key to verify it against —
+ * shipping that secret to the client would let anyone forge entitlements. Trusting an unverified
+ * signature would just be trusting the plan/status fields directly, which is what this type already
+ * does over an authenticated (bearer id_token) HTTPS response. Meaningful client-side verification
+ * would need the worker to move to asymmetric signing (RS256/ES256 + published JWKS) — flagged as a
+ * NEW-232 follow-up, not done here.
+ */
 export interface Entitlement {
-  token: string;
   plan: Plan;
   status: string;
   currentPeriodEnd: number | null;
