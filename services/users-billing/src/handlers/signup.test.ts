@@ -25,6 +25,13 @@ describe("validateSignupBody", () => {
     });
   });
 
+  it("accepts Stripe's underscore-containing test-mode magic payment method tokens", () => {
+    expect(validateSignupBody({ ...valid, paymentMethodId: "pm_card_visa" })).toEqual({
+      ...valid,
+      paymentMethodId: "pm_card_visa",
+    });
+  });
+
   it.each([
     ["missing first name", { ...valid, firstName: "" }, "first_name_required"],
     ["missing last name", { ...valid, lastName: undefined }, "last_name_required"],
