@@ -12,7 +12,7 @@
 -- (e.g. `openssl rand -base64 24`) and copy it straight into Render's env —
 -- never paste it into a comment, chat, or file.
 
-CREATE ROLE users_billing_app WITH LOGIN PASSWORD '/T47M7GkWQMddBDxNCdYN7EFAiZBUuLc';
+CREATE ROLE users_billing_app WITH LOGIN PASSWORD 'w0OWqLQRnVCmnHon4VijrbIrcwQWV4nK';
 
 GRANT CONNECT ON DATABASE neondb TO users_billing_app;
 GRANT USAGE ON SCHEMA public TO users_billing_app;
