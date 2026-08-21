@@ -7,9 +7,10 @@ import { HttpError } from "../httpError.js";
 import * as stripeClient from "../stripeClient.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Strict charset (no "/" or ".") so this can never be used to path-traverse the
-// Stripe request URL built in stripeClient.ts (e.g. "pm_x/../../customers/cus_X").
-const PAYMENT_METHOD_ID_RE = /^pm_[A-Za-z0-9]+$/;
+// Allows "_" (needed for Stripe's own test-mode magic tokens, e.g. "pm_card_visa")
+// but excludes "/" and "." so this can never be used to path-traverse the Stripe
+// request URL built in stripeClient.ts (e.g. "pm_x/../../customers/cus_X").
+const PAYMENT_METHOD_ID_RE = /^pm_[A-Za-z0-9_]+$/;
 
 export interface SignupBody {
   firstName?: unknown;
