@@ -8,11 +8,15 @@
 -- (never the owner's). Migrations (`pnpm db:migrate`) still need to run as
 -- the owner, since this role can't alter schema.
 --
--- Replace the password placeholder before running; generate it locally
--- (e.g. `openssl rand -base64 24`) and copy it straight into Render's env —
--- never paste it into a comment, chat, or file.
+-- IMPORTANT: <REPLACE_WITH_GENERATED_PASSWORD> below is a placeholder, not a
+-- real value. Generate a fresh password locally (e.g. `openssl rand -base64
+-- 24`), paste it over the placeholder ONLY in your local editor buffer while
+-- running this script interactively, then copy the same value straight into
+-- Render's env var field. Never save/commit/push a file with a real
+-- password in it, and never paste one into a comment, chat, or PR diff —
+-- this file must always read as a placeholder in git history.
 
-CREATE ROLE users_billing_app WITH LOGIN PASSWORD 'w0OWqLQRnVCmnHon4VijrbIrcwQWV4nK';
+CREATE ROLE users_billing_app WITH LOGIN PASSWORD '<REPLACE_WITH_GENERATED_PASSWORD>';
 
 GRANT CONNECT ON DATABASE neondb TO users_billing_app;
 GRANT USAGE ON SCHEMA public TO users_billing_app;
