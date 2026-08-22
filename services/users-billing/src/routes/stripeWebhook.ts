@@ -10,7 +10,9 @@ interface StripeSubscriptionObject {
 }
 
 interface StripeInvoiceObject {
-  subscription: string | null;
+  /** Legacy flat field — removed on API versions >= 2025-03-31.basil in favor of `parent`. */
+  subscription?: string | null;
+  parent?: { type?: string; subscription_details?: { subscription?: string | null } };
   period_end: number | null;
   lines?: { data: Array<{ period?: { end: number } }> };
 }
@@ -26,6 +28,15 @@ function toDate(seconds: number | null | undefined): Date | null {
 
 function invoicePeriodEnd(invoice: StripeInvoiceObject): number | null {
   return invoice.period_end ?? invoice.lines?.data?.[0]?.period?.end ?? null;
+}
+
+/**
+ * Stripe API versions >= 2025-03-31.basil moved this off the top-level `subscription`
+ * field onto `parent.subscription_details.subscription` (docs.stripe.com/changelog/basil/2025-03-31).
+ * Read both so this keeps working regardless of which API version the account is pinned to.
+ */
+function invoiceSubscriptionId(invoice: StripeInvoiceObject): string | null {
+  return invoice.parent?.subscription_details?.subscription ?? invoice.subscription ?? null;
 }
 
 export function registerStripeWebhookRoute(app: FastifyInstance, db: ReturnType<typeof createDb>["db"]): void {
@@ -65,15 +76,17 @@ export function registerStripeWebhookRoute(app: FastifyInstance, db: ReturnType<
         }
         case "invoice.paid": {
           const invoice = event.data.object as StripeInvoiceObject;
-          if (invoice.subscription) {
-            await syncSubscriptionByStripeId(db, invoice.subscription, { status: "active", currentPeriodEnd: toDate(invoicePeriodEnd(invoice)) });
+          const subscriptionId = invoiceSubscriptionId(invoice);
+          if (subscriptionId) {
+            await syncSubscriptionByStripeId(db, subscriptionId, { status: "active", currentPeriodEnd: toDate(invoicePeriodEnd(invoice)) });
           }
           break;
         }
         case "invoice.payment_failed": {
           const invoice = event.data.object as StripeInvoiceObject;
-          if (invoice.subscription) {
-            await syncSubscriptionByStripeId(db, invoice.subscription, { status: "past_due" });
+          const subscriptionId = invoiceSubscriptionId(invoice);
+          if (subscriptionId) {
+            await syncSubscriptionByStripeId(db, subscriptionId, { status: "past_due" });
           }
           break;
         }

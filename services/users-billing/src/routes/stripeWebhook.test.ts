@@ -94,6 +94,25 @@ describe("registerStripeWebhookRoute", () => {
     });
   });
 
+  it("invoice.paid reads the subscription id from parent.subscription_details on API versions >= 2025-03-31.basil", async () => {
+    const app = buildApp();
+    const response = await post(app, {
+      type: "invoice.paid",
+      data: {
+        object: {
+          parent: { type: "subscription_details", subscription_details: { subscription: "sub_basil" } },
+          period_end: 1_900_222_222,
+          lines: { data: [] },
+        },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(syncSubscriptionByStripeId).toHaveBeenCalledWith(expect.anything(), "sub_basil", {
+      status: "active",
+      currentPeriodEnd: new Date(1_900_222_222 * 1000),
+    });
+  });
+
   it("invoice.payment_failed marks the subscription past_due without touching current_period_end", async () => {
     const app = buildApp();
     const response = await post(app, {
@@ -107,6 +126,16 @@ describe("registerStripeWebhookRoute", () => {
   it("ignores invoice events with no subscription (one-off invoices)", async () => {
     const app = buildApp();
     const response = await post(app, { type: "invoice.paid", data: { object: { subscription: null, period_end: null } } });
+    expect(response.statusCode).toBe(200);
+    expect(syncSubscriptionByStripeId).not.toHaveBeenCalled();
+  });
+
+  it("ignores invoice events with no subscription under parent.subscription_details either", async () => {
+    const app = buildApp();
+    const response = await post(app, {
+      type: "invoice.paid",
+      data: { object: { parent: { type: "subscription_details", subscription_details: {} }, period_end: null } },
+    });
     expect(response.statusCode).toBe(200);
     expect(syncSubscriptionByStripeId).not.toHaveBeenCalled();
   });
